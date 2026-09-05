@@ -1720,8 +1720,11 @@ Enclosed: the decision/order from my first appeal.
    here: a labeled deterministic simulator) may ONLY:
    - map text onto the closed option sets it is handed (enum gate, in code)
    - justify every mapping with a verbatim span of the user's text
-     (span gate, in code — replaces trusting a confidence float)
-   - extract facts whose value is a verbatim substring (fact gate, in code)
+     (span check, in code: provenance + anti-fabrication tripwire — the
+     CONFIRM SCREEN is the sole safety gate, per grill A2)
+   - extract facts whose value is a verbatim substring (fact gate, in
+     code), with numeric fills cue-gated and Aadhaar-shaped values
+     refused outright (grill A3)
    It never sees playbook rules; the user confirms before anything is set;
    the verified playbook then runs byte-identically. The pasted-status
    matcher stays exact-match-only (different risk profile: no confirm
@@ -1801,30 +1804,55 @@ const SIM_RULES = {
 // Per-service reference-number shapes (prototype approximations, stated
 // as such in the spec). A number matching no known shape becomes an
 // honest "a number you mentioned" chip and fills NOTHING.
+//
+// Cue-gating (2026-09-05, grill A3 — chunk 5): a purely NUMERIC shape
+// never fills a bracket on shape alone, because shape alone cannot do
+// identity work — Aadhaar is 12 digits and so is a passport ARN, so the
+// two are inseparable in principle. A numeric shape fills only with a
+// labeled cue ("ARN", "file no", "ref") just before the number. An
+// Aadhaar cue, or a bare 12-digit number with no cue at all, is DROPPED
+// entirely — never chipped, never persisted — and the confirm screen
+// says so. Letter-bearing shapes (BN..., EPIC, CPGRAMS ids) are
+// structurally non-Aadhaar and need no cue. Production adds Verhoeff
+// validation to positively refuse real Aadhaar numbers.
 const REF_SHAPES = {
   passport:[
     {re:/\b[A-Z]{2}\d{13}\b/i, refType:'passport_file_no', label:'File Number', fills:'[File Number / ARN]'},
-    {re:/\b\d{12}\b/, refType:'arn', label:'ARN', fills:'[File Number / ARN]'},
+    {re:/\b\d{12}\b/, refType:'arn', label:'ARN', fills:'[File Number / ARN]', cueRequired:true},
     {re:/\b[A-Z]{5,8}\/\d{4}\/\d{4,8}\b/i, refType:'grievance_no', label:'Grievance number', fills:'[CPGRAMS grievance number]'},
   ],
   voter:[
     {re:/\b[A-Z]{3}\d{7}\b/i, refType:'epic', label:'EPIC number', fills:null},
-    {re:/\b\d{9,13}\b/, refType:'voter_ref', label:'Reference number', fills:'[reference number]'},
+    {re:/\b\d{9,13}\b/, refType:'voter_ref', label:'Reference number', fills:'[reference number]', cueRequired:true},
   ],
   sir:[
     {re:/\b[A-Z]{3}\d{7}\b/i, refType:'epic', label:'EPIC number', fills:null},
   ],
 };
 const UNKNOWN_REF = /\b(?=[A-Z0-9]*\d)[A-Z0-9]{8,18}\b/g;
+const REF_CUE = /\b(arn|file|application|ack(nowledg\w*)?|ref(erence)?|grievance)\s*(no|number|num|#|id)?\.?\s*[:\-]?\s*(is\s*)?$/i;
+const AADHAAR_CUE = /\b(aadha?ar|adhaar|uid)\b[^0-9]{0,20}$/i;
+function cueBefore(text, idx){ return REF_CUE.test(text.slice(Math.max(0, idx-32), idx)); }
+function aadhaarBefore(text, idx){ return AADHAAR_CUE.test(text.slice(Math.max(0, idx-32), idx)); }
 
 function extractFacts(engine, text){
-  const facts=[]; const taken=[];
+  const facts=[]; const taken=[]; let droppedSensitive=false;
   for(const shape of (REF_SHAPES[engine]||[])){
     const m = text.match(shape.re);
-    if(m && !taken.some(t=>t.includes(m[0]))){
-      facts.push({kind:'reference_number', refType:shape.refType, label:shape.label, value:m[0], fills:shape.fills});
-      taken.push(m[0]);
+    if(!m || taken.some(t=>t.includes(m[0]))) continue;
+    if(shape.cueRequired){
+      if(aadhaarBefore(text, m.index)){ droppedSensitive=true; taken.push(m[0]); continue; }
+      if(!cueBefore(text, m.index)){
+        // no labeled cue: a bare 12-digit number is Aadhaar-shaped and is
+        // refused outright; any other bare numeric becomes an honest
+        // fills-nothing chip
+        if(/^\d{12}$/.test(m[0])){ droppedSensitive=true; taken.push(m[0]); continue; }
+        facts.push({kind:'reference_number', refType:'unknown', label:'A number you mentioned', value:m[0], fills:null});
+        taken.push(m[0]); continue;
+      }
     }
+    facts.push({kind:'reference_number', refType:shape.refType, label:shape.label, value:m[0], fills:shape.fills});
+    taken.push(m[0]);
   }
   // unknown-shaped numbers: shown honestly, never fill a bracket
   const unk = text.match(UNKNOWN_REF)||[];
@@ -1842,12 +1870,27 @@ function extractFacts(engine, text){
   if(otherDate && (!applied || otherDate[0]!==applied[2])){
     facts.push({kind:'date', refType:'date_other', label:'Date you mentioned', value:otherDate[0].trim(), fills:null});
   }
-  return facts;
+  return {facts, droppedSensitive};
 }
 
 // The contract gates, applied IN CODE regardless of what any model (or
 // this simulator) returns: enum gate, span gate, verbatim-fact gate,
 // then branch pruning over the chain.
+//
+// Honest framing (2026-09-05, grill A2 — chunk 5): the CONFIRM SCREEN is
+// the sole safety gate. The span check is provenance display plus a
+// cheap anti-fabrication tripwire — it proves the model quoted the
+// user, not that the quote supports the mapping. A gate that only holds
+// against your own simulator licenses trusting the pipeline; the
+// production launch bar is the eval set with a published maximum
+// Change-rate per question (PRD §26), not any of these checks.
+const MIN_SPAN_TOKENS = 1; // simulator floor; production sets 3 — the eval set tunes it
+const SPAN_STOPWORDS = new Set(['a','an','the','my','i','me','it','its','is','was','are','were','to','of','in','on','for','and','or','has','have','had','been','be','with','at','so','but','this','that','there','here','not','no','yes','do','did','does']);
+function spanMeaningful(s){
+  const t=(s||'').toLowerCase().split(/\s+/).map(w=>w.replace(/[^a-z0-9]/g,'')).filter(Boolean);
+  if(t.length < MIN_SPAN_TOKENS) return false;
+  return t.some(w=>!SPAN_STOPWORDS.has(w));   // an all-stopword span proves nothing
+}
 function gateInterpretation(ctx, text, raw){
   const norm = s=>s.replace(/\s+/g,' ').trim().toLowerCase();
   const hay = norm(text);
@@ -1861,12 +1904,12 @@ function gateInterpretation(ctx, text, raw){
     const opts = q.opts();
     if(!reach){ discarded.push({q, reason:'unreachable'}); continue; }          // branch gate
     if(!Object.prototype.hasOwnProperty.call(opts, m.value)) continue;           // enum gate
-    if(!m.span || !hay.includes(norm(m.span))) continue;                         // span gate
+    if(!m.span || !hay.includes(norm(m.span)) || !spanMeaningful(m.span)) continue; // span gate (provenance + tripwire)
     mapped[q.id]=m.value;
     mappings.push({questionId:q.id, value:m.value, span:m.span, q});
   }
   const facts = (raw.facts||[]).filter(f=>f.value && text.replace(/\s+/g,' ').includes(f.value.replace(/\s+/g,' '))); // verbatim-fact gate
-  return {mappings, discarded, facts, unplaceable: mappings.length===0};
+  return {mappings, discarded, facts, droppedSensitive: !!raw.droppedSensitive, unplaceable: mappings.length===0};
 }
 
 function simulateInterpretation(ctx, text){
@@ -1881,7 +1924,8 @@ function simulateInterpretation(ctx, text){
       if(m){ rawMappings.push({questionId:q.id, value:r.v, span:m[0]}); mapped[q.id]=r.v; break; }
     }
   }
-  return gateInterpretation(ctx, text, {mappings:rawMappings, facts:extractFacts(ctx.engine, text)});
+  const ef = extractFacts(ctx.engine, text);
+  return gateInterpretation(ctx, text, {mappings:rawMappings, facts:ef.facts, droppedSensitive:ef.droppedSensitive});
 }
 
 /* ================= STATE MACHINE ================= */
@@ -2941,13 +2985,16 @@ function describeBlock(screenId){
   </div>`;
 }
 function factChips(facts){
-  if(!facts.length) return '';
+  const dropped = S.interp && S.interp.droppedSensitive;
+  if(!facts.length && !dropped) return '';
+  if(!facts.length) return `<p class="small" style="margin-top:20px;">A number that looked like an Aadhaar number was left out on purpose. NextMove never keeps Aadhaar numbers, and nothing here ever needs one.</p>`;
   return `<div class="nm-k" style="margin:20px 0 0;">What we picked up</div>
   <div class="fact-chips">${facts.map((f,i)=> S.factEditIdx===i
     ? `<span class="fchip fchip-edit"><span class="fk">${f.label}</span><input value="${S.factEditVal}" oninput="S.factEditVal=this.value" onkeydown="if(event.key==='Enter')saveFactEdit()" aria-label="Edit ${f.label}"><button onclick="saveFactEdit()" aria-label="Save ${f.label}">✓</button></span>`
     : `<span class="fchip"><span class="fk">${f.label}</span><span class="fv">${f.value}</span><button onclick="editFact(${i})" aria-label="Edit ${f.label} ${f.value}">✎</button><button onclick="removeFact(${i})" aria-label="Remove ${f.label} ${f.value}">✕</button></span>`
   ).join('')}</div>
-  ${facts.some(f=>f.refType==='unknown') ? `<p class="small" style="margin-top:8px;">A number NextMove couldn't recognize stays listed here but is never used to fill anything.</p>` : ''}`;
+  ${facts.some(f=>f.refType==='unknown') ? `<p class="small" style="margin-top:8px;">A number NextMove couldn't recognize stays listed here but is never used to fill anything.</p>` : ''}
+  ${S.interp && S.interp.droppedSensitive ? `<p class="small" style="margin-top:8px;">A number that looked like an Aadhaar number was left out on purpose. NextMove never keeps Aadhaar numbers, and nothing here ever needs one.</p>` : ''}`;
 }
 function renderInterpConfirm(){
   const it = S.interp;
