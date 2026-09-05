@@ -1,0 +1,3220 @@
+<title>NextMove Casefile</title>
+<!-- ============================================================
+DIRECTION CONTRACT — v2 visual world (2026-09-05), replaces the
+restrained teal/Sora world after explicit user feedback that the
+Teak reference "did not come through" and the design read boring.
+
+Pinned reference: Teak (mobbin.com/sites/teak-879ecee4...), studied
+from its actual captured sections this time, not a token paraphrase:
+- warm cream paper with a faint drafting-grid texture
+- deep espresso-plum ink, chunky rounded serif display voice
+- ONE loud accent: butter yellow, used exactly two ways —
+  highlighter swipes on the key word, and the primary pill CTA
+- small colored square markers as nav/category devices
+- data chips as filled pastel pills; white rounded cards, soft borders
+- playful floating gem/diamond confetti around emotional peaks
+
+NextMove translation: Fraunces (display) + Work Sans (body) +
+IBM Plex Mono (stamps/citations/official numbers). Butter yellow
+#F5D848 owns highlight + primary action. Per-service square markers:
+Passport green, Voter pink, Income blue. The four status
+classifications stay semantic and calm (WAIT green / FOLLOW UP
+amber / ESCALATE clay / UNCLASSIFIED warm gray) as filled chips —
+distinct in shape+casing from the butter accent so they never
+collide. Escalation stays visually calm: no warning triangles, ever.
+
+Motion thesis — focal moment: the Diagnosis reveal. The status
+stamp slams in like a rubber stamp on a paper casefile (scale+rotate
+settle), the highlighter draws under the key word, the dependency
+block slides in. Supporting: staggered answer rows, springy selected
+checks, arrow-nudge on pill hovers, sequential case-trail pops.
+Everything honors prefers-reduced-motion.
+
+All playbook logic, routing, copy, and product guardrails are
+unchanged from v1 — this contract governs the visual layer only.
+
+Balance note (explicit user steer, 2026-09-05): "not another
+government website, and not a game either." Playful-premium, not
+gamified — no mascots, badges, points, streaks, or confetti storms;
+gems stay small and appear at exactly two moments.
+
+ADHD/cognitive-accessibility pass (2026-09-05, adhd-design-expert
+skill, user-approved "apply what's logical"): (1) a per-rule
+`howLong` field renders as a "How long?" row on Next Move — sourced
+dates stated as facts (Delhi's 29 Oct window, 4 Nov Final Roll, the
+Citizen's Charter PV exclusion), verified ABSENCE stated everywhere
+else ("no official timeline exists — that's why there's no
+countdown"); omitted on UNCLASSIFIED fallbacks and on SIR S-6 (its
+window claim would compound a pre-existing enumeration-form tension).
+(2) Honest brevity promises only where structurally true: Passport
+guardrail lede ("two quick questions"), "Last question" chips on
+Passport Q2 / Voter Q2, "Just one question" on SIR Q1 — this does NOT
+reverse the locked numeric-progress removal, which was about
+branch-dependent counts. (3) S-4's 12-document prose converted to a
+scannable list (content verbatim). Deliberately NOT applied: streaks,
+XP, celebrations (collide with the no-game steer and product truth);
+persistence/tracking (V1 scope boundary, highest-value ADHD feature
+for the tracking slice).
+
+"Prepare this for me" (2026-09-05, user decision: draft + GUIDED
+submission IN; auto-submission stays OUT per the locked Non-Goal and
+the trust caption). New per-service prepare screens: an editable
+drafted follow-up (per-rule template with [bracket] placeholders in
+this static prototype; AI-composed from verified case facts in the
+real build) with a Copy control, plus a tick-off submission checklist
+("N of M done") whose final step is always performed by the user on
+the official channel. CTA appears only on FOLLOW_UP/ESCALATE rules
+with PREP content; WAIT/UNCLASSIFIED end with a quiet Back to Home
+(the old "future slice" boundary screen is gone). Steps never invent
+unverified portal menu paths, fees, or deadlines.
+
+Deferred auth layer (2026-09-05, user decision): diagnosis stays
+fully anonymous (Product Principle #4 — no login gates core value);
+auth exists at exactly one moment — "Save this case for later" on
+Next Move / Prepare. Method order per user: Google primary, phone
+OTP secondary, email fallback. Saving snapshots answers + diagnosis
++ ticked prepare steps into a "Your casefile" card on Home
+(Continue restores everything; Remove and Sign out are confirmed
+actions). Prototype simulates auth (instant Google, any 6-digit
+code) and persists via localStorage in the viewer's browser only —
+all guarded, page renders fine with empty/blocked storage. Restart
+never clears sign-in or the saved case.
+
+Detector defenses (deliberate, do not "fix"):
+- overused-font (Work Sans): incumbent body face from the approved
+  v1 system; the identity lives in Fraunces + IBM Plex Mono.
+- codex-grid-background: the drafting-grid ground is the pinned Teak
+  reference's own hero texture and the product's casefile-paper
+  metaphor — a chosen material, not a generated-UI default.
+============================================================ -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,800&family=Work+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --paper:#FAF7EF;
+  --card:#FFFFFF;
+  --ink:#3D241C;
+  --ink-soft:#6E6152;
+  --ink-faint:#7A7264;
+  --line:#EAE4D6;
+  --line-strong:#DCD4C2;
+  --butter:#F5D848;
+  --butter-deep:#E8C51F;
+  --butter-soft:#FBF0C4;
+  --sq-green:#2FA866;
+  --sq-pink:#F0679E;
+  --sq-blue:#5FA8E8;
+  --wait:#1F6B3D;
+  --wait-bg:#D9F2DF;
+  --follow:#8A5A0F;
+  --follow-bg:#FBEFC9;
+  --escalate:#9E2F1F;
+  --escalate-bg:#FBDFD6;
+  --unclassified:#6B6257;
+  --unclassified-bg:#EFEAE0;
+  --shadow-float:0 10px 30px rgba(61,36,28,0.08), 0 2px 6px rgba(61,36,28,0.05);
+  --ease:cubic-bezier(0.16,1,0.3,1);
+}
+*{box-sizing:border-box;}
+::selection{background:var(--butter); color:var(--ink);}
+html{scrollbar-color:var(--line-strong) var(--paper);}
+body{
+  margin:0; background-color:var(--paper); color:var(--ink);
+  /* the drafting-grid paper — the casefile's own material */
+  background-image:
+    linear-gradient(to right, rgba(61,36,28,0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(61,36,28,0.035) 1px, transparent 1px);
+  background-size:34px 34px;
+}
+.app{
+  font-family:'Work Sans',system-ui,sans-serif;
+  min-height:100vh;
+  color:var(--ink);
+}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace;}
+
+/* ---------- shell: full-width site chrome, not an app card ---------- */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 40px; border-bottom:1px solid var(--line);
+  background:var(--paper);
+  position:sticky; top:0; z-index:10;
+}
+.brand{
+  font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:19px;
+  letter-spacing:-0.01em; color:var(--ink); text-decoration:none; cursor:pointer;
+  background:none; border:none; padding:0;
+  display:inline-flex; align-items:center; gap:8px;
+}
+.brand .brand-mark{display:inline-flex; transition:transform 300ms var(--ease);}
+.brand:hover .brand-mark{transform:rotate(90deg);}
+.topctrls{display:flex; align-items:center; gap:14px;}
+.ctrl-link{
+  font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.04em;
+  color:var(--ink-soft); background:var(--card); cursor:pointer;
+  border:1px solid var(--line-strong); border-radius:999px; padding:7px 14px;
+  transition:border-color 150ms ease, color 150ms ease, transform 150ms var(--ease);
+}
+.ctrl-link:hover{color:var(--ink); border-color:var(--ink); transform:translateY(-1px);}
+.ctrl-link:focus-visible, a:focus-visible, button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible{
+  outline:2.5px solid var(--butter-deep); outline-offset:3px; border-radius:4px;
+}
+.restart-confirm{
+  display:flex; align-items:center; gap:10px; font-size:13px; color:var(--ink-soft);
+}
+.restart-confirm button{font-family:'Work Sans',sans-serif;}
+.restart-confirm .yes{color:var(--escalate); font-weight:600; background:none; border:none; cursor:pointer;}
+.restart-confirm .no{color:var(--ink-soft); background:none; border:none; cursor:pointer; text-decoration:underline;}
+
+.stage{
+  max-width:1460px; margin:0 auto; padding:56px 48px 90px; position:relative;
+}
+@media (max-width:600px){
+  .topbar{padding:14px 18px;}
+  .stage{padding:24px 18px 70px;}
+}
+
+/* ---------- desktop split: context left, action right ----------
+   The website layout. Question screens read like an editorial spread —
+   the big Fraunces question holds the left, the answer list works on
+   the right — instead of a mobile card floating in whitespace. */
+.split{display:block;}
+.narrow{max-width:640px;}
+@media (min-width:960px){
+  .split{display:grid; grid-template-columns:minmax(0,6fr) minmax(0,7fr); gap:110px; align-items:start;}
+  .split-r .answers{margin-top:6px;}
+  .split-r .list-lead{margin-top:2px;}
+}
+
+/* screen transition */
+.screen{animation:enter 260ms var(--ease);}
+@keyframes enter{
+  from{opacity:0; transform:translateY(10px);}
+  to{opacity:1; transform:translateY(0);}
+}
+
+/* ---------- confetti gems — Teak's floating shapes, at the two
+     emotional peaks only (Home hero, Diagnosis reveal). Decorative,
+     aria-hidden, never in the reading column. ---------- */
+.gems{position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:0;}
+.split-l{position:relative;}
+.split-l > *:not(.gems), .split-r > *, .stage > *:not(.gems):not(.split){position:relative; z-index:1;}
+.gem{position:absolute; animation:drift 7s ease-in-out infinite alternate;}
+.gem:nth-child(2){animation-duration:9s; animation-delay:-2s;}
+.gem:nth-child(3){animation-duration:8s; animation-delay:-4s;}
+.gem:nth-child(4){animation-duration:10s; animation-delay:-1s;}
+.gem:nth-child(5){animation-duration:11s; animation-delay:-3s;}
+@keyframes drift{
+  from{transform:translateY(0) rotate(0deg);}
+  to{transform:translateY(-14px) rotate(14deg);}
+}
+@media (max-width:600px){.gems{display:none;}}
+
+/* ---------- footer disclaimer ---------- */
+.protofooter{
+  max-width:1180px; margin:40px auto 0; padding:16px 40px 40px; border-top:1px solid var(--line);
+  font-size:11.5px; color:var(--ink-faint); line-height:1.6;
+}
+
+/* ---------- crumbs: Teak's marker-square device carrying the
+     service/phase context (replaces the old floating mono eyebrows —
+     same information, now a designed component) ---------- */
+.crumbs{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 18px;}
+.crumb{
+  font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.05em;
+  color:var(--ink); background:var(--card); border:1px solid var(--line-strong);
+  border-radius:6px; padding:5px 10px; display:inline-flex; align-items:center; gap:7px;
+}
+.crumb.soft{color:var(--ink-soft); background:transparent; border-style:dashed;}
+.crumb-sq{width:8px; height:8px; border-radius:2px; flex:0 0 auto;}
+.sq-passport{background:var(--sq-green);}
+.sq-voter{background:var(--sq-pink);}
+.sq-income{background:var(--sq-blue);}
+.sq-butter{background:var(--butter);}
+
+/* ---------- typography ---------- */
+h1.headline{
+  font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:44px; line-height:1.06;
+  letter-spacing:-0.015em; margin:0 0 16px; color:var(--ink);
+  text-wrap:balance;
+}
+h2.headline{
+  font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:33px; line-height:1.12;
+  letter-spacing:-0.012em; margin:0 0 14px; color:var(--ink); text-wrap:balance;
+}
+.hero-h1{
+  font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:40px; line-height:1.08;
+  letter-spacing:-0.013em; margin:0 0 16px; color:var(--ink); text-wrap:balance;
+}
+/* The Diagnosis reveal — the signature screenshot moment. */
+.reveal-headline{
+  font-family:'Fraunces',Georgia,serif; font-weight:800; font-size:40px; line-height:1.05;
+  letter-spacing:-0.015em; margin:2px 0 22px; color:var(--ink); text-wrap:balance;
+}
+@media (max-width:600px){
+  h1.headline{font-size:33px;} h2.headline{font-size:26px;} .hero-h1{font-size:30px;}
+  .reveal-headline{font-size:30px;}
+}
+/* Desktop website scale — must sit AFTER the base typography rules so it
+   wins the cascade (the split-layout block above is before them). */
+@media (min-width:960px){
+  .hero-h1{font-size:58px;}
+  h1.headline{font-size:48px;}
+  h2.headline{font-size:38px;}
+  .reveal-headline{font-size:48px;}
+  .lede{font-size:17px; max-width:56ch;}
+  .hero-promise{font-size:18px;}
+  .nm-lead{font-size:38px;}
+  .svc{padding:26px 8px;}
+  .svc-title{font-size:22px;}
+  .arow{padding:21px 8px;}
+  .arow-label{font-size:16.5px;}
+}
+/* highlighter swipe — butter, drawn in like a marker stroke */
+.mark{position:relative; white-space:nowrap;}
+.mark::after{
+  content:""; position:absolute; left:-3px; right:-3px; bottom:1px; height:0.42em;
+  background:var(--butter); z-index:-1; border-radius:3px;
+  transform:skewX(-6deg); transform-origin:left;
+  animation:draw 480ms var(--ease) 240ms both;
+}
+@keyframes draw{from{scale:0 1;} to{scale:1 1;}}
+.lede{font-size:15.5px; color:var(--ink-soft); line-height:1.6; margin:0 0 26px; max-width:52ch;}
+.small{font-size:13px; color:var(--ink-soft); line-height:1.6;}
+
+/* ---------- home ---------- */
+.hero-promise{font-size:16px; color:var(--ink-soft); margin:6px 0 30px; max-width:46ch; line-height:1.6;}
+.list-lead{
+  font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:20px; margin:0 0 4px;
+}
+.services{display:flex; flex-direction:column; gap:2px; border-top:1px solid var(--line); margin-top:12px;}
+.svc{
+  display:flex; align-items:center; gap:16px; padding:20px 4px; border-bottom:1px solid var(--line);
+  background:none; border-left:none; border-right:none; border-top:none; width:100%; text-align:left;
+  cursor:pointer; font-family:inherit; color:inherit;
+  transition:background 160ms ease;
+}
+.svc:hover:not(.disabled){background:var(--butter-soft);}
+.svc:hover:not(.disabled) .svc-icon{transform:rotate(-6deg) scale(1.06);}
+.svc:hover:not(.disabled) .svc-chevron{transform:translateX(4px); color:var(--ink);}
+.svc.disabled{cursor:default;}
+.svc.disabled .svc-icon, .svc.disabled .svc-title, .svc.disabled .svc-sub{opacity:0.5;}
+.svc-icon{
+  flex:0 0 auto; width:40px; height:40px; display:flex; align-items:center; justify-content:center;
+  border-radius:11px; transition:transform 250ms var(--ease);
+}
+.svc-icon.ic-passport{background:#DFF3E6; color:#1F6B3D;}
+.svc-icon.ic-voter{background:#FBE3EE; color:#B03A6E;}
+.svc-icon.ic-income{background:#E1EEFA; color:#2E6CA8;}
+.svc-body{flex:1;}
+.svc-title{font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:20px; margin-bottom:2px;}
+.svc-sub{font-size:13px; color:var(--ink-soft);}
+.svc-tag{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase;
+  color:var(--ink-soft); border:1px solid var(--line-strong); background:var(--card); border-radius:999px; padding:4px 9px; flex:0 0 auto;
+}
+.svc-chevron{color:var(--ink-faint); flex:0 0 auto; transition:transform 200ms var(--ease), color 150ms ease;}
+
+/* ---------- answer rows: same divided-list anatomy as Home ---------- */
+.answers{margin-top:20px; border-top:1px solid var(--line);}
+.arow{
+  display:flex; align-items:center; gap:14px; text-align:left; width:100%;
+  padding:18px 4px; border:none; border-bottom:1px solid var(--line); background:none;
+  cursor:pointer; font-family:'Work Sans',sans-serif; color:var(--ink); border-radius:0;
+  transition:background 160ms ease;
+  animation:rowin 320ms var(--ease) both;
+}
+.arow:nth-child(1){animation-delay:40ms;} .arow:nth-child(2){animation-delay:90ms;}
+.arow:nth-child(3){animation-delay:140ms;} .arow:nth-child(4){animation-delay:190ms;}
+.arow:nth-child(5){animation-delay:240ms;} .arow:nth-child(6){animation-delay:290ms;}
+@keyframes rowin{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);}}
+.arow:hover{background:var(--butter-soft);}
+.arow:hover .arow-chevron{transform:translateX(4px); color:var(--ink);}
+.arow.selected{background:var(--butter-soft);}
+.arow-check{
+  flex:0 0 auto; width:20px; height:20px; border-radius:50%; border:1.5px solid var(--line-strong);
+  display:flex; align-items:center; justify-content:center; background:var(--card);
+  transition:transform 250ms var(--ease), background 150ms ease, border-color 150ms ease;
+}
+.arow.selected .arow-check{border-color:var(--ink); background:var(--ink); transform:scale(1.12);}
+.arow-check svg{opacity:0; transition:opacity 120ms ease;}
+.arow.selected .arow-check svg{opacity:1;}
+.arow-body{flex:1;}
+.arow-label{font-size:15.5px; line-height:1.4; font-weight:500;}
+.arow-sub{font-size:12.5px; color:var(--ink-soft); margin-top:2px;}
+.arow-chevron{flex:0 0 auto; color:var(--ink-faint); transition:transform 200ms var(--ease), color 150ms ease;}
+
+/* ---------- buttons: butter pill primary (Teak's own CTA), espresso secondary ---------- */
+.btn{
+  font-family:'Work Sans',sans-serif; font-weight:600; font-size:15px; cursor:pointer;
+  border-radius:999px; padding:14px 26px; border:1.5px solid transparent;
+  transition:transform 180ms var(--ease), box-shadow 180ms ease, background 150ms ease, border-color 150ms ease;
+  display:inline-flex; align-items:center; gap:8px;
+}
+.btn .btn-arrow{display:inline-flex; transition:transform 200ms var(--ease);}
+.btn:hover .btn-arrow{transform:translateX(4px);}
+.btn:active{transform:scale(0.97);}
+.btn-primary{
+  background:var(--butter); color:var(--ink); border-color:var(--butter);
+  width:100%; justify-content:center; box-shadow:0 2px 0 rgba(61,36,28,0.14);
+}
+.btn-primary:hover{background:var(--butter-deep); border-color:var(--butter-deep); transform:translateY(-2px); box-shadow:0 5px 14px rgba(61,36,28,0.16);}
+.btn-secondary{background:var(--card); color:var(--ink); border:1.5px solid var(--line-strong);}
+.btn-secondary:hover{border-color:var(--ink); transform:translateY(-1px);}
+.btn-block{width:100%; justify-content:center; margin-top:22px;}
+
+/* ---------- status stamp: the rubber-stamp moment ---------- */
+.stamp-row{margin:4px 0 18px;}
+.stamp{
+  font-family:'IBM Plex Mono',monospace; font-size:12.5px; letter-spacing:0.08em; font-weight:600;
+  padding:8px 14px 8px 12px; border-radius:8px; text-transform:uppercase;
+  display:inline-flex; align-items:center; gap:7px;
+  animation:stampin 450ms var(--ease) 200ms both;
+}
+@keyframes stampin{
+  0%{opacity:0; transform:scale(1.5) rotate(-5deg);}
+  60%{opacity:1; transform:scale(0.96) rotate(1deg);}
+  100%{opacity:1; transform:scale(1) rotate(-1deg);}
+}
+.stamp-icon{display:inline-flex; flex:0 0 auto;}
+.stamp.wait{color:var(--wait); background:var(--wait-bg);}
+.stamp.follow{color:var(--follow); background:var(--follow-bg);}
+.stamp.escalate{color:var(--escalate); background:var(--escalate-bg);}
+.stamp.unclassified{color:var(--unclassified); background:var(--unclassified-bg); border:1.5px dashed var(--unclassified); animation-name:stampin-flat;}
+@keyframes stampin-flat{from{opacity:0; transform:scale(1.2);} to{opacity:1; transform:scale(1);}}
+
+/* "Waiting on" — its own emphasized block, so the dependency reads
+   at a glance (the product's core differentiator). */
+.dep-block{
+  background:var(--butter-soft); border:1px solid var(--butter);
+  border-radius:14px;
+  padding:16px 20px; margin:22px 0 24px;
+  animation:enter 300ms var(--ease) 340ms both;
+}
+.dep-k{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--ink-soft); margin:0 0 5px;
+}
+.dep-v{font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:20px; color:var(--ink); line-height:1.25;}
+@media (min-width:760px){
+  .dep-v{font-size:26px;}
+}
+
+.explain{font-size:15px; line-height:1.65; color:var(--ink); margin:0 0 22px; max-width:58ch;}
+
+/* ---------- case trail ----------
+   Only where a real, verified process sequence exists (Passport's
+   4-step flow); never invented for Voter/SIR. Dots pop in sequence. */
+.case-trail{display:flex; align-items:flex-start; gap:0; margin:8px 0 30px;}
+.ct-step{flex:1; display:flex; flex-direction:column; align-items:center; text-align:center; position:relative; animation:rowin 300ms var(--ease) both;}
+.ct-step:nth-child(1){animation-delay:380ms;} .ct-step:nth-child(2){animation-delay:460ms;}
+.ct-step:nth-child(3){animation-delay:540ms;} .ct-step:nth-child(4){animation-delay:620ms;}
+.ct-step:not(:last-child)::after{
+  content:""; position:absolute; top:11px; left:calc(50% + 16px); right:calc(-50% + 16px); height:1.5px; background:var(--line-strong);
+}
+.ct-step.done:not(:last-child)::after{background:var(--ink);}
+.ct-dot{width:22px; height:22px; border-radius:50%; border:1.5px solid var(--line-strong); background:var(--card); z-index:1; display:flex; align-items:center; justify-content:center;}
+.ct-step.done .ct-dot{background:var(--ink); border-color:var(--ink);}
+.ct-step.current .ct-dot{
+  width:26px; height:26px; border:2px solid var(--ink); background:var(--butter);
+  box-shadow:0 0 0 4px var(--butter-soft);
+}
+.ct-step.current .ct-dot::after{content:""; width:9px; height:9px; border-radius:50%; background:var(--ink);}
+.ct-label{font-size:11px; margin-top:10px; color:var(--ink-faint); line-height:1.3; max-width:80px;}
+.ct-step.current .ct-label{color:var(--ink); font-weight:600;}
+.ct-step.done .ct-label{color:var(--ink-soft);}
+.ct-here{
+  font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.08em; text-transform:uppercase;
+  color:var(--ink); background:var(--butter); border-radius:4px; padding:2px 6px;
+  font-weight:600; margin-top:5px;
+}
+@media (max-width:600px){.ct-label{font-size:10px; max-width:64px;}}
+
+/* ---------- next move: lead statement + divided fields ---------- */
+.nm-lead{
+  font-family:'Fraunces',Georgia,serif; font-weight:800; font-size:30px; line-height:1.15;
+  letter-spacing:-0.01em; color:var(--ink); margin:0 0 10px; text-wrap:balance;
+}
+.nm-lead-detail{font-size:15px; color:var(--ink-soft); line-height:1.6; margin:0 0 30px; max-width:54ch;}
+@media (max-width:600px){.nm-lead{font-size:24px;}}
+.nm-fields{border-top:1px solid var(--line-strong); margin-bottom:6px;}
+.nm-field{border-top:1px solid var(--line); padding:20px 0;}
+.nm-field:first-child{border-top:none; padding-top:0;}
+.nm-k{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--ink-faint); margin:0 0 8px;
+}
+.nm-v{font-size:15px; line-height:1.6; color:var(--ink);}
+.nm-v a{color:var(--ink); text-decoration-color:var(--butter-deep); text-decoration-thickness:2px; text-underline-offset:3px; transition:background 150ms ease;}
+.nm-v a:hover{background:var(--butter-soft);}
+.nm-v .phone{font-family:'IBM Plex Mono',monospace; font-size:13.5px;}
+.handoff-note{font-size:12.5px; color:var(--ink-faint); margin-top:6px; line-height:1.5;}
+.need-list{margin:6px 0 0; padding:0 0 0 20px;}
+.need-list li{margin:0 0 7px; line-height:1.5;}
+
+/* ---------- trust disclosure ---------- */
+.trust-toggle{
+  background:none; border:none; color:var(--ink-soft); font-family:'Work Sans',sans-serif; font-size:13.5px;
+  cursor:pointer; display:flex; align-items:center; gap:6px; padding:4px 0; margin-top:18px;
+  border-bottom:1px solid transparent; transition:color 150ms ease, border-color 150ms ease;
+}
+.trust-toggle:hover{color:var(--ink); border-color:var(--line-strong);}
+.trust-panel{
+  margin-top:14px; padding:20px 22px; background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  box-shadow:var(--shadow-float);
+  animation:enter 240ms var(--ease);
+}
+.trust-row{margin-bottom:14px;}
+.trust-row:last-child{margin-bottom:0;}
+.trust-row .nm-k{margin-bottom:6px;}
+.trust-row .nm-v{font-size:13.5px;}
+.source-quote{
+  font-style:italic; color:var(--ink-soft); font-size:13px; border-left:2px solid var(--butter);
+  padding-left:12px; margin-top:6px;
+}
+
+/* ---------- unclassified / recovery banners ---------- */
+.banner{border:1px solid var(--line-strong); border-radius:14px; padding:18px 20px; background:var(--card); margin-bottom:20px;}
+
+/* ---------- text input ---------- */
+.field-input{
+  width:100%; border:1.5px solid var(--line-strong); border-radius:14px; padding:14px 16px; font-family:'Work Sans',sans-serif;
+  font-size:14.5px; color:var(--ink); background:var(--card); resize:vertical; min-height:88px;
+  caret-color:var(--butter-deep);
+  transition:border-color 150ms ease;
+}
+.field-input::placeholder{color:var(--ink-faint);}
+.field-input:hover{border-color:var(--ink-faint);}
+.field-input:focus-visible{outline:2.5px solid var(--butter-deep); outline-offset:2px; border-color:var(--ink);}
+
+/* ---------- inline explainer ---------- */
+.inline-explain{
+  margin-top:14px; padding:16px 18px; border:1.5px dashed var(--line-strong); border-radius:14px; font-size:13.5px;
+  color:var(--ink-soft); line-height:1.6; background:var(--card); animation:enter 220ms var(--ease);
+}
+.inline-explain-actions{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
+.inline-explain-actions button{font-size:13px; padding:9px 16px;}
+
+/* ---------- prepare: draft + guided submission ----------
+   The user reviews, edits, copies, and submits the draft themselves —
+   NextMove never files anything. Steps are a tick-off checklist
+   (satisfying, visible progress; not persisted — it's a prototype). */
+.prep-card{
+  background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  box-shadow:var(--shadow-float); padding:20px 22px; margin-bottom:26px;
+}
+.prep-draft{
+  width:100%; border:1.5px solid var(--line); border-radius:10px; padding:14px 16px;
+  font-family:'Work Sans',sans-serif; font-size:14px; line-height:1.65; color:var(--ink);
+  background:var(--paper); resize:vertical; min-height:230px; caret-color:var(--butter-deep);
+}
+.prep-draft:focus-visible{outline:2.5px solid var(--butter-deep); outline-offset:2px;}
+.prep-card-foot{display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:12px; flex-wrap:wrap;}
+.prep-hint{font-size:12.5px; color:var(--ink-faint); line-height:1.5; flex:1; min-width:200px;}
+.copy-btn{
+  font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.04em; font-weight:600;
+  background:var(--card); color:var(--ink); border:1.5px solid var(--line-strong); border-radius:999px;
+  padding:9px 18px; cursor:pointer; transition:border-color 150ms ease, background 150ms ease;
+}
+.copy-btn:hover{border-color:var(--ink);}
+.copy-btn.copied{background:var(--wait-bg); color:var(--wait); border-color:var(--wait);}
+.copy-btn.copied-warn{background:var(--follow-bg); color:var(--follow); border-color:var(--follow);}
+.psteps-done{
+  font-size:14px; color:var(--wait); font-weight:600; line-height:1.55;
+  background:var(--wait-bg); border-radius:12px; padding:13px 18px; margin:16px 0 0;
+  animation:enter 260ms var(--ease);
+}
+.saved-next{font-size:13.5px; color:var(--ink); margin-top:5px; font-weight:500;}
+.saved-next::before{content:"→ "; color:var(--ink-faint);}
+.saved-steps{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.05em;
+  color:var(--ink-soft); margin-left:10px;
+}
+.saved-meta{display:flex; align-items:center;}
+.psteps{border-top:1px solid var(--line-strong);}
+.psteps-count{
+  font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
+  color:var(--ink-soft); margin:0 0 10px;
+}
+.pstep{
+  display:flex; align-items:center; gap:10px;
+  border-bottom:1px solid var(--line);
+  transition:background 160ms ease;
+}
+.pstep:hover{background:var(--butter-soft);}
+.pstep-tick{
+  flex:1; display:flex; align-items:flex-start; gap:14px; text-align:left;
+  padding:15px 4px; border:none; background:none; cursor:pointer;
+  font-family:'Work Sans',sans-serif; color:var(--ink);
+}
+.pstep-box{
+  flex:0 0 auto; width:20px; height:20px; border-radius:6px; border:1.5px solid var(--line-strong);
+  background:var(--card); display:flex; align-items:center; justify-content:center; margin-top:1px;
+  transition:background 150ms ease, border-color 150ms ease;
+}
+.pstep.done .pstep-box{background:var(--butter); border-color:var(--ink);}
+.pstep-box svg{opacity:0;}
+.pstep.done .pstep-box svg{opacity:1;}
+.pstep-text{flex:1; font-size:14.5px; line-height:1.55;}
+.pstep.done .pstep-text{color:var(--ink-soft); text-decoration:line-through; text-decoration-color:var(--line-strong);}
+.pstep-link{
+  flex:0 0 auto; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.04em;
+  color:var(--ink); text-decoration:none; border:1px solid var(--line-strong); border-radius:999px;
+  padding:6px 12px; margin-right:4px; background:var(--card);
+  transition:border-color 150ms ease;
+}
+.pstep-link:hover{border-color:var(--ink);}
+
+/* the official channel, one tap away, opening in a new tab so the
+   draft stays exactly where the user left it */
+.channel-card{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  padding:16px 20px; margin-bottom:22px;
+}
+.channel-body{flex:1; min-width:220px;}
+.channel-k{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--ink-faint); margin:0 0 4px;
+}
+.channel-v{font-size:14.5px; font-weight:600; line-height:1.45;}
+.channel-phone{font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--ink-soft); margin-top:3px;}
+.channel-open{
+  flex:0 0 auto; display:inline-flex; align-items:center; gap:7px;
+  font-family:'Work Sans',sans-serif; font-weight:600; font-size:13.5px;
+  color:var(--ink); text-decoration:none; background:var(--butter);
+  border:1.5px solid var(--butter); border-radius:999px; padding:10px 18px;
+  box-shadow:0 2px 0 rgba(61,36,28,0.14);
+  transition:background 150ms ease, transform 180ms var(--ease), box-shadow 180ms ease;
+}
+.channel-open:hover{background:var(--butter-deep); border-color:var(--butter-deep); transform:translateY(-1px);}
+.prep-trust{font-size:13px; color:var(--ink-soft); line-height:1.6; margin-top:18px; max-width:48ch;}
+/* the in-person visit card: verified carry items + general practical
+   tips, explicitly labeled apart so general advice never wears the
+   verified-source costume */
+.visit-card{
+  background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  padding:20px 22px; margin:22px 0 0;
+}
+.visit-title{font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:17px; margin:0 0 14px;}
+.visit-cols{display:block;}
+@media (min-width:760px){ .visit-cols{display:grid; grid-template-columns:1fr 1fr; gap:26px;} }
+.visit-k{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--ink-faint); margin:0 0 8px;
+}
+.visit-list{margin:0; padding:0 0 0 18px;}
+.visit-list li{font-size:13.5px; line-height:1.55; margin:0 0 7px; color:var(--ink);}
+.visit-note{
+  font-size:11.5px; color:var(--ink-faint); line-height:1.55; margin-top:12px;
+  border-top:1px dashed var(--line); padding-top:10px;
+}
+
+/* ---------- save / auth: value first, account only to keep the case ----
+   Diagnosis never requires sign-in (Product Principle #4). Auth exists
+   at exactly one moment: "keep this case for later." ---------- */
+.btn-ghost{
+  background:none; border:none; cursor:pointer; width:100%; justify-content:center;
+  display:inline-flex; align-items:center; gap:8px; margin-top:14px; padding:10px;
+  font-family:'Work Sans',sans-serif; font-weight:600; font-size:14px; color:var(--ink-soft);
+  border-radius:999px; transition:color 150ms ease, background 150ms ease;
+}
+.btn-ghost:hover{color:var(--ink); background:var(--butter-soft);}
+.saved-note{
+  display:flex; align-items:center; justify-content:center; gap:8px; margin-top:14px;
+  font-size:13.5px; color:var(--wait); font-weight:600;
+}
+.acct-chip{
+  font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.03em;
+  color:var(--ink-soft); background:var(--card); border:1px solid var(--line-strong);
+  border-radius:999px; padding:7px 13px; cursor:pointer;
+  transition:border-color 150ms ease, color 150ms ease;
+}
+.acct-chip:hover{color:var(--ink); border-color:var(--ink);}
+.auth-field{margin:0 0 16px;}
+.auth-label{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--ink-soft); margin:0 0 8px;
+}
+.auth-input{
+  width:100%; border:1.5px solid var(--line-strong); border-radius:14px; padding:14px 16px;
+  font-family:'Work Sans',sans-serif; font-size:16px; color:var(--ink); background:var(--card);
+  caret-color:var(--butter-deep); transition:border-color 150ms ease;
+}
+.auth-input:hover{border-color:var(--ink-faint);}
+.auth-input:focus-visible{outline:2.5px solid var(--butter-deep); outline-offset:2px; border-color:var(--ink);}
+.otp-input{
+  font-family:'IBM Plex Mono',monospace; font-size:26px; letter-spacing:0.45em; text-align:center;
+  padding:16px 10px 16px 22px;
+}
+.auth-err{font-size:13px; color:var(--escalate); margin:8px 0 0; font-weight:500;}
+.auth-divider{
+  display:flex; align-items:center; gap:12px; margin:18px 0;
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.auth-divider::before, .auth-divider::after{content:""; flex:1; height:1px; background:var(--line);}
+.btn-google{
+  width:100%; display:inline-flex; align-items:center; justify-content:center; gap:10px;
+  font-family:'Work Sans',sans-serif; font-weight:600; font-size:14.5px; color:var(--ink);
+  background:var(--card); border:1.5px solid var(--line-strong); border-radius:999px;
+  padding:13px 22px; cursor:pointer; transition:border-color 150ms ease, transform 180ms var(--ease);
+}
+.btn-google:hover{border-color:var(--ink); transform:translateY(-1px);}
+.auth-switch{
+  background:none; border:none; cursor:pointer; padding:4px 0; margin-top:4px;
+  font-family:'Work Sans',sans-serif; font-size:13.5px; color:var(--ink-soft);
+  text-decoration:underline; text-underline-offset:3px;
+}
+.auth-switch:hover{color:var(--ink);}
+.auth-note{font-size:12.5px; color:var(--ink-faint); line-height:1.55; margin-top:16px;}
+.demo-hint{
+  font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-faint);
+  border:1px dashed var(--line-strong); border-radius:8px; padding:8px 12px; margin-top:14px;
+  display:inline-block;
+}
+/* the saved casefile on Home */
+.saved-card{
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  box-shadow:var(--shadow-float); padding:18px 20px; margin:10px 0 30px;
+}
+.saved-body{flex:1; min-width:220px;}
+.saved-kicker{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase;
+  color:var(--ink-faint); margin:0 0 5px; display:flex; align-items:center; gap:7px;
+}
+.saved-title{font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:18px; line-height:1.25;}
+.saved-meta{font-size:12.5px; color:var(--ink-soft); margin-top:4px;}
+.saved-actions{display:flex; align-items:center; gap:10px; flex:0 0 auto;}
+.saved-continue{
+  display:inline-flex; align-items:center; gap:7px; font-family:'Work Sans',sans-serif;
+  font-weight:600; font-size:13.5px; color:var(--ink); background:var(--butter);
+  border:1.5px solid var(--butter); border-radius:999px; padding:10px 18px; cursor:pointer;
+  box-shadow:0 2px 0 rgba(61,36,28,0.14);
+  transition:background 150ms ease, transform 180ms var(--ease);
+}
+.saved-continue:hover{background:var(--butter-deep); border-color:var(--butter-deep); transform:translateY(-1px);}
+.saved-remove{
+  background:none; border:none; cursor:pointer; font-family:'Work Sans',sans-serif;
+  font-size:12.5px; color:var(--ink-faint); text-decoration:underline; text-underline-offset:3px; padding:4px;
+}
+.saved-remove:hover{color:var(--escalate);}
+.stamp.mini{font-size:10px; padding:4px 8px 4px 7px; border-radius:5px; animation:none;}
+.saved-card.closed{opacity:0.75; box-shadow:none;}
+
+/* ---------- check-in loop ---------- */
+.ci-panel{
+  background:var(--card); border:1.5px solid var(--butter); border-radius:14px;
+  padding:16px 20px; animation:enter 220ms var(--ease);
+}
+.ci-panel.reassure{border-color:var(--line-strong); border-style:dashed;}
+.remind-row{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:22px;
+  border-top:1px dashed var(--line); padding-top:14px;
+}
+.remind-input{
+  font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink);
+  border:1.5px solid var(--line-strong); border-radius:10px; padding:8px 12px; background:var(--card);
+}
+.journey{margin-top:16px; border-top:1px solid var(--line); padding-top:10px;}
+.log-e{font-size:12.5px; line-height:1.55; margin:0 0 6px; color:var(--ink-soft);}
+.log-e.log-mile{color:var(--ink); font-weight:500;}
+.log-d{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink-faint); margin-right:4px;}
+.log-who{font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.04em; text-transform:uppercase; color:var(--ink-faint); margin-right:2px;}
+.log-note{
+  font-size:10.5px; color:var(--ink-faint); margin-top:8px; font-family:'IBM Plex Mono',monospace;
+}
+
+/* ---------- describe it: free text + AI-suggested, user-confirmed ----
+   The AI translates language into the same taps the user could have
+   made; it never decides. Spec: docs/superpowers/specs/
+   2026-09-05-describe-it-ai-interpretation-design.md ---------- */
+.describe-entry{margin-top:26px; border-top:1px dashed var(--line-strong); padding-top:14px;}
+.describe-row{
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  background:none; border:none; cursor:pointer; padding:10px 4px;
+  font-family:'Work Sans',sans-serif; color:var(--ink-soft);
+  transition:color 150ms ease;
+}
+.describe-row:hover{color:var(--ink);}
+.describe-row .dr-icon{
+  flex:0 0 auto; width:32px; height:32px; border-radius:9px; background:var(--butter-soft);
+  display:flex; align-items:center; justify-content:center; color:var(--ink);
+}
+.describe-row .dr-label{font-size:14.5px;}
+.describe-row .dr-label b{color:var(--ink); font-weight:600;}
+.describe-box{margin-top:10px; animation:enter 220ms var(--ease);}
+.describe-ta{
+  width:100%; border:1.5px solid var(--line-strong); border-radius:14px; padding:14px 16px;
+  font-family:'Work Sans',sans-serif; font-size:14.5px; line-height:1.6; color:var(--ink);
+  background:var(--card); resize:vertical; min-height:110px; caret-color:var(--butter-deep);
+}
+.describe-ta:focus-visible{outline:2.5px solid var(--butter-deep); outline-offset:2px;}
+.describe-meta{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:8px; flex-wrap:wrap;}
+.char-count{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink-faint);}
+.lang-note{font-size:12px; color:var(--ink-faint); line-height:1.5;}
+.ex-chips{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;}
+.ex-chip{
+  font-family:'Work Sans',sans-serif; font-size:12px; color:var(--ink-soft);
+  background:var(--card); border:1px dashed var(--line-strong); border-radius:999px;
+  padding:7px 13px; cursor:pointer; text-align:left;
+  transition:border-color 150ms ease, color 150ms ease;
+}
+.ex-chip:hover{border-color:var(--ink); color:var(--ink);}
+.describe-actions{margin-top:12px;}
+.describe-err{font-size:13px; color:var(--escalate); margin-top:8px; font-weight:500;}
+
+/* confirm screen */
+.youwrote{
+  background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  padding:16px 20px; margin:18px 0 0;
+}
+.youwrote .nm-k{margin-bottom:6px;}
+.youwrote-text{font-size:14px; line-height:1.6; color:var(--ink); font-style:italic;}
+.read-card{
+  background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  padding:18px 20px; margin-bottom:16px;
+}
+.read-q{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase;
+  color:var(--ink-faint); margin:0 0 8px;
+}
+.read-pick{font-size:15.5px; font-weight:600; line-height:1.45;}
+.span-quote{
+  font-size:12.5px; color:var(--ink-soft); margin-top:7px; font-style:italic;
+}
+.span-quote::before{content:"you wrote: "; font-style:normal; color:var(--ink-faint);}
+.read-change{
+  background:none; border:none; cursor:pointer; padding:4px 0; margin-top:10px;
+  font-family:'Work Sans',sans-serif; font-size:13px; color:var(--ink-soft);
+  text-decoration:underline; text-underline-offset:3px;
+}
+.read-change:hover{color:var(--ink);}
+.read-opts{margin-top:10px; border-top:1px solid var(--line);}
+.ropt{
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  padding:13px 4px; border:none; border-bottom:1px solid var(--line); background:none;
+  cursor:pointer; font-family:'Work Sans',sans-serif; color:var(--ink); font-size:14.5px;
+  transition:background 150ms ease;
+}
+.ropt:hover{background:var(--butter-soft);}
+.ropt-dot{
+  flex:0 0 auto; width:17px; height:17px; border-radius:50%; border:1.5px solid var(--line-strong);
+  background:var(--card); display:flex; align-items:center; justify-content:center;
+}
+.ropt.picked .ropt-dot{border-color:var(--ink); background:var(--ink);}
+.ropt.picked .ropt-dot::after{content:""; width:7px; height:7px; border-radius:50%; background:var(--butter);}
+.ropt.picked{font-weight:600;}
+.fact-chips{display:flex; gap:9px; flex-wrap:wrap; margin-top:12px;}
+.fchip{
+  display:inline-flex; align-items:center; gap:8px;
+  background:var(--card); border:1px solid var(--line-strong); border-radius:999px;
+  padding:7px 8px 7px 13px; font-size:12.5px; color:var(--ink);
+}
+.fchip .fk{font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-faint);}
+.fchip .fv{font-family:'IBM Plex Mono',monospace; font-size:12px;}
+.fchip button{
+  background:none; border:none; cursor:pointer; color:var(--ink-faint); padding:2px 5px;
+  font-size:12px; border-radius:50%;
+}
+.fchip button:hover{color:var(--escalate);}
+.fchip-edit{display:inline-flex; gap:6px; align-items:center;}
+.fchip-edit input{
+  font-family:'IBM Plex Mono',monospace; font-size:12px; border:1px solid var(--line-strong);
+  border-radius:8px; padding:5px 9px; width:170px; background:var(--paper); color:var(--ink);
+}
+.interp-frame{font-size:13.5px; color:var(--ink-soft); line-height:1.6; margin:0 0 18px; max-width:52ch;}
+.unplace-panel{
+  background:var(--card); border:1.5px dashed var(--line-strong); border-radius:14px;
+  padding:18px 20px; margin-bottom:20px;
+}
+/* fills-from-your-text review */
+.fill-list{
+  margin-top:12px; padding:12px 16px; background:var(--butter-soft); border-radius:12px;
+  font-size:12.5px; color:var(--ink); line-height:1.7;
+}
+.fill-list .fk{font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-soft); display:block; margin-bottom:4px;}
+.fill-review{
+  display:flex; align-items:center; gap:10px; margin-top:10px; cursor:pointer;
+  font-size:13px; color:var(--ink); background:none; border:none; padding:4px 0;
+  font-family:'Work Sans',sans-serif; text-align:left;
+}
+.fill-review .pstep-box{width:18px; height:18px;}
+
+/* Same-screen re-renders (trust toggle, selection highlight, inline
+   explainers) must not replay the entrance choreography — the stamp
+   slams once per arrival, not once per interaction. */
+#app.settled .screen, #app.settled .arow, #app.settled .stamp,
+#app.settled .dep-block, #app.settled .ct-step, #app.settled .mark::after{
+  animation:none;
+}
+
+/* ---------- reduced motion: fewer + gentler, feedback stays ---------- */
+@media (prefers-reduced-motion:reduce){
+  .screen,.arow,.stamp,.dep-block,.ct-step,.gem,.mark::after{animation:none;}
+  *{transition-duration:1ms !important; animation-duration:1ms !important;}
+}
+</style>
+
+<div class="app" id="app"></div>
+
+<script>
+/* ================= PLAYBOOKS (mirrors the production Playbook/PlaybookRule/Diagnosis model) ================= */
+
+function evaluate(playbook, answers){
+  for(const rule of playbook.rules){
+    if(rule.condition(answers)) return {...rule, matchedAnswers:{...answers}};
+  }
+  return {...playbook.fallback, matchedAnswers:{...answers}, matchedRuleId:null};
+}
+
+const passportPlaybook = {
+  rules:[
+    // Check-in pending states (2026-09-05 model surgery, spec:
+    // 2026-09-05-checkin-tracking-loop-design.md): action-state answers
+    // (q2, dpgFiled) are only ever written by the user attesting "I did
+    // this"; outcome fields (fOutcome/gOutcome) are written by check-ins.
+    // "Filed and waiting" is its own honest WAIT state — not "unresolved."
+    // Most-specific-first: these run before their parent rungs.
+    {id:'state-dpg-p', condition:a=>a.dpgFiled==='yes',
+      state:'DPG·W', label:'Escalated to the DPG — response pending', dependency:'Directorate of Public Grievances', rec:'WAIT',
+      explanation:"Your escalation is with the Directorate of Public Grievances — the top of the verified ladder for passport grievances. Nothing further is needed from you while they review.",
+      whatShort:'Nothing to do — escalation filed',
+      whatToDo:'Nothing right now. Add an update to your casefile when the DPG responds.',
+      where:{label:'Directorate of Public Grievances (DPG)', url:'https://dpg.gov.in'},
+      need:'Nothing — keep your DPG reference number safe.',
+      howLong:"No official DPG response timeline exists in NextMove's verified sources — that's why there's no countdown here.",
+      source:{title:'Grievance page — passportindia.gov.in'},
+      mustNot:'Any prediction of the outcome or its timing.'},
+    {id:'state-5b-p', condition:a=>a.q2==='formal_grievance' && a.gOutcome==='pending',
+      state:'5b·W', label:'Grievance filed, response pending', dependency:'Grievance cell (CPGRAMS)', rec:'WAIT',
+      explanation:"Your formal grievance is registered. It's with the grievance cell now — your grievance number is the anchor for everything from here.",
+      whatShort:'Nothing to do — grievance registered',
+      whatToDo:'Nothing further right now. Keep the grievance number safe and add an update when a response arrives.',
+      where:{label:'CPGRAMS · passportindia.gov.in/psp/Grievance', url:'https://www.passportindia.gov.in/psp/Grievance'},
+      need:'Nothing — just your grievance number, kept safe.',
+      howLong:'The official commitment is only "a reasonable period of time" — no numeric deadline is published, so there is no countdown to show.',
+      source:{title:'Grievance page — passportindia.gov.in'},
+      mustNot:'Any number of days defining "reasonable."'},
+    {id:'state-5a-p', condition:a=>a.q2==='informal' && a.fOutcome==='pending',
+      state:'5a·W', label:'Follow-up sent, awaiting their response', dependency:'Passport Office', rec:'WAIT',
+      explanation:"You've sent your follow-up. The ball is with the Passport Office now — nothing further is needed from you until they respond.",
+      whatShort:'Nothing to do — response pending',
+      whatToDo:"Nothing is required from you right now. When a response arrives (or clearly doesn't), add an update to your casefile.",
+      where:{label:'Passport Office (PO) concerned', url:'https://www.passportindia.gov.in'},
+      need:'Nothing — keep the date and any ticket number of your follow-up safe.',
+      howLong:"No official response timeline is published for informal follow-ups — NextMove won't invent one.",
+      source:{title:"Citizen's Charter — Grievance Redressal section (MEA)"},
+      mustNot:'Any claim about when the response "should" arrive.'},
+    {id:'state-5b', condition:a=>a.q2==='formal_grievance',
+      state:'5b', label:'Formal grievance raised, unresolved', dependency:'Passport-issuing Authority / MEA', rec:'ESCALATE',
+      explanation:"You've already raised a formal grievance and it isn't resolved. The right move now is to escalate beyond the Passport Office itself, to the body that oversees grievance redressal.",
+      whatShort:'Escalate to the Directorate of Public Grievances',
+      whatToDo:'Escalate to the Directorate of Public Grievances (DPG), Cabinet Secretariat — reference your existing grievance number.',
+      where:{label:'Directorate of Public Grievances (DPG)', url:'https://dpg.gov.in'},
+      need:'Your existing CPGRAMS grievance reference number, and the date you filed it.',
+      howLong:'The official grievance page commits only to "a reasonable period of time" — no numeric deadline is published, so NextMove won\'t invent one.',
+      source:{title:"Grievance page — passportindia.gov.in", quote:'"...within a reasonable period of time" — no numeric deadline is stated.'},
+      mustNot:'Any specific number of days defining "reasonable."'},
+    {id:'state-5a', condition:a=>a.q2==='informal',
+      state:'5a', label:'Followed up informally, unresolved', dependency:'Passport Office', rec:'FOLLOW_UP',
+      explanation:"You've already tried following up informally and it hasn't moved things forward. The next verified step is to make it formal, so there's a record and a defined channel.",
+      whatShort:'Move to a formal Grievance / CPGRAMS filing',
+      whatToDo:'Move to the formal Grievance / CPGRAMS channel, referencing your earlier informal attempt.',
+      where:{label:'CPGRAMS · passportindia.gov.in/psp/Grievance', url:'https://www.passportindia.gov.in/psp/Grievance', phone:'1800-258-1800'},
+      need:'Your application reference number and a short note on what you already tried informally.',
+      howLong:"No verified official timeline exists for grievance resolution — that's why there's no countdown here.",
+      source:{title:"Citizen's Charter — Grievance Redressal section (MEA)"},
+      mustNot:'That the informal follow-up "should" have worked by a given point.'},
+    {id:'state-4', condition:a=>a.q1==='adverse' && a.q2==='no_followup',
+      state:'4', label:'Adverse or unclear outcome', dependency:'Applicant + Passport Office', rec:'FOLLOW_UP',
+      explanation:"Something you saw on the portal reads as negative or unclear. NextMove can't tell you why — only the Passport Office can — but the verified next step is to ask them directly.",
+      whatShort:'Contact the Passport Office',
+      whatToDo:'Contact the Passport Office to understand the reason, clarify if required, and request re-verification if applicable.',
+      where:{label:'Passport Office (PO) concerned', url:'https://www.passportindia.gov.in'},
+      need:'Your application reference number.',
+      howLong:"No official timeline is published for clarifying an adverse status — NextMove won't guess one.",
+      source:{title:'Official FAQ — passportindia.gov.in', quote:'Verbatim official guidance for adverse/unclear status.'},
+      mustNot:'The cause of the adverse finding, or that re-verification will succeed.'},
+    {id:'state-3', condition:a=>a.q1==='verified_no_progress' && a.q2==='no_followup',
+      state:'3', label:'Verified, waiting on processing', dependency:'Passport Office', rec:'FOLLOW_UP',
+      explanation:"You believe your verification is complete, but nothing has changed since. The verified next step is to confirm that status and prompt a follow-up on processing.",
+      whatShort:'Follow up with the Passport Office',
+      whatToDo:'Follow up with the Passport Office to confirm your verification is logged and ask about processing status.',
+      where:{label:'Passport Office (PO) concerned', url:'https://www.passportindia.gov.in'},
+      need:'Your application reference number, and roughly when you believe verification was completed.',
+      howLong:"No official timeline is published for this processing step — NextMove won't guess one.",
+      source:{title:'Official FAQ — passportindia.gov.in', quote:'General stuck-case guidance — no state-specific source found.'},
+      mustNot:'That "verification complete" is a confirmed system fact rather than your own belief.'},
+    {id:'state-2', condition:a=>a.q1==='contacted_incomplete' && a.q2==='no_followup',
+      state:'2', label:'Verification in progress', dependency:'Police verification process', rec:'FOLLOW_UP',
+      explanation:"Police have contacted you, but verification doesn't appear complete yet. It's worth checking whether anything further is needed from you.",
+      whatShort:'Check what else is needed from you',
+      whatToDo:'Check with the Passport Office or local police whether anything more is required from you to complete verification.',
+      where:{label:'Passport Office (PO) concerned', url:'https://www.passportindia.gov.in'},
+      need:'Your application reference number.',
+      howLong:"No official timeline is published for completing verification — NextMove won't guess one.",
+      source:{title:'Official FAQ — passportindia.gov.in', quote:'General stuck-case guidance — no state-specific source found.'},
+      mustNot:'That contact implies a pending task for you, or that verification is close to finishing.'},
+    {id:'state-1', condition:a=>a.q1==='no_contact' && a.q2==='no_followup',
+      state:'1', label:'Waiting for police verification to begin', dependency:'Police verification process', rec:'WAIT',
+      explanation:"This is the expected current stage — police verification hasn't started yet, and that's normal, not a sign your case is stuck. The official Citizen's Charter explicitly excludes this period from every service-timeline commitment, so there's no 'on track / overdue' line to measure against.",
+      whatShort:'Nothing to do right now',
+      whatToDo:"Nothing is required from you right now. If you'd like, you can follow up anyway as a secondary, optional step.",
+      where:{label:'Passport Office (PO) concerned', url:'https://www.passportindia.gov.in'},
+      need:'Nothing — this step needs no action or documents from you yet.',
+      howLong:"There is officially no clock running yet — the Citizen's Charter explicitly excludes police verification from every service timeline, so there's nothing to count down.",
+      expectNext:"Police verification typically means a visit or a call from your local police station to confirm your identity and address. Keep a government photo ID, an address proof, and your ARN handy at home. Anyone genuinely doing verification will reference your application — and verification never requires paying anyone. (General guidance, not an official checklist.)",
+      source:{title:"Citizen's Charter (MEA)", quote:'Police-verification period is explicitly excluded from every stated service timeline.'},
+      mustNot:'Any day count as "on track" or "overdue"; that PV is "supposed" to take a defined number of days.'},
+  ],
+  fallback:{
+    state:'6', label:'Status unclear', dependency:'Unknown', rec:'UNCLASSIFIED',
+    explanation:"NextMove doesn't have enough evidence from your answers to safely place your case in a known stage. Rather than guess, it's safest to check your status directly.",
+    whatShort:'Check your status directly',
+    whatToDo:'Check your application status directly through the official portal, or call the helpline.',
+    where:{label:'Passport Seva status portal', url:'https://www.passportindia.gov.in', phone:'1800-258-1800'},
+    need:'Your application reference number.',
+    source:{title:"NextMove's own safety net — not a sourced official state."},
+    mustNot:'Any WAIT / FOLLOW UP / ESCALATE claim.'
+  }
+};
+
+// Voter appeal logic, corrected 2026-09-04: the ECI structure (Final-ER-FAQ
+// Q34) is genuinely two-tier — a first appeal to the District Election
+// Officer / District Magistrate, then, only once that's been decided, a
+// further appeal to the state CEO. The earlier version of this playbook
+// asked "have you already appealed?" and then recommended "file a formal
+// appeal" on a plain "yes" — telling a user to repeat something they'd just
+// said they'd done. V-4/V-5 below replace that single broken branch with
+// the two real distinct situations an already-appealed user can be in.
+const voterPlaybook = {
+  rules:[
+    // Check-in pending state — see the tracking-loop spec. ceoAppeal is
+    // only written by the user attesting they filed the second appeal.
+    {id:'v-5-p', condition:a=>a.ceoAppeal==='filed',
+      state:'V-5·W', label:'Second appeal filed with the state CEO', dependency:'State Chief Electoral Officer', rec:'WAIT',
+      explanation:"Your second appeal is with the state CEO — the final tier in the official appeal structure. Nothing further is needed from you while it's considered.",
+      whatShort:'Nothing to do — final appeal filed',
+      whatToDo:'Nothing right now. Add an update to your casefile when the decision arrives.',
+      where:{label:'State Chief Electoral Officer (CEO)', url:'https://voters.eci.gov.in'},
+      need:'Nothing — keep your filing acknowledgment safe.',
+      howLong:'No timeframe for second-appeal decisions is stated in official sources — there is no countdown to show.',
+      source:{title:'ECI Electoral Roll FAQ — Final-ER-FAQ.pdf, Q34'},
+      mustNot:'Any predicted outcome or timing.'},
+    {id:'v-5', condition:a=>a.voterQ1==='decision' && a.voterAppealed==='decided',
+      state:'V-5', label:'First appeal decided, still unresolved', dependency:'State Chief Electoral Officer (second-tier appeal)', rec:'ESCALATE',
+      explanation:"You've already had a first appeal decided and it didn't resolve things. The official structure allows one further appeal, to your state's Chief Electoral Officer.",
+      whatShort:'File a second appeal with your state CEO',
+      whatToDo:'File a second appeal with your state\'s Chief Electoral Officer, referencing the outcome of your first appeal.',
+      where:{label:'State Chief Electoral Officer (CEO)', url:'https://voters.eci.gov.in'},
+      need:'The decision/order from your first appeal, and your original application reference number.',
+      howLong:"No timeframe for the second appeal's decision is stated in official sources — NextMove won't invent one.",
+      source:{title:'ECI Electoral Roll FAQ — Final-ER-FAQ.pdf, Q34', quote:'Two-tier appeal structure, verbatim.'},
+      mustNot:'Any specific timeframe for the second appeal\'s decision, or its likely outcome.'},
+    {id:'v-4', condition:a=>a.voterQ1==='decision' && a.voterAppealed==='pending',
+      state:'V-4', label:'Appeal already filed, decision pending', dependency:'District Election Officer / District Magistrate (your first-tier appeal)', rec:'WAIT',
+      explanation:"You've already filed an appeal and it's still with the appellate authority. There's nothing further to do until they decide.",
+      whatShort:'Nothing to do yet — your appeal is pending',
+      whatToDo:'Nothing is required from you right now. If it\'s been a long time, you can follow up directly with the office where you filed.',
+      where:{label:'District Election Officer / District Magistrate (per your district)'},
+      need:'Nothing yet — this is a waiting step.',
+      howLong:'No numeric timeline is stated for appeal decisions — officially there is no "overdue" line to cross, so there\'s no countdown to show.',
+      expectNext:'The appellate authority\'s decision will come from the office where you filed — keep your filing acknowledgment safe; it\'s what a second-tier appeal would be built on if you ever need one.',
+      source:{title:'ECI Electoral Roll FAQ — Final-ER-FAQ.pdf, Q34'},
+      mustNot:'That the appeal "should" be decided by a given point — no numeric timeline is stated.'},
+    {id:'v-3', condition:a=>a.voterQ1==='decision',
+      state:'V-3', label:'Decision received, unclear or disagreed with', dependency:'You — the ball is in your court', rec:'FOLLOW_UP',
+      explanation:"A decision has been issued on your application, communicated by post and SMS. NextMove can't tell you why it went the way it did — no official source describes rejection reasons — but it can point you to where to confirm it and what to do if you disagree.",
+      whatShort:'Check the decision, then appeal if needed',
+      whatToDo:'Check the decision on your state CEO\'s website / roll listing to confirm exactly what it says. If you disagree, this is your entry point to a formal appeal.',
+      where:{label:'State CEO website (roll / decision lookup)', url:'https://voters.eci.gov.in'},
+      need:'Your application reference number.',
+      howLong:'You set the pace on this step — no deadline for a first appeal is stated in the official sources NextMove has verified.',
+      source:{title:'ECI Electoral Roll FAQ — Final-ER-FAQ.pdf, Q25'},
+      mustNot:'Any reason for the decision — no official source categorizes rejection reasons.'},
+    {id:'v-2', condition:a=>a.voterQ1==='blo_visited',
+      state:'V-2', label:'Field verification underway, no decision yet', dependency:'ERO decision', rec:'WAIT',
+      explanation:"A BLO has visited or contacted you — that's the standard next step for every application, and it means things are moving. The decision itself now sits with the Electoral Registration Officer.",
+      whatShort:'Nothing to do — this is expected',
+      whatToDo:'Nothing further is required from you yet. Track your status with your reference number if you want a checkpoint.',
+      where:{label:'Track status of application (Voters\' Service Portal)', url:'https://voters.eci.gov.in'},
+      need:'Your application reference number.',
+      howLong:'No official timeline exists for this verification — there is no published "should be done by" to measure against, so there\'s no countdown to show.',
+      expectNext:'The ERO\'s decision is what comes next — it\'s communicated by post and SMS (ECI FAQ Q25), so watch both. No further visit is normally needed from your side once the BLO step is done.',
+      source:{title:'ECI Electoral Roll FAQ — Final-ER-FAQ.pdf, Q23'},
+      mustNot:'That BLO contact means approval is likely, or that a decision is close.'},
+    {id:'v-1', condition:a=>a.voterQ1==='no_word',
+      state:'V-1', label:'Application submitted, awaiting decision', dependency:'BLO verification → ERO decision', rec:'WAIT',
+      explanation:"Your application has been received, and BLO field verification is the standard next step for every registration or correction. Not hearing anything yet is expected at this point, not a sign of a problem.",
+      whatShort:'Nothing to do — this is expected',
+      whatToDo:'Nothing is required from you right now. You can track progress with your reference number any time.',
+      where:{label:'Track status of application (Voters\' Service Portal)', url:'https://voters.eci.gov.in'},
+      need:'Your application reference number.',
+      howLong:'No official timeline exists for BLO verification — not hearing anything yet has no official "late," so there\'s no countdown to show.',
+      expectNext:'What comes next is typically a visit or call from your BLO (Booth Level Officer) to verify your details — keep your reference number and the documents from your application handy. The decision itself is communicated by post and SMS (ECI FAQ Q25), so keep an eye on both.',
+      source:{title:'ECI Electoral Roll FAQ — Final-ER-FAQ.pdf, Q21 & Q23'},
+      mustNot:'How long verification "should" take — no numeric timeline exists in official sources.'},
+  ],
+  fallback:{
+    state:'V-6', label:'Status unclear', dependency:'Unknown', rec:'UNCLASSIFIED',
+    explanation:"NextMove doesn't have enough evidence to safely place your case. Check your status directly rather than guess.",
+    whatShort:'Check your status directly',
+    whatToDo:'Check your application status via the reference-ID tracker, or call the toll-free Voter Helpline.',
+    where:{label:'Voters\' Service Portal', url:'https://voters.eci.gov.in', phone:'1950'},
+    need:'Your application reference number, if you have it.',
+    source:{title:"NextMove's own safety net — not a sourced official state."},
+    mustNot:'Any WAIT / FOLLOW UP / ESCALATE claim.'
+  }
+};
+
+// Delhi SIR logic, corrected 2026-09-04 to be genuinely phase-aware.
+//
+// STATE → VERIFIED CURRENT PHASE → USER SITUATION → APPLICABLE RULE → DIAGNOSIS
+//
+// Delhi's verified current phase (SIR_STATES.delhi.phase below) is
+// claims-and-objections / notice: enumeration closed 17 Aug 2026, the draft
+// roll has already been published, and the final roll has NOT yet been
+// published (due 4 Nov 2026). The earlier version of this playbook ignored
+// that: it could tell a user "fill the Enumeration Form online now" (S-1)
+// or "check the Draft Roll once it's published" (S-2) even though, per
+// Delhi's own verified phase, enumeration is already closed and the draft
+// roll is already out — both recommendations described actions from a
+// phase that has already ended. It also asked "was this the draft roll or
+// the final roll?" as if the final roll already existed to check against,
+// when it doesn't yet.
+//
+// Fix: sirPlaybook's active rules now reflect ONLY what's actually
+// actionable in Delhi's current phase. There is no `sirRollStage` question
+// anymore — with no final roll to compare against yet, asking the user to
+// distinguish "draft vs. final" is asking them to guess an impossible
+// phase. Checking the (already-published) draft roll is the one universal
+// current action; SIR Q1 asks the observable question "have you checked
+// it, and what did you find" instead of the old, now-stale "haven't
+// submitted yet / submitted but unsure" pair — both of those situations
+// resolve to the same current action (check the now-published draft roll)
+// regardless of the earlier detail. The genuinely new "roll-present" case
+// (checked, name IS there) is a real, previously-missing WAIT state — the
+// old playbook had no way to say "you're fine, nothing to do."
+//
+// sirDormantRules_finalRoll (below, outside sirPlaybook.rules) preserves the
+// verified S-5 ESCALATE content for when Delhi's phase later advances to
+// "final roll published" — it is real, sourced content, just not reachable
+// from any current SIR Q1 option, by construction (see SIR_Q1_OPTIONS_FOR).
+const sirPlaybook = {
+  rules:[
+    // Check-in pending states — see the tracking-loop spec.
+    {id:'s-4-p', condition:a=>a.sirDocsFiled==='yes',
+      state:'S-4·W', label:'Documents submitted — with the ERO', dependency:'ERO decision', rec:'WAIT',
+      explanation:"You've submitted your document as the notice asked. The decision on your record now rests with the ERO — nothing further is needed from you.",
+      whatShort:'Nothing to do — documents submitted',
+      whatToDo:'Nothing right now. Add an update when you hear back, or when the Final Roll publishes.',
+      where:{label:'ERO (per your notice)'},
+      need:'Nothing — keep your submission acknowledgment safe.',
+      howLong:'The next fixed milestone is Final Roll publication — 4 Nov 2026 in Delhi.',
+      source:{title:'CEO Delhi — Official SIR 2026 FAQ; Delhi SIR calendar'},
+      mustNot:'Any prediction of the ERO\'s decision.'},
+    {id:'s-3-p', condition:a=>a.form6Filed==='yes',
+      state:'S-3·W', label:'Form 6 filed — decision ahead of the Final Roll', dependency:'ERO / Final Roll publication', rec:'WAIT',
+      explanation:"Your Form 6 claim is in during the Claims & Objections window. The decision lands ahead of the Final Roll — nothing further is needed from you.",
+      whatShort:'Nothing to do — claim filed',
+      whatToDo:'Nothing right now. Add an update when you hear back, or when the Final Roll publishes.',
+      where:{label:'Final Roll publication — 4 Nov 2026 (Delhi)'},
+      need:'Nothing — keep your Form 6 acknowledgment safe; it is your proof of filing.',
+      howLong:'The next fixed milestone is Final Roll publication — 4 Nov 2026 in Delhi.',
+      source:{title:'CEO Delhi — Official SIR 2026 FAQ; Delhi SIR calendar'},
+      mustNot:'Any claim that filing guarantees inclusion.'},
+    {id:'s-notice', condition:a=>a.sirQ1==='notice',
+      state:'S-4', label:'Notice requesting documents', dependency:'You, then ERO', rec:'FOLLOW_UP',
+      explanation:"You've received an official notice asking for documents. NextMove can't tell you why the notice was issued specifically — only that it means your last-SIR record couldn't be confirmed from the form alone.",
+      whatShort:'Submit the requested documents',
+      whatToDo:'Submit one of the ECI-prescribed documents before your state\'s notice-phase deadline.',
+      where:{label:'Submit to your BLO / ERO per the notice\'s instructions'},
+      need:'Any ONE of these:<ul class="need-list"><li>A government/PSU ID or pension order</li><li>A pre-1987 government/bank/LIC/PSU-issued ID</li><li>Birth certificate</li><li>Passport</li><li>Matriculation/educational certificate</li><li>Permanent residence certificate</li><li>Forest right certificate</li><li>Caste certificate</li><li>NRC (where it exists)</li><li>Family register</li><li>Land/house allotment certificate</li><li>Aadhaar (per the specific 2025 ECI direction)</li></ul>',
+      howLong:"Delhi's notice / Claims & Objections window runs through 29 Oct 2026 — submit before it closes.",
+      source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q23, Q11'},
+      mustNot:'Why the notice was issued, or which specific document will be accepted for your case.'},
+    {id:'s-duplicate', condition:a=>a.sirQ1==='duplicate',
+      state:'S-6', label:'Possible duplicate registration', dependency:'You — one filing needed', rec:'FOLLOW_UP',
+      explanation:"You may be registered in two places. The law doesn't allow that, but the fix is simple and mostly automatic — you don't need to separately request a deletion.",
+      whatShort:'File at your current-residence constituency',
+      whatToDo:'Submit the Enumeration Form only in the constituency where you currently live. The other entry is removed automatically once you do.',
+      where:{label:'Enumeration Form — your current-residence constituency'},
+      need:'Nothing beyond the standard Enumeration Form.',
+      source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q22'},
+      mustNot:'Nothing further to flag — this state is fully specified.'},
+    {id:'s-roll-absent', condition:a=>a.sirQ1==='roll_absent',
+      state:'S-3', label:'Not on the Draft Roll', dependency:'You — active follow-up needed', rec:'FOLLOW_UP',
+      explanation:"You've checked the Draft Roll and your name isn't there. That can happen for a few different reasons — the Enumeration Form wasn't deposited in time, or you'd moved and it couldn't reach you, among others — and NextMove can't tell which applies to you. But the fix is the same either way, and it's live right now: Delhi is currently in the Claims & Objections window.",
+      whatShort:'File Form 6 during Claims & Objections',
+      whatToDo:'File Form 6 with a Declaration Form and supporting documents during the Claims & Objections window.',
+      where:{label:'Form 6 — Claims & Objections window (online or at the Voter Centre)', url:'https://voters.eci.gov.in'},
+      need:'One of the ECI-accepted document types (see your next-move details) and the Declaration Form.',
+      howLong:"The Claims & Objections window is live now and runs through 29 Oct 2026 in Delhi — file within it.",
+      source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q20, Q21, Q28, Q30'},
+      mustNot:'The specific reason your name is missing.'},
+    {id:'s-roll-unchecked', condition:a=>a.sirQ1==='roll_unchecked',
+      state:'S-2', label:"Haven't checked the Draft Roll yet", dependency:'You — one check needed', rec:'FOLLOW_UP',
+      explanation:"The Draft Roll for Delhi has already been published, so the fastest way to know where you stand is to check it directly — waiting won't surface new information on its own the way it would have during enumeration.",
+      whatShort:'Check the Draft Roll now',
+      whatToDo:'Check the Draft Electoral Roll now via the Voters\' Service Portal, ECINET app, or the Delhi CEO website. What you find determines the next step: if you\'re listed, there\'s nothing further to do; if not, file Form 6 during the current Claims & Objections window.',
+      where:{label:'Draft Roll — voters.eci.gov.in, ECINET app, or the Delhi CEO website', url:'https://voters.eci.gov.in'},
+      need:'Nothing — just your name and constituency to search.',
+      howLong:"Delhi's Claims & Objections window runs through 29 Oct 2026 — checking now leaves time to act if you're not listed.",
+      source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q15, Q25, Q26, Q27'},
+      mustNot:'A guess at whether you\'ll be listed — NextMove doesn\'t know until you check.'},
+    {id:'s-roll-present', condition:a=>a.sirQ1==='roll_present',
+      state:'S-1', label:'On the Draft Roll — nothing pending', dependency:'Final Roll publication', rec:'WAIT',
+      explanation:"You've checked the Draft Roll and your name is there. Nothing further is required from you unless a notice arrives — the next official milestone is the Final Roll itself.",
+      whatShort:'Nothing to do right now',
+      whatToDo:'Nothing is required from you right now. If a notice requesting documents arrives before the Final Roll is published, that changes things — otherwise, just wait.',
+      where:{label:'Final Roll publication — 4 Nov 2026 (Delhi)'},
+      need:'Nothing — this is a waiting step.',
+      howLong:'The next official milestone has a real date: Final Roll publication on 4 Nov 2026, per Delhi\'s verified SIR calendar.',
+      source:{title:'CEO Delhi — Official SIR 2026 FAQ; Delhi SIR calendar'},
+      mustNot:'Any claim that inclusion on the Draft Roll guarantees Final Roll inclusion.'},
+  ],
+  fallback:{
+    state:'S-7', label:'SIR status unclear', dependency:'Unknown', rec:'UNCLASSIFIED',
+    explanation:"NextMove doesn't have enough evidence from your answers to safely place your case, even within Delhi's verified current phase. Rather than guess, it's safest to check directly.",
+    whatShort:'Check your status directly',
+    whatToDo:'Check directly rather than guess.',
+    where:{label:'voters.eci.gov.in', url:'https://voters.eci.gov.in', phone:'1950'},
+    need:'Nothing — just check directly.',
+    source:{title:"NextMove's own safety net — not a sourced official state."},
+    mustNot:'Any WAIT / FOLLOW UP / ESCALATE claim, or an assumed SIR phase for your state.'
+  }
+};
+
+// Dormant, phase-gated content — real, sourced, but not reachable from any
+// current SIR Q1 option (see SIR_Q1_OPTIONS_FOR), since Delhi's Final Roll
+// has not yet been published. Kept here, not deleted, so that when Delhi's
+// verified phase advances, this becomes live by updating SIR_STATES.delhi's
+// phase + SIR_Q1_OPTIONS_FOR, not by rewriting rule content.
+const sirDormantRules_finalRoll = {
+  's-5': {state:'S-5', label:'Name still missing after the Final Roll', dependency:'Appellate authority', rec:'ESCALATE',
+    explanation:"You did everything asked and your name still isn't on the Final Roll. There's a real, time-bound official appeal for exactly this — it needs to move quickly.",
+    whatShort:'File an appeal within 15 days',
+    whatToDo:'File an appeal before the District Election Officer / District Magistrate of your district — within 15 days of the Final Roll\'s publication.',
+    where:{label:'District Election Officer / District Magistrate'},
+    need:'Proof of your earlier submission (Enumeration Form acknowledgment or Form 6 filing) and any documents you already submitted.',
+    source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q32', quote:'15-day appeal window — one of the few sourced numeric deadlines in this playbook.'},
+    mustNot:'Anything about the appeal\'s likely outcome.'},
+};
+
+// V1 SIR coverage is locked to Delhi only (2026-09-04 decision) — NextMove
+// gives case-specific SIR diagnosis and next-action guidance for Delhi alone.
+// A state config with `supported:false` never reaches the sirPlaybook; it
+// routes to the dedicated coverage screen instead (see sirStateAnswer /
+// renderSirUnsupported). Adding a verified state later means adding one
+// config entry with `supported:true` and its own phase note — the Voter/SIR
+// UX itself does not change.
+const SIR_STATES = {
+  delhi:{name:'Delhi', supported:true,
+    phase:{
+      id:'claims_notice',
+      label:'Claims & Objections / Notice window',
+      note:'Delhi\'s enumeration window ran 30 Jun–17 Aug 2026 and the Draft Roll has already been published. As of now, Delhi is in the Claims & Objections / Notice window (through 29 Oct 2026), ahead of the Final Roll on 4 Nov 2026.',
+    }},
+  bihar:{name:'Bihar', supported:false},
+  maharashtra:{name:'Maharashtra', supported:false},
+  up:{name:'Uttar Pradesh', supported:false},
+  other:{name:'Another state / not sure', supported:false},
+};
+
+// SIR Q1's option set is phase-gated, not fixed — this is the "state/phase
+// configuration constrains which rules can run" principle made concrete.
+// Only situations that are actually live in a state's current phase are
+// offered; the user is never asked to distinguish something the current
+// phase makes impossible (e.g. "draft vs. final roll" when no final roll
+// exists yet). Keyed by phase id so a future phase (e.g. once Delhi's Final
+// Roll publishes) gets its own option set without touching sirPlaybook.
+const SIR_Q1_OPTIONS_FOR = {
+  claims_notice: {
+    roll_present:"I checked the Draft Roll and my name is there",
+    roll_absent:"I checked the Draft Roll and my name isn't there",
+    roll_unchecked:"I haven't checked the Draft Roll yet",
+    notice:'I got a notice asking for documents',
+    duplicate:'I think I might be registered in two places',
+  },
+};
+
+/* ================= PREPARE THIS FOR ME (added 2026-09-05) =================
+   Scope decision (user, 2026-09-05): drafting + GUIDED submission are IN;
+   auto-submission on the user's behalf stays OUT (locked Non-Goal, and the
+   trust caption's promise). The user reviews, edits, copies, and submits
+   the draft themselves — every step below ends at an official channel with
+   the user's own hands on the submit control.
+
+   In the real build these drafts come from the AI layer, composed from
+   verified case facts under the playbook guardrail (AI helps execute,
+   never invents process rules). In this static prototype they're honest
+   per-rule templates with [bracketed] placeholders the user fills in.
+   Steps are deliberately generic-but-useful: they name the verified
+   channel and the universal actions (sign in, find the section, paste,
+   save the reference number) and never invent unverified portal menu
+   paths, fees, or deadlines. Keyed by rule id; WAIT and UNCLASSIFIED
+   states have no entry — there is nothing to prepare, so the CTA
+   doesn't appear (fixes the old incoherence of "Nothing to do right
+   now" followed by "Prepare this for me"). */
+// General practical guidance for ANY government-office visit. Shown
+// under an explicit "general tips, not official rules" label so it can
+// never be mistaken for verified process content.
+const VISIT_EXPECT = [
+  'An ID check or a visitor register at the entrance is common.',
+  'There may be a queue or a token system — build in time.',
+  'Before you leave, ask for an acknowledgment or receipt with a date, and note the name and designation of whoever takes your papers.',
+  "If something is refused or unclear, don't argue it out on the spot — note what was said and use the online channel or helpline instead.",
+];
+
+const PREP = {
+  'state-5a': {
+    title:'Your formal grievance, drafted.',
+    draft:
+`Subject: Grievance — pending passport application [File Number / ARN]
+
+I am the applicant for passport application [File Number / ARN], submitted on [date you applied].
+
+My case has not progressed, and I have already followed up informally on [date] via [call / visit / portal message] without resolution.
+
+I request a review of my application's status and confirmation of the next required action.
+
+[Your name]
+[Your contact number and email]`,
+    steps:[
+      {text:'Open the Grievance / CPGRAMS channel (or call 1800-258-1800).', url:'https://www.passportindia.gov.in/psp/Grievance'},
+      'Sign in with your File Number or ARN.',
+      'Copy the draft above and paste it into the grievance form — fill every [bracket] first.',
+      'Submit it yourself and note the grievance number you receive.',
+      'Keep that number safe — it becomes your reference if this ever needs to escalate.',
+    ],
+    doneNote:'All steps done. That grievance number is your case\'s anchor now — keep it where you can find it.'},
+  'state-5b': {
+    title:'Your escalation to the DPG, drafted.',
+    draft:
+`Subject: Escalation of unresolved grievance [CPGRAMS grievance number]
+
+I filed grievance [CPGRAMS grievance number] on [date filed] regarding my pending passport application [File Number / ARN].
+
+The grievance remains unresolved. I request the Directorate of Public Grievances to review the matter.
+
+[Your name]
+[Your contact number and email]`,
+    steps:[
+      {text:'Open the Directorate of Public Grievances portal.', url:'https://dpg.gov.in'},
+      'Register or sign in, and have your existing CPGRAMS grievance number ready.',
+      'Copy the draft above, fill every [bracket], and paste it into the escalation form.',
+      'Submit it yourself and note the new reference number you receive.',
+    ],
+    doneNote:'All steps done. Your case is now with the highest grievance body — keep the new reference number safe.'},
+  'state-4': {
+    title:'Your message to the Passport Office, drafted.',
+    draft:
+`Subject: Request for clarification — application [File Number / ARN]
+
+My application status shows: "[paste the exact status text you saw]".
+
+I do not understand what this means for my case. Please tell me:
+1. The reason for this status.
+2. Whether anything is required from me.
+3. Whether re-verification applies to my case, and how to request it.
+
+[Your name]
+[Your contact number and email]`,
+    steps:[
+      {text:'Contact your Passport Office online or via the helpline 1800-258-1800.', url:'https://www.passportindia.gov.in'},
+      'Have your File Number / ARN ready before you start.',
+      'Use the draft above as your message or call script — fill every [bracket] first.',
+      'Note down who you spoke to (or the ticket number) and the date.',
+    ],
+    visit:{
+      carry:['Your ARN / File Number (printout or the SMS)','A screenshot or printout of the portal status you saw','A government photo ID (original + photocopy)'],
+      after:"Afterwards: the office's clarification decides the next stage — if re-verification applies, that runs before processing resumes.",
+    }},
+  'state-3': {
+    title:'Your follow-up on processing, drafted.',
+    draft:
+`Subject: Status check — application [File Number / ARN]
+
+I believe police verification for my application was completed around [rough date]. Nothing has changed on my case since.
+
+Please confirm:
+1. That the verification report is logged against my application.
+2. The current processing status of my case.
+
+[Your name]
+[Your contact number and email]`,
+    steps:[
+      {text:'Contact your Passport Office online or via the helpline 1800-258-1800.', url:'https://www.passportindia.gov.in'},
+      'Have your File Number / ARN ready.',
+      'Use the draft above — fill every [bracket] first.',
+      'Note the response and date; if this goes unresolved, a formal grievance is the next verified step.',
+    ]},
+  'state-2': {
+    title:'Your check-in with the Passport Office, drafted.',
+    draft:
+`Subject: Verification status — application [File Number / ARN]
+
+Police contacted me on [date] regarding verification for my application, but it does not appear to be complete.
+
+Please tell me whether anything further is required from me to complete verification.
+
+[Your name]
+[Your contact number and email]`,
+    steps:[
+      {text:'Contact your Passport Office online or via the helpline 1800-258-1800 — or ask your local police station directly.', url:'https://www.passportindia.gov.in'},
+      'Have your File Number / ARN ready.',
+      'Use the draft above — fill every [bracket] first.',
+      'Note what they say is pending, if anything, and the date you asked.',
+    ],
+    visit:{
+      carry:['Your ARN / File Number (printout or the SMS)','A government photo ID (original + photocopy)','Any documents the police mentioned when they contacted you'],
+      after:'Afterwards: completed verification goes back to the Passport Office for processing — the next stage on your case trail.',
+    }},
+  'v-3': {
+    title:'Your first appeal, drafted — if you disagree.',
+    draft:
+`To: The District Election Officer / District Magistrate, [your district]
+
+Subject: Appeal against decision on application [reference number]
+
+I applied for [registration / correction / replacement card] under reference [reference number]. A decision was communicated to me on [date], which I wish to appeal because [why you disagree — what you believe is incorrect].
+
+I request a review of this decision.
+
+[Your name, as on the application]
+[Your address and contact details]`,
+    steps:[
+      {text:"First, confirm the exact decision on your state CEO's website / roll listing — it decides whether an appeal is even needed.", url:'https://voters.eci.gov.in'},
+      'If you disagree with it: copy the draft above and fill every [bracket].',
+      'File the appeal before the District Election Officer / District Magistrate of your district.',
+      'Keep a copy of what you filed and the date — a second-tier appeal to the state CEO needs both.',
+    ],
+    visit:{
+      carry:['Your printed appeal letter — two copies, one for their stamp','The decision you received (SMS screenshot, letter, or roll printout)','Your application reference number','A government photo ID (original + photocopy)'],
+      after:'After you file: the first appeal is decided by the DEO/DM — and if that still doesn\'t resolve it, one further appeal to the state CEO exists (ECI FAQ Q34).',
+    }},
+  'v-5': {
+    title:'Your second appeal to the state CEO, drafted.',
+    draft:
+`To: The Chief Electoral Officer, [your state]
+
+Subject: Second appeal — application [reference number]
+
+My first appeal regarding application [reference number] was decided on [date] by the District Election Officer / District Magistrate. The outcome was: [what the first appeal decided].
+
+I remain aggrieved because [why the decision doesn't resolve your case], and I request a review under the second-tier appeal provided for in the electoral roll framework.
+
+Enclosed: the decision/order from my first appeal.
+
+[Your name, address, and contact details]`,
+    steps:[
+      {text:"Locate your state CEO's office / appeal channel via your state CEO website (reachable from the national portal).", url:'https://voters.eci.gov.in'},
+      'Copy the draft above and fill every [bracket].',
+      'Attach the decision/order from your first appeal — the second tier is built on it.',
+      'File it yourself and keep the acknowledgment.',
+    ],
+    visit:{
+      carry:['Your printed second-appeal letter — two copies','The decision/order from your first appeal (original + photocopy)','Your original application reference number','A government photo ID (original + photocopy)'],
+      after:'After you file: this is the final appeal tier in the official structure (ECI FAQ Q34).',
+    }},
+  's-notice': {
+    steps:[
+      'Pick ONE document from the list on the previous screen — any one is enough.',
+      "Re-read the notice for where and how to submit — the notice's own instructions control.",
+      'Submit the document to your BLO / ERO as the notice directs.',
+      "Do it before Delhi's notice window closes on 29 Oct 2026.",
+      'Keep an acknowledgment or photo of what you submitted, with the date.',
+      {text:"If the notice's instructions are unclear, call the toll-free Voter Helpline 1950 before submitting.", url:'https://voters.eci.gov.in'},
+    ],
+    visit:{
+      carry:['The notice itself','ONE document from the ECI-accepted list (original + photocopy)','A government photo ID (original + photocopy)'],
+      after:'After you submit: the decision on your record rests with the ERO.',
+    }},
+  's-duplicate': {
+    steps:[
+      'Identify the constituency where you currently live — that is the only place you file.',
+      {text:'Not sure which constituency covers your address? Look it up on the Voters\' Service Portal, or call 1950.', url:'https://voters.eci.gov.in'},
+      'Submit the Enumeration Form there (and only there).',
+      'The other entry is removed automatically once you do — no separate deletion request needed.',
+      'Keep the acknowledgment.',
+    ],
+    visit:{
+      carry:['Your filled Enumeration Form','A government photo ID (original + photocopy)','Your old EPIC card, if you have it'],
+      after:'After you file: the other entry is removed automatically — no separate deletion request needed (CEO Delhi FAQ Q22).',
+    }},
+  's-roll-absent': {
+    steps:[
+      'Gather one ECI-accepted document and the Declaration Form.',
+      {text:'Open the Voters\' Service Portal (or go to your Voter Centre in person).', url:'https://voters.eci.gov.in'},
+      "File Form 6 with both attached, during the Claims & Objections window — it's open now, through 29 Oct 2026 in Delhi.",
+      'Save the acknowledgment — it is your proof of filing if the Final Roll goes wrong.',
+    ],
+    visit:{
+      carry:['Form 6, filled','The Declaration Form','One ECI-accepted document (original + photocopy)','A government photo ID (original + photocopy)'],
+      after:'After you file: the next official milestone is the Final Roll — 4 Nov 2026 in Delhi.',
+    }},
+  's-roll-unchecked': {
+    steps:[
+      {text:'Open the Voters\' Service Portal, the ECINET app, or the Delhi CEO website.', url:'https://voters.eci.gov.in'},
+      'Search the Draft Roll by your name and constituency.',
+      "If you're listed: nothing further to do — the Final Roll (4 Nov 2026) is the next milestone.",
+      "If you're not listed: come back and take the \"name isn't there\" path — Form 6 is the fix, and the window is open through 29 Oct 2026.",
+    ],
+    doneNote:'All steps done. What you found on the roll decides the next step — NextMove can re-diagnose any time.'},
+};
+
+/* ================= DESCRIBE IT — AI-INTERPRETED ANSWERS =================
+   Spec: docs/superpowers/specs/2026-09-05-describe-it-ai-interpretation-design.md
+   The interpreter (production: Gemini free tier behind this same contract;
+   here: a labeled deterministic simulator) may ONLY:
+   - map text onto the closed option sets it is handed (enum gate, in code)
+   - justify every mapping with a verbatim span of the user's text
+     (span gate, in code — replaces trusting a confidence float)
+   - extract facts whose value is a verbatim substring (fact gate, in code)
+   It never sees playbook rules; the user confirms before anything is set;
+   the verified playbook then runs byte-identically. The pasted-status
+   matcher stays exact-match-only (different risk profile: no confirm
+   step there) — the describe box is NOT offered on that screen. */
+
+// Which questions are reachable from each describe entry point, in chain
+// order. reachableIf gates a question on earlier (known or mapped)
+// answers — the branch-awareness that keeps smart skip sound.
+const DESCRIBE_CTX = {
+  'passport-q1': {engine:'passport', service:'Passport', chain:[
+    {id:'q1', label:"What's happening with your application?", opts:()=>PASSPORT_Q1_LABELS},
+    {id:'q2', label:'Have you already tried to follow up?', opts:()=>PASSPORT_Q2_LABELS, reachableIf:a=>!!a.q1 && a.q1!=='not_sure'},
+  ]},
+  'passport-q2': {engine:'passport', service:'Passport', chain:[
+    {id:'q2', label:'Have you already tried to follow up?', opts:()=>PASSPORT_Q2_LABELS},
+  ]},
+  'voter-entry': {engine:'voter', service:'Voter Services', chain:[
+    {id:'voterEntry', label:'What is this about?', opts:()=>({applied:"I applied for something and I'm waiting to hear back", sir:'This is about SIR'})},
+    {id:'voterQ1', label:'What is the situation with your application?', opts:()=>VOTER_Q1_LABELS, reachableIf:a=>a.voterEntry==='applied'},
+    {id:'voterAppealedRaw', label:'Have you already appealed this decision?', opts:()=>({none:VOTER_APPEAL_LABELS.none, pending:VOTER_APPEAL_LABELS.pending, decided:VOTER_APPEAL_LABELS.decided}), reachableIf:a=>a.voterQ1==='decision'},
+  ]},
+  'voter-q1': {engine:'voter', service:'Voter Services', chain:[
+    {id:'voterQ1', label:'What is the situation with your application?', opts:()=>VOTER_Q1_LABELS},
+    {id:'voterAppealedRaw', label:'Have you already appealed this decision?', opts:()=>({none:VOTER_APPEAL_LABELS.none, pending:VOTER_APPEAL_LABELS.pending, decided:VOTER_APPEAL_LABELS.decided}), reachableIf:a=>a.voterQ1==='decision'},
+  ]},
+  'voter-q2': {engine:'voter', service:'Voter Services', chain:[
+    {id:'voterAppealedRaw', label:'Have you already appealed this decision?', opts:()=>({none:VOTER_APPEAL_LABELS.none, pending:VOTER_APPEAL_LABELS.pending, decided:VOTER_APPEAL_LABELS.decided})},
+  ]},
+  'sir-q1': {engine:'sir', service:'SIR', chain:[
+    {id:'sirQ1', label:'What is happening with your SIR situation?', opts:()=>SIR_Q1_OPTIONS_FOR[SIR_STATES[S.answers.sirState].phase.id]},
+  ]},
+};
+
+// Simulator phrase tables. First matching rule per question wins; rules
+// are ordered so more specific readings beat generic ones. The match
+// itself is the span — verbatim by construction.
+// DELIBERATE FLAW (kept on purpose, per spec §5): the first q2 rule
+// reads any "called me/was called" as the USER having called — an
+// agent/patient confusion exactly like a real model makes. It exists so
+// reviewers experience catching a wrong reading on the confirm screen,
+// which is this feature's actual safeguard.
+const SIM_RULES = {
+  q1:[
+    {re:/adverse|negative report|objection|looks negative/i, v:'adverse'},
+    {re:/report (has been |was |is )?(received|submitted|done)|verification.{0,30}(done|complete|completed|finished|over)/i, v:'verified_no_progress'},
+    {re:/police.{0,50}(came|come|visited|contacted|met)/i, v:'contacted_incomplete'},
+    {re:/(no|not|never|haven'?t|havent|nothing).{0,40}(police|verification)|police.{0,40}(hasn'?t|hasnt|not|never|no).{0,25}(come|came|started|happened|contacted|visited)/i, v:'no_contact'},
+  ],
+  q2:[
+    {re:/grievance|cpgrams|formal complaint/i, v:'formal_grievance'},
+    {re:/\b(called|phoned|rang|visited|emailed|wrote to)\b/i, v:'informal'},
+    {re:/(haven'?t|havent|didn'?t|didnt|not yet).{0,30}(follow|contact|call|complain|do anything)/i, v:'no_followup'},
+  ],
+  voterEntry:[
+    {re:/\bsir\b|special intensive|enumeration form|draft roll/i, v:'sir'},
+    {re:/applied|correction|new (voter|registration)|replacement|epic|voter card|form 6|form 8/i, v:'applied'},
+  ],
+  voterQ1:[
+    {re:/rejected|refused|declined|not approved|got a decision|decision came/i, v:'decision'},
+    {re:/\bblo\b|booth level officer|officer (came|visited|called)/i, v:'blo_visited'},
+    {re:/(haven'?t|havent|no|nothing).{0,30}(heard|word|response|update|happened)/i, v:'no_word'},
+  ],
+  voterAppealedRaw:[
+    {re:/appeal.{0,50}(decided|rejected|dismissed|order came|was decided)/i, v:'decided'},
+    {re:/appeal.{0,50}(pending|waiting|no (response|decision|word))|(filed|made).{0,15}appeal/i, v:'pending'},
+    {re:/(haven'?t|havent|not|no).{0,20}appeal/i, v:'none'},
+  ],
+  sirQ1:[
+    {re:/notice|asking for documents/i, v:'notice'},
+    {re:/two places|duplicate|registered (in )?both/i, v:'duplicate'},
+    {re:/name.{0,40}(isn'?t|isnt|not|missing)|not (on|in) the.{0,15}roll/i, v:'roll_absent'},
+    {re:/(checked|found|saw).{0,40}name.{0,25}(is )?(there|on|in)|name is (there|on the roll)/i, v:'roll_present'},
+    {re:/(haven'?t|havent|not).{0,25}check/i, v:'roll_unchecked'},
+  ],
+};
+
+// Per-service reference-number shapes (prototype approximations, stated
+// as such in the spec). A number matching no known shape becomes an
+// honest "a number you mentioned" chip and fills NOTHING.
+const REF_SHAPES = {
+  passport:[
+    {re:/\b[A-Z]{2}\d{13}\b/i, refType:'passport_file_no', label:'File Number', fills:'[File Number / ARN]'},
+    {re:/\b\d{12}\b/, refType:'arn', label:'ARN', fills:'[File Number / ARN]'},
+    {re:/\b[A-Z]{5,8}\/\d{4}\/\d{4,8}\b/i, refType:'grievance_no', label:'Grievance number', fills:'[CPGRAMS grievance number]'},
+  ],
+  voter:[
+    {re:/\b[A-Z]{3}\d{7}\b/i, refType:'epic', label:'EPIC number', fills:null},
+    {re:/\b\d{9,13}\b/, refType:'voter_ref', label:'Reference number', fills:'[reference number]'},
+  ],
+  sir:[
+    {re:/\b[A-Z]{3}\d{7}\b/i, refType:'epic', label:'EPIC number', fills:null},
+  ],
+};
+const UNKNOWN_REF = /\b(?=[A-Z0-9]*\d)[A-Z0-9]{8,18}\b/g;
+
+function extractFacts(engine, text){
+  const facts=[]; const taken=[];
+  for(const shape of (REF_SHAPES[engine]||[])){
+    const m = text.match(shape.re);
+    if(m && !taken.some(t=>t.includes(m[0]))){
+      facts.push({kind:'reference_number', refType:shape.refType, label:shape.label, value:m[0], fills:shape.fills});
+      taken.push(m[0]);
+    }
+  }
+  // unknown-shaped numbers: shown honestly, never fill a bracket
+  const unk = text.match(UNKNOWN_REF)||[];
+  for(const u of unk){
+    if(!taken.some(t=>t.includes(u)||u.includes(t))){
+      facts.push({kind:'reference_number', refType:'unknown', label:'A number you mentioned', value:u, fills:null});
+      taken.push(u); break; // one is enough
+    }
+  }
+  // dates: only an APPLIED date auto-fills (its role is unambiguous);
+  // any other date is a chip that fills nothing. Relative dates never match.
+  const applied = text.match(/(applied|submitted).{0,20}?((\d{1,2}\s)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s?\d{2,4})/i);
+  if(applied){ facts.push({kind:'date', refType:'date_applied', label:'Applied', value:applied[2], fills:'[date you applied]'}); }
+  const otherDate = text.match(/\b(\d{1,2}\s)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s?\d{0,4}\b/i);
+  if(otherDate && (!applied || otherDate[0]!==applied[2])){
+    facts.push({kind:'date', refType:'date_other', label:'Date you mentioned', value:otherDate[0].trim(), fills:null});
+  }
+  return facts;
+}
+
+// The contract gates, applied IN CODE regardless of what any model (or
+// this simulator) returns: enum gate, span gate, verbatim-fact gate,
+// then branch pruning over the chain.
+function gateInterpretation(ctx, text, raw){
+  const norm = s=>s.replace(/\s+/g,' ').trim().toLowerCase();
+  const hay = norm(text);
+  const known = {...S.answers};
+  const mapped = {};
+  const mappings=[]; const discarded=[];
+  for(const q of ctx.chain){
+    const reach = !q.reachableIf || q.reachableIf({...known, ...mapped});
+    const m = raw.mappings.find(x=>x.questionId===q.id);
+    if(!m) continue;
+    const opts = q.opts();
+    if(!reach){ discarded.push({q, reason:'unreachable'}); continue; }          // branch gate
+    if(!Object.prototype.hasOwnProperty.call(opts, m.value)) continue;           // enum gate
+    if(!m.span || !hay.includes(norm(m.span))) continue;                         // span gate
+    mapped[q.id]=m.value;
+    mappings.push({questionId:q.id, value:m.value, span:m.span, q});
+  }
+  const facts = (raw.facts||[]).filter(f=>f.value && text.replace(/\s+/g,' ').includes(f.value.replace(/\s+/g,' '))); // verbatim-fact gate
+  return {mappings, discarded, facts, unplaceable: mappings.length===0};
+}
+
+function simulateInterpretation(ctx, text){
+  const rawMappings=[]; const mapped={};
+  const known={...S.answers};
+  for(const q of ctx.chain){
+    if(known[q.id]) continue;
+    if(q.reachableIf && !q.reachableIf({...known, ...mapped})) continue;
+    const rules = SIM_RULES[q.id]||[];
+    for(const r of rules){
+      const m = text.match(r.re);
+      if(m){ rawMappings.push({questionId:q.id, value:r.v, span:m[0]}); mapped[q.id]=r.v; break; }
+    }
+  }
+  return gateInterpretation(ctx, text, {mappings:rawMappings, facts:extractFacts(ctx.engine, text)});
+}
+
+/* ================= STATE MACHINE ================= */
+const S = { screen:'home', history:[], answers:{}, restartConfirm:false, trustOpen:false, recoveryText:'', recoveryResult:null, prepChecks:{}, prepDraft:null, copied:false,
+  user:null, savedCases:[], activeCaseId:null, pendingSave:null, authMethod:'phone', authId:'', otp:'', authErr:null, otpResent:false, signOutConfirm:false, removeConfirm:null, restoring:false,
+  describeOpen:false, describeText:'', describeErr:null, reading:false, interp:null, interpChangeOpen:{}, caseFacts:[], appliedText:null, factEditIdx:null, factEditVal:'', fillsReviewed:false,
+  ciPending:null, ciStage:null, ciReassure:false, ciSnapshot:null, ciJustUpdated:false, logOpen:{}, phaseDrift:false };
+
+// Browser storage: casefiles and sign-in live only in this viewer's
+// browser (prototype stand-in for server-side accounts). Every access
+// is guarded — storage can be empty or throw entirely.
+const store = {
+  get(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} },
+};
+S.user = store.get('nm_user');
+// Multi-case store, with one-time migration of the old single-case slot.
+S.savedCases = store.get('nm_cases') || [];
+(function migrate(){
+  const old = store.get('nm_case');
+  if(old && !S.savedCases.length){
+    S.savedCases = [{...old, id:'c'+(old.savedAt||Date.now()), outcome:'still_open',
+      log:[{t:old.savedAt||Date.now(), kind:'diagnosed', text:old.stateLabel||'Case saved'}]}];
+    store.set('nm_cases', S.savedCases); store.del('nm_case');
+  }
+})();
+function persistCases(){ store.set('nm_cases', S.savedCases); }
+function activeCase(){ return S.savedCases.find(c=>c.id===S.activeCaseId) || null; }
+
+function nav(screen, opts){
+  if(opts && opts.replace){ /* no history push */ } else { S.history.push(S.screen); }
+  S.screen = screen; S.trustOpen=false; S.restartConfirm=false; S.removeConfirm=false; S.authErr=null; render();
+  const el=document.getElementById('app'); if(el) el.scrollIntoView({block:'start'});
+}
+function back(){ if(S.history.length){ S.screen=S.history.pop(); S.trustOpen=false; S.authErr=null; render(); } }
+// Restart clears the working case only — sign-in and the saved casefile
+// survive (they're removed via Sign out / Remove, never as a side effect).
+function restart(){ S.screen='home'; S.history=[]; S.answers={}; S.restartConfirm=false; S.recoveryText=''; S.recoveryResult=null; S.prepChecks={}; S.prepDraft=null; S.copied=false; S.pendingSave=null; S.otp=''; S.authErr=null; S.signOutConfirm=false; S.removeConfirm=null;
+  S.describeOpen=false; S.describeText=''; S.describeErr=null; S.reading=false; S.interp=null; S.interpChangeOpen={}; S.caseFacts=[]; S.appliedText=null; S.factEditIdx=null; S.fillsReviewed=false;
+  S.activeCaseId=null; S.ciPending=null; S.ciStage=null; S.ciReassure=false; S.ciJustUpdated=false; S.phaseDrift=false; render(); }
+
+/* ---- save / auth flow (multi-case) ---- */
+function beginSave(engineKey, serviceLabel, returnScreen){
+  S.pendingSave = {engineKey, serviceLabel, returnScreen};
+  S.otp=''; S.authErr=null;
+  if(S.user){ completeSave(); nav('save-done'); } else { nav('save-case'); }
+}
+function caseSnapshot(engineKey, serviceLabel, returnScreen){
+  const d = currentDiagnosis(engineKey);
+  const prep = d.id ? PREP[d.id] : null;
+  return {
+    engineKey, serviceLabel, returnScreen,
+    answers:{...S.answers}, prepChecks:{...S.prepChecks},
+    savedAt:Date.now(), stateLabel:d.label, rec:d.rec,
+    whatShort:d.whatShort||null,
+    stepsTotal: prep ? prep.steps.length : 0,
+    stepsDone: prep ? prep.steps.filter((_,i)=>S.prepChecks[i]).length : 0,
+    caseFacts:(S.caseFacts||[]).slice(), appliedText:S.appliedText||null,
+    interpProvenance:S.appliedText ? 'simulated (design prototype)' : null,
+    sirPhaseId: engineKey==='sir' && S.answers.sirState && SIR_STATES[S.answers.sirState].supported ? SIR_STATES[S.answers.sirState].phase.id : null,
+  };
+}
+function completeSave(){
+  const p = S.pendingSave; if(!p) return;
+  const snap = caseSnapshot(p.engineKey, p.serviceLabel, p.returnScreen);
+  const existing = activeCase();
+  if(existing && existing.engineKey===p.engineKey && existing.outcome==='still_open'){
+    Object.assign(existing, snap);
+  } else {
+    const c = {...snap, id:'c'+Date.now(), outcome:'still_open', lastCheck:null, remindAt:null,
+      log:[{t:Date.now(), kind:'diagnosed', text:snap.stateLabel}]};
+    S.savedCases.unshift(c); S.activeCaseId = c.id;
+  }
+  persistCases();
+}
+function caseIsSaved(engineKey){
+  return S.savedCases.some(c=>c.outcome==='still_open' && c.engineKey===engineKey
+    && JSON.stringify(c.answers)===JSON.stringify(S.answers));
+}
+// Check-in write path: EVENT semantics, not correction semantics.
+// Facts always survive; prepare progress survives unless the diagnosis
+// id changes (the plan changed — the log memorializes the old work).
+function updateAns(patch){
+  for(const [k,v] of Object.entries(patch)){
+    if(v===null || v===undefined){ delete S.answers[k]; } else { S.answers[k]=v; }
+  }
+}
+function authSubmitId(){
+  const v = (S.authId||'').trim();
+  if(S.authMethod==='phone'){
+    const digits = v.replace(/[^0-9]/g,'');
+    if(digits.length<10){ S.authErr='That doesn\'t look like a full mobile number yet.'; render(); return; }
+    S.authId = digits.slice(-10);
+  } else {
+    if(!v.includes('@') || !v.includes('.')){ S.authErr='That doesn\'t look like a complete email address yet.'; render(); return; }
+  }
+  S.authErr=null; S.otp=''; nav('save-otp');
+}
+function authVerifyOtp(){
+  const code=(S.otp||'').replace(/[^0-9]/g,'');
+  if(code.length!==6){ S.authErr='The code is 6 digits.'; render(); return; }
+  S.user = {method:S.authMethod, id:S.authId};
+  store.set('nm_user', S.user);
+  completeSave(); nav('save-done');
+}
+function authGoogle(){
+  // Simulated in the prototype — the real build uses Google OAuth.
+  S.user = {method:'google', id:'you@gmail.com'};
+  store.set('nm_user', S.user);
+  completeSave(); nav('save-done');
+}
+function authResend(){ S.otpResent=true; render(); setTimeout(()=>{ S.otpResent=false; render(); }, 2000); }
+function maskId(u){
+  if(!u) return '';
+  if(u.method==='phone') return '+91 •••••• ' + u.id.slice(-3);
+  const [name, domain] = u.id.split('@');
+  return name.charAt(0) + '•••@' + (domain||'');
+}
+function signOut(){
+  S.user=null; S.savedCases=[]; S.activeCaseId=null; S.signOutConfirm=false;
+  store.del('nm_user'); store.del('nm_cases'); store.del('nm_case');
+  restart();
+}
+function loadCase(id){
+  const c=S.savedCases.find(x=>x.id===id); if(!c) return null;
+  S.activeCaseId=id;
+  S.answers={...c.answers}; S.prepChecks={...c.prepChecks}; S.prepDraft=null;
+  S.caseFacts=(c.caseFacts||[]).slice(); S.appliedText=c.appliedText||null; S.fillsReviewed=false;
+  // SIR phase drift: a case saved in one phase, opened in another, gets
+  // told so and is re-diagnosed against the current phase before any
+  // check-in options are offered.
+  S.phaseDrift = !!(c.sirPhaseId && S.answers.sirState && SIR_STATES[S.answers.sirState].supported
+    && SIR_STATES[S.answers.sirState].phase.id !== c.sirPhaseId);
+  return c;
+}
+function continueSaved(id){
+  const c=loadCase(id); if(!c) return;
+  nav(c.returnScreen);
+}
+function removeSaved(id){
+  S.savedCases = S.savedCases.filter(c=>c.id!==id);
+  if(S.activeCaseId===id) S.activeCaseId=null;
+  S.removeConfirm=null; persistCases(); render();
+}
+function reopenCase(id){
+  const c=S.savedCases.find(x=>x.id===id); if(!c) return;
+  c.outcome='still_open'; c.log.push({t:Date.now(), kind:'reopened', text:'Case reopened — this came back'});
+  persistCases(); loadCase(id); nav(c.engineKey+'-diagnosis');
+}
+// Any answer write means the case (and therefore the diagnosis and its
+// prepare plan) may have changed — draft edits, ticked steps, and
+// interpreted facts belong to the old diagnosis, so they reset HERE,
+// and only here. Navigating away from a prepare screen and coming back
+// never loses progress: progress dies with the case, not with the
+// screen. (applyInterpretation re-assigns caseFacts AFTER its setAns
+// calls, so facts survive the apply that created them.)
+function setAns(k,v){ S.answers[k]=v; S.prepChecks={}; S.prepDraft=null; S.copied=false; S.caseFacts=[]; S.appliedText=null; S.fillsReviewed=false; }
+
+/* ================= ICONS ================= */
+const ICONS = {
+  passport:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="2.5" width="14" height="19" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M9.5 15.5c0-1.5 1-2.3 2.5-2.3s2.5.8 2.5 2.3"/><path d="M8 19h8"/></svg>',
+  voter:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3 4 7v2h16V7l-8-4Z"/><path d="M5 10v8M9 10v8M15 10v8M19 10v8"/><path d="M3 21h18"/></svg>',
+  certificate:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="13" rx="1.5"/><circle cx="9" cy="17.5" r="3" fill="none"/><path d="M7.5 19.5 6.5 22l2.5-1.3L11.5 22l-1-2.5"/></svg>',
+  check:'<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#FAF7EF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.5 5 9l4.5-6"/></svg>',
+  stepCheck:'<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="#3D241C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.5 5 9l4.5-6"/></svg>',
+  bookmark:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-6-4.5L6 21V3Z"/></svg>',
+  pen:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  google:'<svg width="17" height="17" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.7 2.4 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.2C12.4 13.5 17.7 9.5 24 9.5Z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6C44.1 38 46.5 31.8 46.5 24.5Z"/><path fill="#FBBC05" d="M10.5 28.6a14.5 14.5 0 0 1 0-9.2l-7.9-6.2a24 24 0 0 0 0 21.6l7.9-6.2Z"/><path fill="#34A853" d="M24 48c6.2 0 11.6-2 15.6-5.8l-7.7-6c-2.1 1.4-4.8 2.3-7.9 2.3-6.3 0-11.6-4-13.5-9.9l-7.9 6.2C6.5 42.6 14.6 48 24 48Z"/></svg>',
+  chevron:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>',
+  arrow:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>',
+  // Brand mark — a four-point compass star, NextMove's own "which way
+  // next" glyph, in the butter accent.
+  brandMark:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2c.7 6 4 9.3 10 10-6 .7-9.3 4-10 10-.7-6-4-9.3-10-10 6-.7 9.3-4 10-10Z" fill="#F5D848" stroke="#3D241C" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+  // Status glyphs — restrained, one idea each, never alarming even for
+  // ESCALATE (a single steady upward arrow, not a warning triangle).
+  statusWait:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/></svg>',
+  statusFollow:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>',
+  statusEscalate:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M6 11l6-6 6 6"/></svg>',
+  statusUnclassified:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3.2"/><path d="M12 12.5v.01"/></svg>',
+};
+// Confetti gems — Teak's floating shapes, drawn once, reused at the two
+// peaks. Pure decoration: aria-hidden, pointer-events:none, desktop only.
+function gems(placement){
+  const shapes = {
+    diamondGreen:'<svg width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2" transform="rotate(45 8 8)" fill="#2FA866"/></svg>',
+    diamondPink:'<svg width="13" height="13" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2" transform="rotate(45 8 8)" fill="#F0679E"/></svg>',
+    dotButter:'<svg width="11" height="11" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="#F5D848" stroke="#3D241C" stroke-width="1"/></svg>',
+    ringBlue:'<svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="#5FA8E8" stroke-width="2.5"/></svg>',
+    star:'<svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 3c.5 4.2 2.8 6.5 7 7-4.2.5-6.5 2.8-7 7-.5-4.2-2.8-6.5-7-7 4.2-.5 6.5-2.8 7-7Z" fill="#F5D848" stroke="#3D241C" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+  };
+  const layouts = {
+    // Positioned in the cell's edges and ragged-right gaps, never over text.
+    hero:[
+      ['star','top:1%; right:2%;'],['diamondPink','top:34%; right:0;'],
+      ['diamondGreen','top:68%; right:5%;'],['dotButter','top:92%; right:16%;'],
+    ],
+    reveal:[
+      ['diamondPink','top:2%; right:3%;'],['star','top:38%; right:0;'],
+      ['dotButter','top:74%; right:9%;'],
+    ],
+  };
+  return `<div class="gems" aria-hidden="true">${layouts[placement].map(([s,pos])=>`<span class="gem" style="${pos}">${shapes[s]}</span>`).join('')}</div>`;
+}
+
+/* ================= SHARED RENDER HELPERS ================= */
+function topbar(showBack, showRestart){
+  const hasAnswers = Object.keys(S.answers).length>0;
+  const acct = S.user
+    ? (S.signOutConfirm
+      ? `<span class="restart-confirm">Sign out? Removes your saved cases and their history from this device.
+          <button class="yes" onclick="signOut()">Yes</button>
+          <button class="no" onclick="S.signOutConfirm=false; render();">Cancel</button>
+        </span>`
+      : `<button class="acct-chip" onclick="S.signOutConfirm=true; render();" title="Signed in — click to sign out">${maskId(S.user)}</button>`)
+    : '';
+  return `<div class="topbar">
+    <button class="brand" onclick="restart()"><span class="brand-mark">${ICONS.brandMark}</span>NextMove</button>
+    <div class="topctrls">
+      ${acct}
+      ${showBack ? `<button class="ctrl-link" onclick="back()">← Back</button>` : ''}
+      ${showRestart ? restartControl(hasAnswers) : ''}
+    </div>
+  </div>`;
+}
+// The one save entry point, shared by Next Move and Prepare. Quiet by
+// design — it must never compete with the case's actual next action.
+function saveControl(engineKey, serviceLabel, returnScreen, stepsDone){
+  if(caseIsSaved(engineKey)){
+    return `<div class="saved-note">${ICONS.bookmark} Saved — find it on Home whenever you come back</div>`;
+  }
+  const label = stepsDone > 0 ? 'Save this case — your ticked steps come with it' : 'Save this case — NextMove keeps walking with you';
+  return `<button class="btn-ghost" onclick="beginSave('${engineKey}','${serviceLabel}','${returnScreen}')">${ICONS.bookmark} ${label}</button>`;
+}
+function restartControl(hasAnswers){
+  if(S.restartConfirm){
+    return `<span class="restart-confirm">Clear your answers?
+      <button class="yes" onclick="restart()">Yes</button>
+      <button class="no" onclick="S.restartConfirm=false; render();">Cancel</button>
+    </span>`;
+  }
+  return `<button class="ctrl-link" onclick="${hasAnswers ? 'S.restartConfirm=true; render();' : 'restart();'}">Restart</button>`;
+}
+// Teak's marker-square device: every crumb strip leads with the owning
+// service's colored square, then dashed-soft chips for phase context.
+const SERVICE_SQ = {
+  'Passport':'sq-passport', 'Voter Services':'sq-voter', 'SIR':'sq-voter',
+};
+function crumbs(parts, sqClass){
+  return `<div class="crumbs">${parts.map((p,i)=>
+    `<span class="crumb ${i>0?'soft':''}">${i===0&&sqClass?`<span class="crumb-sq ${sqClass}"></span>`:''}${p}</span>`
+  ).join('')}</div>`;
+}
+function phaseEyebrow(service, phase){
+  const sq = SERVICE_SQ[service.split(' · ')[0]] || null;
+  return crumbs(phase ? [service, phase] : [service], sq);
+}
+// Desktop editorial split: context (crumbs + headline + lede) left,
+// action (answers / fields / CTA) right. Collapses to one column <960px.
+function splitCols(l, r){
+  return `<div class="split"><div class="split-l">${l}</div><div class="split-r">${r}</div></div>`;
+}
+function answerRow(value, currentKey, label, sub){
+  const selected = S.answers[currentKey.key]===value;
+  return `<button class="arow ${selected?'selected':''}" onclick="${currentKey.onSelect}('${value}')">
+    <span class="arow-check">${ICONS.check}</span>
+    <span class="arow-body">
+      <div class="arow-label">${label}</div>
+      ${sub ? `<div class="arow-sub">${sub}</div>` : ''}
+    </span>
+    <span class="arow-chevron">${ICONS.chevron}</span>
+  </button>`;
+}
+function stampClass(rec){
+  return rec==='WAIT'?'wait':rec==='FOLLOW_UP'?'follow':rec==='ESCALATE'?'escalate':'unclassified';
+}
+function stampLabel(rec){
+  return rec==='FOLLOW_UP'?'FOLLOW UP':rec;
+}
+function stampIcon(rec){
+  const icon = rec==='WAIT'?ICONS.statusWait : rec==='FOLLOW_UP'?ICONS.statusFollow : rec==='ESCALATE'?ICONS.statusEscalate : ICONS.statusUnclassified;
+  return `<span class="stamp-icon">${icon}</span>`;
+}
+// Every answerLabels map passed to trustDisclosure MUST be built with
+// labelMap(questionId, {value: label, ...}) so its keys are the composite
+// "questionId:value" form that matchedAnswers is looked up by below.
+// (Fixed 2026-09-04: the Passport/Voter/SIR label objects were previously
+// keyed by value alone — e.g. PASSPORT_Q1_LABELS['no_contact'] — while this
+// function looked them up as 'q1:no_contact'. That mismatch meant "You told
+// us" silently showed nothing for every real Passport/Voter/SIR-Q1 answer;
+// only the one or two call sites that happened to already use a composite
+// key, like the old 'voterAppealed:no', ever displayed correctly.)
+function labelMap(questionId, labels){
+  return Object.fromEntries(Object.entries(labels).map(([v,l])=>[questionId+':'+v, l]));
+}
+function trustDisclosure(d, answerLabels, extraToldUs){
+  const answered = Object.entries(d.matchedAnswers||{})
+    .filter(([k,v])=>answerLabels[k+':'+v])
+    .map(([k,v])=>answerLabels[k+':'+v]);
+  if(extraToldUs) answered.push(extraToldUs);
+  return `
+  <button class="trust-toggle" onclick="S.trustOpen=!S.trustOpen; render();">
+    ${S.trustOpen ? '▾' : '▸'} Why am I seeing this?
+  </button>
+  ${S.trustOpen ? `<div class="trust-panel">
+    <div class="trust-row"><div class="nm-k">You told us</div><div class="nm-v">${answered.join(' · ') || 'Not enough to safely place your case — see below.'}</div></div>
+    ${S.appliedText ? `<div class="trust-row"><div class="nm-k">You wrote</div><div class="nm-v" style="font-style:italic;">"${S.appliedText}"</div>${S.caseFacts.length ? `<div class="small" style="margin-top:6px;">Details kept from it: ${S.caseFacts.map(f=>`${f.label} ${f.value}`).join(' · ')}</div>` : ''}</div>` : ''}
+    <div class="trust-row"><div class="nm-k">What that means</div><div class="nm-v">${d.explanation}</div></div>
+    <div class="trust-row"><div class="nm-k">Based on</div><div class="nm-v">${d.source.title}${d.source.quote?`<div class="source-quote">"${d.source.quote}"</div>`:''}</div></div>
+  </div>` : ''}`;
+}
+
+/* ---------- describe it: UI + apply ---------- */
+const DESCRIBE_MAX = 600;
+// The original per-question answer handlers, used when an unplaceable
+// interpretation falls back to a direct pick — routing stays identical
+// to a normal tap.
+const Q_HANDLER = { q1:'passportQ1Answer', q2:'passportQ2Answer', voterEntry:'voterEntryAnswer', voterQ1:'voterQ1Answer', voterAppealedRaw:'voterQ2Answer', sirQ1:'sirQ1Answer' };
+// Example stories per describe entry point. Two are deliberately
+// instructive: 'hard' lands on the unplaceable panel; 'wrong' (on
+// passport-q2) triggers the simulator's documented agent/patient flaw
+// so reviewers experience catching a wrong reading — the confirm step
+// proving its own worth.
+const EX_STORIES = {
+  'passport-q1':[
+    'Police came to my house in June but nothing moved since. I called the PSK twice. File no BN1068334517807, applied 12 March 2026',
+    'My agent said he will handle everything but his phone is switched off now',
+  ],
+  'passport-q2':[
+    'I called the regional office twice last month and visited once',
+    'Someone from the passport office called me yesterday about my file',
+  ],
+  'voter-entry':[
+    "I applied for address correction in May, it got rejected by SMS, I haven't appealed yet. Ref 123456789012",
+  ],
+  'voter-q1':[
+    "I haven't heard anything since I applied",
+  ],
+  'voter-q2':[
+    'I filed an appeal at the DM office and got no response so far',
+  ],
+  'sir-q1':[
+    "I checked the draft roll and my name isn't there. My EPIC is ABC1234567",
+  ],
+};
+function toggleDescribe(){ S.describeOpen=!S.describeOpen; S.describeErr=null; render(); }
+function describeInput(el){
+  S.describeText = el.value;
+  const c = document.getElementById('char-count');
+  if(c) c.textContent = el.value.length + ' / ' + DESCRIBE_MAX;
+}
+function exampleFill(i){
+  const stories = EX_STORIES[S.screen]||[];
+  S.describeText = stories[i]||''; S.describeErr=null; render();
+}
+function runInterpretation(screenId){
+  const text = (S.describeText||'').trim();
+  if(!text){ S.describeErr='Write a line or two first — even rough words are fine.'; render(); return; }
+  const ctx = DESCRIBE_CTX[screenId];
+  S.reading = true; S.describeErr=null; render();
+  // Simulated async: the real build awaits a model call here and fails
+  // closed to the unplaceable panel on timeout/quota/malformed output.
+  setTimeout(()=>{
+    const result = simulateInterpretation(ctx, text);
+    S.interp = {ctxScreen:screenId, engine:ctx.engine, service:ctx.service, text, ...result};
+    S.reading=false; S.interpChangeOpen={}; S.factEditIdx=null;
+    nav('interp-confirm');
+  }, 600);
+}
+function interpPick(qid, value){
+  const m = S.interp.mappings.find(x=>x.questionId===qid);
+  if(m){ m.value=value; m.changed=true; }
+  // Re-derive reachability: a changed pick can void a later mapping.
+  const known={...S.answers}; const mapped={};
+  const kept=[];
+  for(const mm of S.interp.mappings){
+    const q = DESCRIBE_CTX[S.interp.ctxScreen].chain.find(c=>c.id===mm.questionId);
+    const reach = !q.reachableIf || q.reachableIf({...known, ...mapped});
+    if(reach){ mapped[mm.questionId]=mm.value; kept.push(mm); }
+    else { S.interp.discarded.push({q, reason:'unreachable'}); }
+  }
+  S.interp.mappings = kept;
+  S.interpChangeOpen[qid]=false;
+  render();
+}
+function removeFact(i){ S.interp.facts.splice(i,1); render(); }
+function editFact(i){ S.factEditIdx=i; S.factEditVal=S.interp.facts[i].value; render(); }
+function saveFactEdit(){
+  const f=S.interp.facts[S.factEditIdx];
+  if(f && (S.factEditVal||'').trim()){ f.value=S.factEditVal.trim(); f.edited=true; }
+  S.factEditIdx=null; render();
+}
+function applyInterpretation(){
+  const it = S.interp; if(!it) return;
+  for(const m of it.mappings){
+    setAns(m.questionId, m.value);
+    // parity with the tap path: the voter playbook reads voterAppealed
+    if(m.questionId==='voterAppealedRaw'){ setAns('voterAppealed', m.value); }
+  }
+  // facts survive the apply that created them (setAns cleared the slate)
+  S.caseFacts = it.facts.slice();
+  S.appliedText = it.text;
+  S.describeText=''; S.describeOpen=false;
+  nav(routeAfterApply(it.engine));
+}
+function routeAfterApply(engine){
+  const a=S.answers;
+  if(engine==='passport'){ return a.q1 && a.q2 ? 'passport-diagnosis' : a.q1 ? 'passport-q2' : 'passport-q1'; }
+  if(engine==='voter'){
+    if(a.voterEntry==='sir') return 'sir-state';
+    if(a.voterQ1==='decision') return a.voterAppealed ? 'voter-diagnosis' : 'voter-q2';
+    if(a.voterQ1) return 'voter-diagnosis';
+    return a.voterEntry==='applied' ? 'voter-q1' : 'voter-entry';
+  }
+  return a.sirQ1 ? 'sir-diagnosis' : 'sir-q1';
+}
+// Unplaceable fallback: picking a structured option keeps the verbatim
+// facts (they passed the gate) and routes through the normal handler.
+function unplaceablePick(qid, value){
+  S.caseFacts = (S.interp && S.interp.facts || []).slice();
+  S.appliedText = S.interp ? S.interp.text : null;
+  const facts=S.caseFacts, txt=S.appliedText;
+  window[Q_HANDLER[qid]](value);      // setAns inside clears facts…
+  S.caseFacts=facts; S.appliedText=txt; // …so re-assign after (same rule as apply)
+  render();
+}
+/* ================= CHECK-IN LOOP =================
+   Spec: docs/superpowers/specs/2026-09-05-checkin-tracking-loop-design.md
+   Options are typed: 'event' (the world moved), 'action' (the user
+   attests "I did this" — the only way action-state answers change),
+   'resolved-rung' (this rung worked → deliverable question → rung
+   consumed), 'valence' (a decision arrived → accepted/rejected asked
+   before ANY routing), 'deadend' (top of the verified ladder failed).
+   Every list also gets: "Nothing yet" (first-class), the deliverable,
+   and "Something else happened" (escape hatch → re-diagnosis). */
+const DELIVERABLE_LABEL = { passport:'I got my passport!', voter:'My name is on the roll / my card arrived!', sir:'My name is on the roll — sorted!' };
+const DELIVERABLE_Q = { passport:'Did you get your passport?', voter:'Is your name / card actually in place now?', sir:'Is your name on the roll now?' };
+const RUNG_RESET = { passport:{q2:'no_followup', fOutcome:null, gOutcome:null, dpgFiled:null} };
+const CHECKIN = {
+  'state-1':{opts:[
+    {k:'event', label:'Police contacted or visited me', patch:{q1:'contacted_incomplete'}},
+    {k:'event', label:'Verification seems done, but nothing has moved since', patch:{q1:'verified_no_progress'}},
+    {k:'event', label:'The portal shows an adverse or confusing status', patch:{q1:'adverse'}},
+  ]},
+  'state-2':{opts:[
+    {k:'event', label:'Verification finished, but nothing has moved since', patch:{q1:'verified_no_progress'}},
+    {k:'event', label:'The portal shows an adverse or confusing status', patch:{q1:'adverse'}},
+    {k:'action', label:'I asked the office what was pending (call, visit, or message)', patch:{q2:'informal', fOutcome:'pending'}},
+  ]},
+  'state-3':{prepAware:true, opts:[
+    {k:'action', label:'I followed up with the Passport Office', patch:{q2:'informal', fOutcome:'pending'}},
+    {k:'event', label:'The portal shows an adverse or confusing status', patch:{q1:'adverse'}},
+  ]},
+  'state-4':{prepAware:true, opts:[
+    {k:'action', label:'I contacted the office and asked for clarification', patch:{q2:'informal', fOutcome:'pending'}},
+  ]},
+  'state-5a-p':{opts:[
+    {k:'resolved-rung', label:'They responded and things are moving again', reset:'passport'},
+    {k:'event', label:"They responded, but it did not help", patch:{fOutcome:'unhelpful'}},
+    {k:'event', label:'No response at all so far', patch:{fOutcome:'no_response'}},
+  ]},
+  'state-5a':{prepAware:true, opts:[
+    {k:'action', label:'I filed the formal grievance on CPGRAMS and have a number', patch:{q2:'formal_grievance', gOutcome:'pending'}},
+  ]},
+  'state-5b-p':{opts:[
+    {k:'resolved-rung', label:'They responded and things are moving again', reset:'passport'},
+    {k:'event', label:"They responded, but it did not help", patch:{gOutcome:'unhelpful'}},
+    {k:'event', label:'No response at all so far', patch:{gOutcome:'no_response'}},
+  ]},
+  'state-5b':{prepAware:true, opts:[
+    {k:'action', label:'I escalated to the DPG and have a reference number', patch:{dpgFiled:'yes'}},
+  ]},
+  'state-dpg-p':{opts:[
+    {k:'resolved-rung', label:'The DPG responded and things are moving again', reset:'passport'},
+    {k:'deadend', label:'The DPG responded, but it did not resolve anything'},
+  ]},
+  'v-1':{opts:[
+    {k:'event', label:'A BLO visited or contacted me', patch:{voterQ1:'blo_visited'}},
+    {k:'valence', label:'A decision arrived', rejectPatch:{voterQ1:'decision', voterAppealedRaw:'none', voterAppealed:'none'}},
+  ]},
+  'v-2':{opts:[
+    {k:'valence', label:'A decision arrived', rejectPatch:{voterQ1:'decision', voterAppealedRaw:'none', voterAppealed:'none'}},
+  ]},
+  'v-3':{prepAware:true, opts:[
+    {k:'action', label:'I filed the first appeal with the DEO/DM', patch:{voterAppealedRaw:'pending', voterAppealed:'pending'}},
+    {k:'closureq', label:'I checked — the decision was actually in my favour'},
+  ]},
+  'v-4':{opts:[
+    {k:'valence', label:'The appeal was decided', rejectPatch:{voterAppealedRaw:'decided', voterAppealed:'decided'}},
+  ]},
+  'v-5':{prepAware:true, opts:[
+    {k:'action', label:'I filed the second appeal with the state CEO', patch:{ceoAppeal:'filed'}},
+  ]},
+  'v-5-p':{opts:[
+    {k:'valence', label:'The second appeal was decided', rejectDeadend:true},
+  ]},
+  'S-1':{opts:[
+    {k:'event', label:'I got a notice asking for documents', patch:{sirQ1:'notice'}},
+  ]},
+  'S-2':{opts:[
+    {k:'event', label:'I checked — my name IS on the Draft Roll', patch:{sirQ1:'roll_present'}},
+    {k:'event', label:'I checked — my name is NOT on the Draft Roll', patch:{sirQ1:'roll_absent'}},
+  ]},
+  'S-3':{prepAware:true, opts:[
+    {k:'action', label:'I filed Form 6 with the declaration and a document', patch:{form6Filed:'yes'}},
+  ]},
+  'S-4':{prepAware:true, opts:[
+    {k:'action', label:'I submitted the requested document to the BLO/ERO', patch:{sirDocsFiled:'yes'}},
+  ]},
+  'S-6':{prepAware:true, opts:[
+    {k:'action', label:'I filed the Enumeration Form in my current constituency', patch:{sirQ1:'roll_unchecked'}},
+  ]},
+};
+function checkinOptions(c){
+  const d = currentDiagnosis(c.engineKey);
+  const cfg = (d.id && CHECKIN[d.state]) ? CHECKIN[d.state] : (d.id ? CHECKIN[d.id] : null);
+  const base = cfg ? cfg.opts.slice() : [];
+  // options come from state × prepare-step completion: with untouched
+  // steps, lead shame-free with "I haven't done this yet"
+  const prep = d.id ? PREP[d.id] : null;
+  const done = prep ? prep.steps.filter((_,i)=>S.prepChecks[i]).length : 0;
+  const list = [];
+  if(cfg && cfg.prepAware && prep && done===0){
+    list.push({k:'notdone', label:"I haven't done this yet — take me back to the steps"});
+  }
+  list.push(...base);
+  list.push({k:'nothing', label:'Nothing yet'});
+  list.push({k:'deliverable', label:DELIVERABLE_LABEL[c.engineKey]});
+  list.push({k:'else', label:'Something else happened'});
+  return {d, list};
+}
+function ciLog(kind, text){
+  const c=activeCase(); if(!c) return;
+  c.log.push({t:Date.now(), kind, text});
+  c.lastCheck=Date.now();
+  persistCases();
+}
+function ciPersistState(){
+  const c=activeCase(); if(!c) return;
+  Object.assign(c, caseSnapshot(c.engineKey, c.serviceLabel, c.returnScreen));
+  persistCases();
+}
+function openCheckin(id){
+  if(!loadCase(id)) return;
+  S.ciStage=null; S.ciPending=null; S.ciReassure=false; S.ciJustUpdated=false;
+  nav('checkin');
+}
+function ciChoose(i){
+  const c=activeCase(); const {list}=checkinOptions(c);
+  const opt=list[i]; S.ciPending=opt; S.ciReassure=false;
+  if(opt.k==='nothing'){
+    // first-class: log, restate the verified answer, never imply lateness
+    const prev=c.log[c.log.length-1];
+    S.ciConsecutive = prev && prev.kind==='checked';
+    ciLog('checked','Checked in — no change reported');
+    S.ciReassure=true; S.ciPending=null; render(); return;
+  }
+  if(opt.k==='notdone'){ nav(c.engineKey+'-prepare'); return; }
+  if(opt.k==='else'){
+    ciLog('checked','Reported something outside the listed options — re-diagnosing');
+    const first={passport:'passport-q1', voter:'voter-entry', sir:'sir-q1'}[c.engineKey];
+    nav(first); return;
+  }
+  if(opt.k==='valence'){ S.ciStage='valence'; render(); return; }
+  if(opt.k==='closureq' || opt.k==='resolved-rung' || opt.k==='deliverable'){ S.ciStage='closureq'; render(); return; }
+  S.ciStage='confirm'; render();
+}
+function ciSnapshotNow(){
+  S.ciSnapshot = {answers:{...S.answers}, prepChecks:{...S.prepChecks},
+    caseJson: JSON.stringify(activeCase())};
+}
+function ciApplyPatch(opt, reportLabel){
+  ciSnapshotNow();
+  const c=activeCase();
+  const before = currentDiagnosis(c.engineKey);
+  ciLog('reported', reportLabel);
+  updateAns(opt.patch||{});
+  const after = currentDiagnosis(c.engineKey);
+  if(before.id!==after.id || before.state!==after.state){
+    S.prepChecks={};                     // the plan changed; the log kept the work
+    ciLog('diagnosed', after.label);
+  }
+  ciPersistState();
+  S.ciJustUpdated=true; S.ciStage=null; S.ciPending=null;
+  nav(c.engineKey+'-diagnosis');
+}
+function ciConfirm(){
+  const opt=S.ciPending; if(!opt) return;
+  if(opt.k==='deadend'){
+    ciSnapshotNow(); ciLog('reported', opt.label);
+    S.ciStage=null; S.ciPending=null; nav('dead-end'); return;
+  }
+  ciApplyPatch(opt, opt.label);
+}
+function ciValence(accepted){
+  const opt=S.ciPending;
+  if(accepted){ S.ciStage='closureq'; render(); return; }
+  if(opt.rejectDeadend){
+    ciSnapshotNow(); ciLog('reported', opt.label+' — rejected');
+    S.ciStage=null; S.ciPending=null; nav('dead-end'); return;
+  }
+  ciApplyPatch({...opt, patch:opt.rejectPatch}, opt.label+' — rejected');
+}
+function ciClosureAnswer(gotIt){
+  const opt=S.ciPending; const c=activeCase();
+  if(gotIt){
+    ciSnapshotNow();
+    ciLog('reported', opt.k==='deliverable' ? opt.label : opt.label+' — and the deliverable is in hand');
+    c.outcome='deliverable_received'; c.closedAt=Date.now();
+    c.log.push({t:Date.now(), kind:'closed', text:'Case closed — deliverable received'});
+    persistCases();
+    S.ciStage=null; S.ciPending=null; nav('case-closed'); return;
+  }
+  // rung resolved but deliverable still pending → rung consumed, back to
+  // waiting on the world; or a favourable decision still awaiting the card
+  if(opt.k==='resolved-rung' && RUNG_RESET[c.engineKey]){
+    ciApplyPatch({...opt, patch:RUNG_RESET[c.engineKey]}, opt.label+' — deliverable still pending'); return;
+  }
+  ciLog('reported', opt.label+' — deliverable still pending');
+  S.ciReassure=true; S.ciStage=null; S.ciPending=null; render();
+}
+function ciUndo(){
+  const snap=S.ciSnapshot; if(!snap) return;
+  S.answers={...snap.answers}; S.prepChecks={...snap.prepChecks};
+  const c=activeCase();
+  if(c){ const restored=JSON.parse(snap.caseJson); Object.assign(c, restored); c.log=restored.log; persistCases(); }
+  S.ciSnapshot=null; S.ciJustUpdated=false;
+  render();
+}
+function setRemind(id, val){
+  const c=S.savedCases.find(x=>x.id===id); if(!c) return;
+  c.remindAt = val || null; persistCases(); render();
+}
+function closeUnresolved(){
+  const c=activeCase(); if(!c) return;
+  c.outcome='closed_unresolved'; c.closedAt=Date.now();
+  c.log.push({t:Date.now(), kind:'closed', text:'Closed as unresolved — every verified step used'});
+  persistCases(); restart();
+}
+function fmtDay(t){ return new Date(t).toLocaleDateString('en-IN',{day:'numeric',month:'short'}); }
+function daysAgo(t){ const d=Math.floor((Date.now()-t)/86400000); return d<=0?'today':d===1?'yesterday':d+' days ago'; }
+// Journey log: milestones apart from checks; consecutive no-change
+// checks collapse; entries labeled by author; never an official record.
+function renderLog(c){
+  const entries=[]; let run=null;
+  for(const e of c.log){
+    if(e.kind==='checked' && /no change/.test(e.text)){
+      if(run){ run.n++; run.to=e.t; } else { run={collapse:true, n:1, from:e.t, to:e.t}; }
+    } else {
+      if(run){ entries.push(run); run=null; }
+      entries.push(e);
+    }
+  }
+  if(run) entries.push(run);
+  const shown = S.logOpen[c.id] ? entries : entries.slice(-3);
+  const line = e => e.collapse
+    ? `<div class="log-e log-check">Checked ${e.n} time${e.n>1?'s':''}, ${fmtDay(e.from)}${e.n>1?' – '+fmtDay(e.to):''} — no change reported</div>`
+    : `<div class="log-e ${e.kind==='diagnosed'||e.kind==='closed'||e.kind==='reopened'?'log-mile':'log-check'}"><span class="log-d">${fmtDay(e.t)}</span> <span class="log-who">${e.kind==='reported'?'You reported:':e.kind==='diagnosed'?'NextMove:':e.kind==='closed'?'':e.kind==='reopened'?'':'—'}</span> ${e.text}</div>`;
+  return `<div class="journey">
+    ${entries.length>3 && !S.logOpen[c.id] ? `<button class="read-change" onclick="S.logOpen['${c.id}']=true; render();">Show all ${entries.length} entries</button>` : ''}
+    ${shown.map(line).join('')}
+    <div class="log-note">Your journey record — not an official document.</div>
+  </div>`;
+}
+function renderCheckin(){
+  const c=activeCase();
+  if(!c){ restart(); return renderHome(); }
+  const {d, list}=checkinOptions(c);
+  const opt=S.ciPending;
+  let panel='';
+  if(S.ciStage==='confirm' && opt){
+    panel=`<div class="ci-panel">
+      <p class="small" style="margin:0 0 12px;"><b>Record this?</b> It updates your casefile${opt.k==='action'||opt.k==='event' ? ' and may change your diagnosis' : ''}.</p>
+      <div class="inline-explain-actions" style="margin:0;">
+        <button class="btn btn-primary" style="width:auto;" onclick="ciConfirm()">Yes, record it</button>
+        <button class="btn btn-secondary" onclick="S.ciStage=null; S.ciPending=null; render();">Cancel</button>
+      </div>
+    </div>`;
+  } else if(S.ciStage==='valence' && opt){
+    panel=`<div class="ci-panel">
+      <p class="small" style="margin:0 0 12px;"><b>Which way did it go?</b></p>
+      <div class="inline-explain-actions" style="margin:0;">
+        <button class="btn btn-secondary" onclick="ciValence(true)">In my favour</button>
+        <button class="btn btn-secondary" onclick="ciValence(false)">Against me / rejected</button>
+        <button class="btn-ghost" style="width:auto; margin:0;" onclick="S.ciStage=null; S.ciPending=null; render();">Cancel</button>
+      </div>
+    </div>`;
+  } else if(S.ciStage==='closureq' && opt){
+    panel=`<div class="ci-panel">
+      <p class="small" style="margin:0 0 12px;"><b>${DELIVERABLE_Q[c.engineKey]}</b></p>
+      <div class="inline-explain-actions" style="margin:0;">
+        <button class="btn btn-primary" style="width:auto;" onclick="ciClosureAnswer(true)">Yes — it's done</button>
+        <button class="btn btn-secondary" onclick="ciClosureAnswer(false)">Not yet</button>
+      </div>
+    </div>`;
+  } else if(S.ciReassure){
+    panel=`<div class="ci-panel reassure">
+      <p class="small" style="margin:0 0 10px;"><b>Nothing changing is not a bad sign here.</b></p>
+      ${d.howLong ? `<p class="small" style="margin:0 0 8px;">${d.howLong}</p>` : ''}
+      ${d.expectNext ? `<p class="small" style="margin:0;">${d.expectNext}</p>` : ''}
+      ${S.ciConsecutive ? `<p class="small" style="margin:10px 0 0; color:var(--ink-faint);">This stage doesn't change day to day — checking more often won't move it.</p>` : ''}
+    </div>`;
+  }
+  return `${topbar(true,false)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${crumbs([c.serviceLabel + ' · ' + d.label, 'Add an update'], SERVICE_SQ[c.serviceLabel]||null)}
+    <h1 class="headline">What's happened since?</h1>
+    <p class="lede">Pick what actually happened — your casefile and diagnosis update from it. Nothing here guesses: if none of these fit, "Something else happened" re-checks your case properly.</p>
+    ${renderLog(c)}
+    `, `
+    ${panel}
+    <div class="answers" style="margin-top:${panel?'18px':'6px'};">
+      ${list.map((o,i)=>`<button class="arow" onclick="ciChoose(${i})">
+        <span class="arow-check" style="${o.k==='deliverable'?'background:var(--butter); border-color:var(--ink);':''}"></span>
+        <span class="arow-body"><div class="arow-label">${o.label}</div></span>
+        <span class="arow-chevron">${ICONS.chevron}</span>
+      </button>`).join('')}
+    </div>
+    <div class="remind-row">
+      <span class="small">Want to check back on a date of your choosing?</span>
+      <input type="date" class="remind-input" value="${c.remindAt||''}" onchange="setRemind('${c.id}', this.value)" aria-label="Check-back date">
+    </div>
+    ${c.remindAt ? `<p class="small" style="margin-top:6px;">Your own reminder (copy it to your phone): <b>Check NextMove case — ${c.remindAt}</b></p>` : ''}
+    `)}
+  </div>`;
+}
+function renderDeadEnd(){
+  const c=activeCase();
+  if(!c){ restart(); return renderHome(); }
+  return `${topbar(true,false)}
+  <div class="stage screen">
+    <div class="narrow">
+      ${crumbs([c.serviceLabel, 'End of the verified ladder'], SERVICE_SQ[c.serviceLabel]||null)}
+      <h2 class="headline">You've used every step this playbook can verify.</h2>
+      <p class="lede">That's a hard place to be, and NextMove won't pretend otherwise. There is no further official rung in the verified sources — and inventing one would be worse than saying so. What you've built still matters: every filing, number, and date in your journey record is exactly what any lawyer, RTI request, or public representative would ask for first.</p>
+      ${renderLog(c)}
+      <button class="btn btn-secondary btn-block" onclick="restart()">Keep the case open</button>
+      <button class="btn-ghost" onclick="closeUnresolved()">Close it as unresolved</button>
+    </div>
+  </div>`;
+}
+function renderCaseClosed(){
+  const c=S.savedCases.find(x=>x.outcome==='deliverable_received' && x.id===S.activeCaseId) || activeCase();
+  return `${topbar(false,false)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${gems('reveal')}
+    ${crumbs(['Case closed'], 'sq-butter')}
+    <h1 class="headline">You <span class="mark">got it</span>.</h1>
+    <p class="lede">The thing you were waiting for is in your hands. That's the whole point of all of this — the diagnosis, the letters, the waiting. NextMove's part is done; the casefile and its journey stay under "Closed" on Home if you ever need the record.</p>
+    `, `
+    ${c ? renderLog(c) : ''}
+    <button class="btn btn-primary btn-block" onclick="restart()">Back to Home <span class="btn-arrow">${ICONS.arrow}</span></button>
+    `)}
+  </div>`;
+}
+
+// The entry block under a question screen's answer list.
+function describeBlock(screenId){
+  if(!DESCRIBE_CTX[screenId]) return '';
+  const stories = EX_STORIES[screenId]||[];
+  return `<div class="describe-entry">
+    <button class="describe-row" onclick="toggleDescribe()" aria-expanded="${!!S.describeOpen}">
+      <span class="dr-icon">${ICONS.pen}</span>
+      <span class="dr-label">Not sure which fits? <b>Describe it instead.</b></span>
+    </button>
+    ${S.describeOpen ? `<div class="describe-box">
+      <textarea class="describe-ta" maxlength="${DESCRIBE_MAX}" placeholder="e.g. Police came to my house in June, I called the office twice since, nothing has moved" oninput="describeInput(this)" aria-label="Describe your situation">${S.describeText||''}</textarea>
+      <div class="describe-meta">
+        <span class="lang-note">English works best here — the real product will understand Hindi and Hinglish too.</span>
+        <span class="char-count" id="char-count">${(S.describeText||'').length} / ${DESCRIBE_MAX}</span>
+      </div>
+      ${stories.length ? `<div class="ex-chips">${stories.map((s,i)=>`<button class="ex-chip" onclick="exampleFill(${i})">"${s.length>52 ? s.slice(0,52)+'…' : s}"</button>`).join('')}</div>` : ''}
+      ${S.describeErr ? `<div class="describe-err">${S.describeErr}</div>` : ''}
+      <div class="describe-actions">
+        <button class="btn btn-primary btn-block" style="margin-top:0;" ${S.reading?'disabled':''} onclick="runInterpretation('${screenId}')">${S.reading ? 'Reading…' : `Read my situation <span class="btn-arrow">${ICONS.arrow}</span>`}</button>
+      </div>
+    </div>` : ''}
+  </div>`;
+}
+function factChips(facts){
+  if(!facts.length) return '';
+  return `<div class="nm-k" style="margin:20px 0 0;">What we picked up</div>
+  <div class="fact-chips">${facts.map((f,i)=> S.factEditIdx===i
+    ? `<span class="fchip fchip-edit"><span class="fk">${f.label}</span><input value="${S.factEditVal}" oninput="S.factEditVal=this.value" onkeydown="if(event.key==='Enter')saveFactEdit()" aria-label="Edit ${f.label}"><button onclick="saveFactEdit()" aria-label="Save ${f.label}">✓</button></span>`
+    : `<span class="fchip"><span class="fk">${f.label}</span><span class="fv">${f.value}</span><button onclick="editFact(${i})" aria-label="Edit ${f.label} ${f.value}">✎</button><button onclick="removeFact(${i})" aria-label="Remove ${f.label} ${f.value}">✕</button></span>`
+  ).join('')}</div>
+  ${facts.some(f=>f.refType==='unknown') ? `<p class="small" style="margin-top:8px;">A number NextMove couldn't recognize stays listed here but is never used to fill anything.</p>` : ''}`;
+}
+function renderInterpConfirm(){
+  const it = S.interp;
+  if(!it){ restart(); return renderHome(); }
+  const ctx = DESCRIBE_CTX[it.ctxScreen];
+  const sq = SERVICE_SQ[it.service] || null;
+  const youWrote = `<div class="youwrote"><div class="nm-k">You wrote</div><div class="youwrote-text">"${it.text}"</div></div>`;
+  const discardNote = it.discarded.length ? `<p class="small" style="margin-top:14px;">We also read something about "${it.discarded[0].q.label.toLowerCase()}" but set it aside — it only applies on a different path.</p>` : '';
+  if(it.unplaceable){
+    const q0 = ctx.chain.find(c=>!S.answers[c.id]) || ctx.chain[0];
+    const opts = q0.opts();
+    return `${topbar(true,false)}
+    <div class="stage screen">
+      ${splitCols(`
+      ${crumbs([it.service,'How we read it'], sq)}
+      <h1 class="headline">We couldn't safely place this.</h1>
+      <p class="lede">That's not a problem with what you wrote — NextMove only matches words against its verified categories, and it couldn't do that safely here. Rather than guess, pick the closest option yourself.</p>
+      ${youWrote}
+      ${discardNote}
+      `, `
+      <div class="unplace-panel">
+        <div class="read-q">${q0.label}</div>
+        <div class="read-opts" style="border-top:none; margin-top:4px;">
+          ${Object.entries(opts).map(([v,l])=>`<button class="ropt" onclick="unplaceablePick('${q0.id}','${v}')"><span class="ropt-dot"></span><span>${l}</span></button>`).join('')}
+        </div>
+      </div>
+      ${factChips(it.facts)}
+      <div class="demo-hint" style="margin-top:20px;">Here, only a few example phrasings are understood. The real build uses an AI model, which will sometimes get things wrong — that is why this check step exists.</div>
+      `)}
+    </div>`;
+  }
+  const cards = it.mappings.map((m)=>{
+    const q = ctx.chain.find(c=>c.id===m.questionId);
+    const opts = q.opts();
+    const seen = q.id===ctx.chain[0].id; // the screen they typed on — they saw its options
+    if(seen && !S.interpChangeOpen[q.id]){
+      return `<div class="read-card">
+        <div class="read-q">${q.label}</div>
+        <div class="read-pick">${opts[m.value]}</div>
+        ${m.changed ? '' : `<div class="span-quote">"${m.span}"</div>`}
+        <button class="read-change" onclick="S.interpChangeOpen['${q.id}']=true; render();" aria-expanded="false">Change</button>
+      </div>`;
+    }
+    // never-seen questions (and open Change): the full option list,
+    // pre-selected — no lone-label anchoring.
+    return `<div class="read-card">
+      <div class="read-q">${q.label}</div>
+      ${m.changed ? '' : `<div class="span-quote">"${m.span}"</div>`}
+      <div class="read-opts">
+        ${Object.entries(opts).map(([v,l])=>`<button class="ropt ${m.value===v?'picked':''}" onclick="interpPick('${q.id}','${v}')" aria-pressed="${m.value===v}"><span class="ropt-dot"></span><span>${l}</span></button>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+  return `${topbar(true,false)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${crumbs([it.service,'How we read it'], sq)}
+    <h1 class="headline">Here's how we read it.</h1>
+    <p class="interp-frame">AI matched your words to NextMove's fixed categories. It cannot change what happens next — the verified playbook does that. Please check the matches below.</p>
+    ${youWrote}
+    ${discardNote}
+    `, `
+    ${cards}
+    ${factChips(it.facts)}
+    <button class="btn btn-primary btn-block" onclick="applyInterpretation()">Use these answers <span class="btn-arrow">${ICONS.arrow}</span></button>
+    <button class="btn-ghost" onclick="back()">I'll answer the questions myself instead</button>
+    <div class="demo-hint" style="margin-top:14px;">Here, only a few example phrasings are understood. The real build uses an AI model, which will sometimes get things wrong — that is why this check step exists.</div>
+    `)}
+  </div>`;
+}
+
+/* ================= SCREENS ================= */
+function caseCard(c){
+  const open = c.outcome==='still_open';
+  return `<div class="saved-card ${open?'':'closed'}">
+      <div class="saved-body">
+        <div class="saved-kicker"><span class="crumb-sq ${SERVICE_SQ[c.serviceLabel]||'sq-butter'}"></span>${c.serviceLabel} · ${open ? 'Saved '+fmtDay(c.savedAt) : (c.outcome==='deliverable_received'?'Closed — got it':'Closed — unresolved')}</div>
+        <div class="saved-title">${c.stateLabel}</div>
+        ${open && c.whatShort ? `<div class="saved-next">Next: ${c.whatShort}</div>` : ''}
+        <div class="saved-meta">
+          <span class="stamp mini ${stampClass(c.rec)}">${stampLabel(c.rec)}</span>
+          ${open && c.stepsTotal ? `<span class="saved-steps">${c.stepsDone} of ${c.stepsTotal} steps done</span>` : ''}
+          ${open && c.lastCheck ? `<span class="saved-steps">last update ${daysAgo(c.lastCheck)}</span>` : ''}
+          ${open && c.remindAt ? `<span class="saved-steps">check back ${c.remindAt}</span>` : ''}
+        </div>
+        ${(c.log||[]).length>1 || S.logOpen[c.id] ? renderLog(c) : ''}
+      </div>
+      <div class="saved-actions">
+        ${S.removeConfirm===c.id
+          ? `<span class="restart-confirm">Remove this case and its history?
+              <button class="yes" onclick="removeSaved('${c.id}')">Yes</button>
+              <button class="no" onclick="S.removeConfirm=null; render();">Cancel</button></span>`
+          : open
+            ? `<button class="saved-continue" onclick="openCheckin('${c.id}')">Add an update ${ICONS.chevron}</button>
+               <button class="saved-remove" onclick="continueSaved('${c.id}')">Open</button>
+               <button class="saved-remove" onclick="S.removeConfirm='${c.id}'; render();">Remove</button>`
+            : `<button class="saved-remove" onclick="reopenCase('${c.id}')">This came back</button>
+               <button class="saved-remove" onclick="S.removeConfirm='${c.id}'; render();">Remove</button>`}
+      </div>
+    </div>`;
+}
+function renderHome(){
+  const open = S.savedCases.filter(c=>c.outcome==='still_open');
+  const closed = S.savedCases.filter(c=>c.outcome!=='still_open');
+  const savedCard = (open.length||closed.length) ? `
+    ${open.length ? `<p class="list-lead">Your casefile${open.length>1?'s':''}</p>${open.map(caseCard).join('')}` : ''}
+    ${closed.length ? `<p class="list-lead" style="color:var(--ink-soft); font-size:16px;">Closed</p>${closed.map(caseCard).join('')}` : ''}
+  ` : '';
+  return `${topbar(false,false)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${gems('hero')}
+    <h1 class="hero-h1">Know what's <span class="mark">holding things up</span>.<br>Know what to do next.</h1>
+    <p class="hero-promise">When a government process goes quiet, NextMove helps you understand what's happening and what to do next.</p>
+    `, `
+    ${savedCard}
+    <p class="list-lead">What's stuck?</p>
+    <div class="services">
+      <button class="svc" onclick="nav('passport-guardrail')">
+        <span class="svc-icon ic-passport">${ICONS.passport}</span>
+        <span class="svc-body"><div class="svc-title">Passport</div><div class="svc-sub">Application or police verification</div></span>
+        <span class="svc-chevron">${ICONS.chevron}</span>
+      </button>
+      <button class="svc" onclick="nav('voter-entry')">
+        <span class="svc-icon ic-voter">${ICONS.voter}</span>
+        <span class="svc-body"><div class="svc-title">Voter Services</div><div class="svc-sub">Registration, correction, verification, or SIR</div></span>
+        <span class="svc-chevron">${ICONS.chevron}</span>
+      </button>
+      <button class="svc disabled" disabled>
+        <span class="svc-icon ic-income">${ICONS.certificate}</span>
+        <span class="svc-body"><div class="svc-title">Income Certificate</div></span>
+        <span class="svc-tag">Coming Soon</span>
+      </button>
+    </div>
+    `)}
+  </div>`;
+}
+
+/* ---- Passport ---- */
+function renderPassportGuardrail(){
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${phaseEyebrow('Passport')}
+    <h1 class="headline">Already received your passport?</h1>
+    <p class="lede">This version of NextMove is designed for applications where the passport hasn't been issued yet. Still waiting on yours? It's two quick questions from here to your diagnosis.</p>
+    `, `
+    <div class="answers">
+      ${answerRow('no',{key:'guardrail',onSelect:'guardrailAnswer'},'No — still waiting on it')}
+      ${answerRow('yes',{key:'guardrail',onSelect:'guardrailAnswer'},'Yes — I already have it')}
+    </div>
+    `)}
+  </div>`;
+}
+function guardrailAnswer(v){ setAns('guardrail',v); if(v==='yes'){ nav('passport-outofscope'); } else { nav('passport-q1'); } }
+function renderPassportOutOfScope(){
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    <div class="narrow">
+      <div class="banner">
+        <p class="small" style="margin:0;">This version of NextMove is designed for applications where the passport hasn't been issued yet — since yours has already arrived, there's nothing here for NextMove to diagnose.</p>
+      </div>
+      <button class="btn btn-secondary" onclick="restart()">Back to Home</button>
+    </div>
+  </div>`;
+}
+const PASSPORT_Q1_LABELS = {
+  no_contact:"I haven't heard anything about police verification yet",
+  contacted_incomplete:"Someone from the police contacted me, but it isn't finished",
+  verified_no_progress:"I think verification is done, but nothing's changed since",
+  adverse:'I saw something on the portal that looks negative or confusing',
+};
+const PASSPORT_Q2_LABELS = { no_followup:'No, not yet', informal:'Yes, informally', formal_grievance:'Yes, I filed a formal grievance' };
+function renderPassportQ1(){
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${phaseEyebrow('Passport','Understanding your case')}
+    <h1 class="headline">What's happening with your application?</h1>
+    <p class="lede">Don't worry if you're not sure. Pick the closest option.</p>
+    `, `
+    <div class="answers">
+      ${Object.entries(PASSPORT_Q1_LABELS).map(([v,l])=>answerRow(v,{key:'q1',onSelect:'passportQ1Answer'},l)).join('')}
+      ${answerRow('not_sure',{key:'q1',onSelect:'passportQ1Answer'},"I'm not sure",'Show me how to find out')}
+    </div>
+    ${describeBlock('passport-q1')}
+    `)}
+  </div>`;
+}
+function passportQ1Answer(v){
+  // Locked behavior (PRD FR-22/AC-8): a genuinely changed Q1 answer clears
+  // the previously-given Q2 answer, so a stale follow-up answer belonging
+  // to a different case-stage can never carry into a new diagnosis.
+  if(S.answers.q1 !== v){ delete S.answers.q2; }
+  setAns('q1',v);
+  if(v==='not_sure'){ nav('passport-recovery'); } else { nav('passport-q2'); }
+}
+function renderPassportRecovery(){
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${phaseEyebrow('Passport')}
+    <h2 class="headline">Let's find your status a different way.</h2>
+    `, `
+    <div class="answers">
+      ${answerRow('paste',{key:'recovery',onSelect:'recoveryChoice'},'Paste your status text',"I'll try to match it to a known stage")}
+      ${answerRow('show',{key:'recovery',onSelect:'recoveryChoice'},'Show me where to find my status')}
+      ${answerRow('safest',{key:'recovery',onSelect:'recoveryChoice'},'Tell me the safest thing to do now')}
+    </div>
+    `)}
+  </div>`;
+}
+function recoveryChoice(v){
+  if(v==='paste'){ nav('passport-recovery-paste'); }
+  else if(v==='show'){ nav('passport-recovery-show'); }
+  else {
+    // "Tell me the safest thing to do now" — q1 is deliberately left as
+    // 'not_sure' rather than overwritten with a sentinel. 'not_sure' matches
+    // no passportPlaybook rule condition, so evaluate() already falls
+    // through to the UNCLASSIFIED fallback on its own — no separate
+    // "recovery_safest" value is needed, and the real given answer ("I'm
+    // not sure") stays intact for the trust disclosure to show honestly.
+    setAns('recoveryAskedSafest', 'yes');
+    nav('passport-diagnosis');
+  }
+}
+// A very small, explicit, exact-match set of example status phrases —
+// deliberately not loose keyword matching. Fixed 2026-09-04: the previous
+// version matched on the bare substring "verif", which meant a status like
+// "verification completed" and one like "verification incomplete" both hit
+// the same branch — a real misclassification risk. Anything that isn't an
+// exact match against one of these three examples resolves to UNCLASSIFIED
+// (q1 stays 'not_sure') rather than guessing. "If we don't know, we don't
+// guess" — matching more phrases "intelligently" is not a goal here.
+const PASTE_MATCH_EXAMPLES = [
+  { text:'police verification report has been received', q1:'verified_no_progress' },
+  { text:'passport has been dispatched', outOfScope:true },
+  { text:'application has adverse report', q1:'adverse' },
+];
+function normalizePasted(t){ return (t||'').trim().toLowerCase().replace(/\s+/g,' '); }
+function pasteExampleFill(text){ S.recoveryText = text; render(); }
+function renderPassportRecoveryPaste(){
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${phaseEyebrow('Passport','Recovery')}
+    <h2 class="headline">Paste the status text you see.</h2>
+    <p class="lede">NextMove only matches a small set of known example phrases exactly — anything else is treated as unknown rather than guessed. Try one of these, or paste your own:</p>
+    `, `
+    <div class="inline-explain-actions" style="margin:0 0 16px;">
+      ${PASTE_MATCH_EXAMPLES.map(e=>`<button class="btn btn-secondary" onclick="pasteExampleFill('${e.text.replace(/'/g,"\\'")}')" style="text-transform:capitalize;">"${e.text}"</button>`).join('')}
+    </div>
+    <textarea class="field-input" placeholder="e.g. Police verification report has been received" oninput="S.recoveryText=this.value">${S.recoveryText||''}</textarea>
+    <button class="btn btn-primary btn-block" onclick="pasteMatch()">Continue <span class="btn-arrow">${ICONS.arrow}</span></button>
+    `)}
+  </div>`;
+}
+function pasteMatch(){
+  const t = normalizePasted(S.recoveryText);
+  const match = PASTE_MATCH_EXAMPLES.find(e=>e.text===t);
+  setAns('recoveryPastedText', S.recoveryText||'');
+  if(!match){ nav('passport-diagnosis'); return; } // no exact match → stays 'not_sure' → UNCLASSIFIED
+  if(match.outOfScope){ setAns('guardrail','yes'); nav('passport-outofscope'); return; }
+  setAns('q1', match.q1);
+  nav('passport-q2');
+}
+function renderPassportRecoveryShow(){
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    <div class="narrow">
+      ${phaseEyebrow('Passport','Recovery')}
+      <h2 class="headline">Where to find your status</h2>
+      <p class="lede">Log in to the Passport Seva portal and open <b>Track Application Status</b> using your File Number or Application Reference Number (ARN).</p>
+      <button class="btn btn-primary btn-block" onclick="nav('passport-q1', {replace:true})">Okay, back to the question <span class="btn-arrow">${ICONS.arrow}</span></button>
+    </div>
+  </div>`;
+}
+function renderPassportQ2(){
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${phaseEyebrow('Passport','Last question')}
+    <h1 class="headline">Have you already tried to follow up on this?</h1>
+    `, `
+    <div class="answers">
+      ${answerRow('no_followup',{key:'q2',onSelect:'passportQ2Answer'},'No, not yet','Most common answer')}
+      ${answerRow('informal',{key:'q2',onSelect:'passportQ2Answer'},'Yes, informally','Call, visit, or portal message')}
+      ${answerRow('formal_grievance',{key:'q2',onSelect:'passportQ2Answer'},'Yes, I filed a formal grievance')}
+    </div>
+    ${describeBlock('passport-q2')}
+    `)}
+  </div>`;
+}
+function passportQ2Answer(v){ setAns('q2',v); nav('passport-diagnosis'); }
+
+function renderPassportDiagnosis(){
+  const d = evaluate(passportPlaybook, S.answers);
+  const labels = {...labelMap('q1', {...PASSPORT_Q1_LABELS, not_sure:"I'm not sure"}), ...labelMap('q2', PASSPORT_Q2_LABELS)};
+  let extra = null;
+  if(S.answers.recoveryPastedText){ extra = `Pasted status text: "${S.answers.recoveryPastedText}"`; }
+  else if(S.answers.recoveryAskedSafest){ extra = 'Asked for the safest thing to do now'; }
+  return renderDiagnosis('Passport', d, PASSPORT_STEPS_FOR(d), labels, 'passport', null, extra);
+}
+function PASSPORT_STEPS_FOR(d){
+  if(d.state==='6') return null;
+  const idx = {'1':2,'2':2,'4':2,'3':3}[d.state] ?? null;
+  if(idx===null) return null;
+  return {steps:['Application','Appointment','Police verification','Processing'], current:idx};
+}
+
+/* ---- Voter Services ---- */
+function renderVoterEntry(){
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${phaseEyebrow('Voter Services')}
+    <h1 class="headline">What's going on with your voter registration?</h1>
+    `, `
+    <div class="answers">
+      ${answerRow('applied',{key:'voterEntry',onSelect:'voterEntryAnswer'},"I applied for something and I'm waiting to hear back",'New registration, correction, or a replacement card')}
+      ${answerRow('sir',{key:'voterEntry',onSelect:'voterEntryAnswer'},'This is about SIR','The Special Intensive Revision')}
+      ${answerRow('notsure',{key:'voterEntry',onSelect:'voterEntryAnswer'},"I'm not sure")}
+    </div>
+    ${S.answers.voterEntryExplain ? `<div class="inline-explain">
+      <b>Regular application</b> — you filled a form (new registration, address change, name correction, replacement card) and are waiting on a decision.<br><br>
+      <b>SIR</b> — a special, area-wide re-check of the entire electoral roll happening in batches by state, separate from any individual application you may have also filed.
+      <div class="inline-explain-actions">
+        <button class="btn btn-secondary" onclick="voterEntryAnswer('applied')">It's a regular application</button>
+        <button class="btn btn-secondary" onclick="voterEntryAnswer('sir')">It's about SIR</button>
+      </div>
+    </div>` : ''}
+    ${describeBlock('voter-entry')}
+    `)}
+  </div>`;
+}
+function voterEntryAnswer(v){
+  if(v==='notsure'){ S.answers.voterEntryExplain=true; render(); return; }
+  if(v==='sir'){ nav('sir-state'); } else { nav('voter-q1'); }
+}
+const VOTER_Q1_LABELS = {
+  no_word:"I haven't heard anything yet",
+  blo_visited:"A BLO visited or contacted me, but I still don't have a result",
+  decision:"I got a decision but don't understand it, or it wasn't what I expected",
+};
+function renderVoterQ1(){
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${phaseEyebrow('Voter Services','Understanding your case')}
+    <h1 class="headline">What's the situation with your application?</h1>
+    `, `
+    <div class="answers">
+      ${Object.entries(VOTER_Q1_LABELS).map(([v,l])=>answerRow(v,{key:'voterQ1',onSelect:'voterQ1Answer'},l)).join('')}
+      ${answerRow('notsure',{key:'voterQ1',onSelect:'voterQ1Answer'},"I'm not sure")}
+    </div>
+    ${describeBlock('voter-q1')}
+    `)}
+  </div>`;
+}
+function voterQ1Answer(v){
+  // A changed Q1 answer clears the (Q1-dependent) appeal follow-up answer —
+  // same principle as Passport's Q1→Q2 reset, applied here since
+  // voterAppealed only makes sense in the context of the "decision" branch.
+  // Compared against the raw stored value, not the post-transform one, so
+  // repeatedly re-picking "not sure" doesn't look like a change each time.
+  const staysOnDecision = S.answers.voterQ1==='decision' && v==='decision';
+  if(!staysOnDecision){ delete S.answers.voterAppealed; delete S.answers.voterAppealedRaw; }
+  setAns('voterQ1', v==='notsure' ? 'unclassified' : v);
+  if(v==='decision'){ nav('voter-q2'); }
+  else { nav('voter-diagnosis'); }
+}
+// Appeal logic, corrected 2026-09-04: the previous version asked a plain
+// yes/no "have you already appealed?" and mapped "yes" straight to
+// ESCALATE ("file a formal appeal") — asking the user to repeat something
+// they'd just said they'd already done. The real official structure
+// (Final-ER-FAQ Q34) is two-tier, so the meaningful distinction is whether
+// an already-filed first appeal is still pending or has been decided.
+const VOTER_APPEAL_LABELS = {
+  none:'No, not yet',
+  pending:"Yes, and I'm still waiting to hear back",
+  decided:'Yes, and I received a decision on that appeal too',
+  notsure:"I'm not sure",
+};
+function renderVoterQ2(){
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${phaseEyebrow('Voter Services','Last question')}
+    <h1 class="headline">Have you already appealed this decision?</h1>
+    `, `
+    <div class="answers">
+      ${Object.entries(VOTER_APPEAL_LABELS).map(([v,l])=>answerRow(v,{key:'voterAppealedRaw',onSelect:'voterQ2Answer'},l)).join('')}
+    </div>
+    ${describeBlock('voter-q2')}
+    `)}
+  </div>`;
+}
+function voterQ2Answer(v){
+  setAns('voterAppealedRaw', v);
+  setAns('voterAppealed', v==='notsure' ? 'unclassified' : v);
+  nav('voter-diagnosis');
+}
+function renderVoterDiagnosis(){
+  const isUnclassified = S.answers.voterQ1==='unclassified' || S.answers.voterAppealed==='unclassified';
+  const a = isUnclassified ? {} : S.answers;
+  const d = isUnclassified ? {...voterPlaybook.fallback, matchedAnswers:S.answers} : evaluate(voterPlaybook, a);
+  const labels = {
+    ...labelMap('voterQ1', {...VOTER_Q1_LABELS, unclassified:"I'm not sure"}),
+    ...labelMap('voterAppealedRaw', VOTER_APPEAL_LABELS),
+  };
+  return renderDiagnosis('Voter Services', d, null, labels, 'voter');
+}
+
+/* ---- SIR ---- */
+function renderSirState(){
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${phaseEyebrow('Voter Services','SIR')}
+    <h1 class="headline">Which state is this for?</h1>
+    <p class="lede">SIR's document list and appeal rules are the same nationally — but the current phase and dates differ by state, so NextMove checks yours before saying "wait" or "act now."</p>
+    `, `
+    <div class="answers">
+      ${Object.entries(SIR_STATES).map(([k,s])=>answerRow(k,{key:'sirState',onSelect:'sirStateAnswer'},s.name)).join('')}
+    </div>
+    `)}
+  </div>`;
+}
+function sirStateAnswer(k){
+  setAns('sirState', k);
+  nav(SIR_STATES[k].supported ? 'sir-q1' : 'sir-unsupported');
+}
+function renderSirUnsupported(){
+  const st = SIR_STATES[S.answers.sirState];
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    <div class="narrow">
+      ${phaseEyebrow('Voter Services','SIR · ' + st.name)}
+      <h2 class="headline">SIR guidance for your state isn't available in NextMove yet.</h2>
+      <p class="lede">SIR processes can differ by state and revision stage. We only give case-specific guidance where we've verified the official workflow — right now, that's Delhi only.</p>
+      <div class="nm-field" style="border-top:none; padding-top:0;">
+        <div class="nm-k">Where to check instead</div>
+        <div class="nm-v"><a href="https://voters.eci.gov.in" target="_blank" rel="noopener">Voters' Service Portal — voters.eci.gov.in</a> · <span class="phone">Toll-free Voter Helpline: 1950</span>
+          <div class="handoff-note">An official ECI channel — NextMove hasn't verified state-specific SIR rules for ${st.name} yet, so it can't safely tell you WAIT, FOLLOW UP, or ESCALATE here.</div>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-block" onclick="restart()">Back to Home</button>
+    </div>
+  </div>`;
+}
+function renderSirQ1(){
+  const st = SIR_STATES[S.answers.sirState];
+  const options = SIR_Q1_OPTIONS_FOR[st.phase.id];
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${phaseEyebrow('SIR · ' + st.name,'Just one question')}
+    <h1 class="headline">What's happening with your SIR situation?</h1>
+    <p class="lede">${st.name} is currently in the ${st.phase.label} — enumeration and the Draft Roll are both already behind us, so that's what these options reflect.</p>
+    `, `
+    <div class="answers">
+      ${Object.entries(options).map(([v,l])=>answerRow(v,{key:'sirQ1',onSelect:'sirQ1Answer'},l)).join('')}
+      ${answerRow('notsure',{key:'sirQ1',onSelect:'sirQ1Answer'},"I'm not sure")}
+    </div>
+    ${describeBlock('sir-q1')}
+    `)}
+  </div>`;
+}
+function sirQ1Answer(v){
+  setAns('sirQ1', v==='notsure' ? 'unclassified' : v);
+  nav('sir-diagnosis');
+}
+function renderSirDiagnosis(){
+  // Reachable only via sir-q1, which is itself only reachable for
+  // SIR_STATES[k].supported === true — currently Delhi alone. A
+  // case-specific WAIT/FOLLOW_UP/ESCALATE/UNCLASSIFIED diagnosis is
+  // therefore always Delhi-verified here, and always drawn from the option
+  // set for Delhi's current phase — unsupported states never reach this
+  // function (see sirStateAnswer / renderSirUnsupported), and there is no
+  // path to a dormant/phase-inapplicable rule (see sirDormantRules_finalRoll).
+  const a = S.answers.sirQ1==='unclassified' ? {} : S.answers;
+  const d = S.answers.sirQ1==='unclassified' ? {...sirPlaybook.fallback, matchedAnswers:S.answers} : evaluate(sirPlaybook, a);
+  const st = SIR_STATES[S.answers.sirState];
+  const stateNote = `<div class="banner"><p class="small" style="margin:0;"><b>${st.name} — ${st.phase.label}:</b> ${st.phase.note}</p></div>`;
+  const labels = labelMap('sirQ1', {...SIR_Q1_OPTIONS_FOR[st.phase.id], unclassified:"I'm not sure"});
+  return renderDiagnosis('SIR', d, null, labels, 'sir', stateNote);
+}
+
+/* ---- shared diagnosis + next move renderer ---- */
+function renderDiagnosis(serviceLabel, d, timeline, answerLabels, engineKey, preNote, extraToldUs){
+  // The reveal headline gets the highlighter swipe on its key word —
+  // the marker stroke lands where the answer is. UNCLASSIFIED gets no
+  // swipe: nothing was "found," and the design shouldn't celebrate that.
+  const headline = d.rec==='UNCLASSIFIED'
+    ? "We don't have enough information to call this safely."
+    : 'We found where this is <span class="mark">waiting</span>.';
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${d.rec!=='UNCLASSIFIED' ? gems('reveal') : ''}
+    ${phaseEyebrow(serviceLabel,'Diagnosis')}
+    <h2 class="reveal-headline">${headline}</h2>
+    <div class="stamp-row"><span class="stamp ${stampClass(d.rec)}">${stampIcon(d.rec)}${stampLabel(d.rec)}</span></div>
+    <p class="explain">${d.explanation}</p>
+    `, `
+    ${S.ciJustUpdated ? `<div class="banner" style="border-color:var(--butter); background:var(--butter-soft);"><p class="small" style="margin:0;">Update recorded — this is where it leaves your case. <button class="read-change" style="margin:0 0 0 6px;" onclick="ciUndo()">Undo that update</button></p></div>` : ''}
+    ${S.phaseDrift ? `<div class="banner"><p class="small" style="margin:0;"><b>The SIR phase changed while this case was saved.</b> NextMove re-checked your case against the current phase — this diagnosis reflects today's rules, not the ones from when you saved.</p></div>` : ''}
+    ${preNote||''}
+    ${d.dependency && d.dependency!=='Unknown' ? `<div class="dep-block">
+      <div class="dep-k">Waiting on</div>
+      <div class="dep-v">${d.dependency}</div>
+    </div>` : ''}
+    ${timeline ? renderTimeline(timeline) : ''}
+    <button class="btn btn-primary btn-block" onclick="nav('${engineKey}-nextmove')">See my next move <span class="btn-arrow">${ICONS.arrow}</span></button>
+    ${trustDisclosure(d, answerLabels, extraToldUs)}
+    `)}
+  </div>`;
+}
+function renderTimeline(t){
+  return `<div class="case-trail">
+    ${t.steps.map((s,i)=>{
+      const isCurrent = i===t.current;
+      const cls = i<t.current ? 'done' : isCurrent ? 'current' : '';
+      return `<div class="ct-step ${cls}"><span class="ct-dot"></span><span class="ct-label">${s}</span>${isCurrent?'<span class="ct-here">You are here</span>':''}</div>`;
+    }).join('')}
+  </div>`;
+}
+function currentDiagnosis(engineKey){
+  if(engineKey==='passport'){
+    return evaluate(passportPlaybook, S.answers);
+  }
+  if(engineKey==='voter'){
+    if(S.answers.voterQ1==='unclassified') return {...voterPlaybook.fallback, matchedAnswers:S.answers};
+    return evaluate(voterPlaybook, S.answers);
+  }
+  if(engineKey==='sir'){
+    if(S.answers.sirQ1==='unclassified') return {...sirPlaybook.fallback, matchedAnswers:S.answers};
+    return evaluate(sirPlaybook, S.answers);
+  }
+}
+function renderNextMove(serviceLabel, engineKey){
+  const d = currentDiagnosis(engineKey);
+  // "Prepare this for me" only where there is something to prepare
+  // (FOLLOW_UP / ESCALATE rules with a PREP entry). WAIT and
+  // UNCLASSIFIED end quietly — offering to "prepare" nothing was
+  // incoherent, and celebrating a non-answer would be worse.
+  const prep = d.id ? PREP[d.id] : null;
+  const cta = prep
+    ? `<button class="btn btn-primary btn-block" onclick="nav('${engineKey}-prepare')">Prepare this for me <span class="btn-arrow">${ICONS.arrow}</span></button>`
+    : `<button class="btn btn-secondary btn-block" onclick="restart()">Back to Home</button>`;
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${crumbs([serviceLabel + ' · ' + d.label, 'Your next move'], SERVICE_SQ[serviceLabel] || null)}
+    <h1 class="nm-lead">${d.whatShort || d.whatToDo}</h1>
+    ${d.whatShort ? `<p class="nm-lead-detail">${d.whatToDo}</p>` : ''}
+    `, `
+    <div class="nm-fields">
+      <div class="nm-field"><div class="nm-k">Why</div><div class="nm-v">${d.explanation}</div></div>
+      <div class="nm-field"><div class="nm-k">Where</div><div class="nm-v">${d.where.url ? `<a href="${d.where.url}" target="_blank" rel="noopener">${d.where.label}</a>` : d.where.label}${d.where.phone?` · <span class="phone">${d.where.phone}</span>`:''}<div class="handoff-note">An official government channel — NextMove helps you understand and prepare; it doesn't act on your behalf.</div></div></div>
+      <div class="nm-field"><div class="nm-k">What you'll need</div><div class="nm-v">${d.need}</div></div>
+      ${d.howLong ? `<div class="nm-field"><div class="nm-k">How long?</div><div class="nm-v">${d.howLong}</div></div>` : ''}
+      ${d.expectNext ? `<div class="nm-field"><div class="nm-k">What to expect</div><div class="nm-v">${d.expectNext}</div></div>` : ''}
+    </div>
+    ${cta}
+    ${saveControl(engineKey, serviceLabel, engineKey+'-nextmove')}
+    `)}
+  </div>`;
+}
+function togglePrepStep(i){
+  S.prepChecks[i]=!S.prepChecks[i];
+  // A saved case keeps itself current: ticking steps after saving
+  // updates the snapshot rather than letting the Home card drift.
+  const c = activeCase();
+  if(c && c.outcome==='still_open' && c.engineKey===S.screen.split('-')[0]){
+    Object.assign(c, caseSnapshot(c.engineKey, c.serviceLabel, S.screen));
+    persistCases();
+  }
+  render();
+}
+// [Bracketed] blanks are real sub-tasks ("find your ARN"), so they get
+// counted and surfaced, live — never left as invisible work the user
+// discovers after sending.
+function bracketCount(t){ return ((t||'').match(/\[[^\]]*\]/g)||[]).length; }
+// Confirmed facts fill their matching brackets — but a filled value is
+// exactly the value most worth checking, so fills stay visible (the
+// list below the draft) and the draft never reads "ready" until the
+// user has looked at them.
+function fillDraft(base){
+  let text = base; const fills=[];
+  for(const f of (S.caseFacts||[])){
+    if(f.fills && text.includes(f.fills)){
+      text = text.split(f.fills).join(f.value);
+      fills.push({label:f.label, value:f.value});
+    }
+  }
+  return {text, fills};
+}
+function bracketHintText(t){
+  const n = bracketCount(t);
+  const fills = (S.prepFills||[]).length;
+  if(n>0) return `${n} blank${n>1?'s':''} in [brackets] left to fill — everything else is ready.`;
+  if(fills>0 && !S.fillsReviewed) return 'All blanks filled — check the details filled from your text below.';
+  return 'All blanks filled — ready to copy and send.';
+}
+function updateBracketHint(v){
+  const el = document.getElementById('bracket-hint');
+  if(el) el.textContent = bracketHintText(v);
+}
+function copyDraft(){
+  const ta = document.getElementById('prep-draft');
+  if(!ta) return;
+  // The copy always succeeds — remaining blanks are named, not policed.
+  S.copiedBrackets = bracketCount(ta.value);
+  const flash = ()=>{ S.copied=true; render(); setTimeout(()=>{ S.copied=false; render(); }, 2200); };
+  try{ navigator.clipboard.writeText(ta.value).then(flash, ()=>{ ta.select(); }); }
+  catch(e){ ta.select(); }
+}
+function renderPrepare(serviceLabel, engineKey){
+  const d = currentDiagnosis(engineKey);
+  const prep = d.id ? PREP[d.id] : null;
+  if(!prep){ restart(); return renderHome(); }
+  S.prepFills = [];
+  const done = prep.steps.filter((_,i)=>S.prepChecks[i]).length;
+  // The official channel rides along, one tap away, in a new tab — the
+  // draft and checklist stay exactly where the user left them.
+  const channel = `<div class="channel-card">
+    <div class="channel-body">
+      <div class="channel-k">Official channel</div>
+      <div class="channel-v">${d.where.label}</div>
+      ${d.where.phone ? `<div class="channel-phone">Helpline: ${d.where.phone}</div>` : ''}
+    </div>
+    ${d.where.url ? `<a class="channel-open" href="${d.where.url}" target="_blank" rel="noopener">Open in new tab ↗</a>` : ''}
+  </div>`;
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${crumbs([serviceLabel + ' · ' + d.label, 'Prepare'], SERVICE_SQ[serviceLabel] || null)}
+    <h1 class="headline">${prep.title || "Here's how to get this done."}</h1>
+    <p class="lede">${prep.draft ? 'Review the draft, make it yours, then walk the steps. You send it — from your own hands, on the official channel.' : 'Walk the steps below, ticking them off as you go. Every one of them happens on the official channel, by you.'}</p>
+    <p class="prep-trust">NextMove drafts and organizes; it never submits anything on your behalf. The final step is always yours — that's by design.</p>
+    `, `
+    ${channel}
+    ${prep.draft ? (()=>{ const fd = fillDraft(prep.draft); S.prepFills = fd.fills; return `<div class="prep-card">
+      <div class="nm-k" style="margin-bottom:10px;">Your draft</div>
+      <textarea id="prep-draft" class="prep-draft" oninput="S.prepDraft=this.value; updateBracketHint(this.value)" aria-label="Editable draft">${S.prepDraft ?? fd.text}</textarea>
+      <div class="prep-card-foot">
+        <div class="prep-hint" id="bracket-hint">${bracketHintText(S.prepDraft ?? fd.text)}</div>
+        <button class="copy-btn ${S.copied ? (S.copiedBrackets>0?'copied-warn':'copied') : ''}" onclick="copyDraft()">${S.copied ? (S.copiedBrackets>0 ? `Copied — ${S.copiedBrackets} blank${S.copiedBrackets>1?'s':''} left` : 'Copied ✓') : 'Copy draft'}</button>
+      </div>
+      ${fd.fills.length ? `<div class="fill-list">
+        <span class="fk">Filled from your text — please check them</span>
+        ${fd.fills.map(f=>`${f.label}: <b>${f.value}</b>`).join(' · ')}
+        <button class="fill-review" onclick="S.fillsReviewed=!S.fillsReviewed; render();" aria-pressed="${!!S.fillsReviewed}">
+          <span class="pstep-box" style="${S.fillsReviewed?'background:var(--butter); border-color:var(--ink);':''}">${S.fillsReviewed?ICONS.stepCheck:''}</span>
+          I've checked these details
+        </button>
+      </div>` : ''}
+    </div>`;})() : ''}
+    <div class="psteps-count">${done} of ${prep.steps.length} done</div>
+    <div class="psteps">
+      ${prep.steps.map((s,i)=>{
+        const step = typeof s === 'string' ? {text:s} : s;
+        return `<div class="pstep ${S.prepChecks[i]?'done':''}">
+        <button class="pstep-tick" onclick="togglePrepStep(${i})" aria-pressed="${!!S.prepChecks[i]}">
+          <span class="pstep-box">${ICONS.stepCheck}</span>
+          <span class="pstep-text">${step.text}</span>
+        </button>
+        ${step.url ? `<a class="pstep-link" href="${step.url}" target="_blank" rel="noopener">Open ↗</a>` : ''}
+      </div>`;}).join('')}
+    </div>
+    ${done===prep.steps.length ? `<p class="psteps-done">${prep.doneNote || "All steps done — you've completed everything this stage needs from you."}</p>` : ''}
+    ${prep.visit ? `<div class="visit-card">
+      <div class="visit-title">If you're going in person</div>
+      <div class="visit-cols">
+        <div>
+          <div class="visit-k">Carry</div>
+          <ul class="visit-list">${prep.visit.carry.map(c=>`<li>${c}</li>`).join('')}</ul>
+        </div>
+        <div>
+          <div class="visit-k">What to expect</div>
+          <ul class="visit-list">${VISIT_EXPECT.map(e=>`<li>${e}</li>`).join('')}</ul>
+        </div>
+      </div>
+      ${prep.visit.after ? `<div class="visit-k" style="margin-top:14px;">Then what?</div><ul class="visit-list"><li>${prep.visit.after}</li></ul>` : ''}
+      <div class="visit-note">The carry list combines this case's verified requirements with common-sense basics. The tips are general practical guidance for any government office — not official rules.</div>
+    </div>` : ''}
+    <button class="btn btn-secondary btn-block" onclick="restart()">Done — back to Home</button>
+    ${saveControl(engineKey, serviceLabel, engineKey+'-prepare', done)}
+    `)}
+  </div>`;
+}
+
+/* ---- save / sign-in screens ---- */
+function renderSaveCase(){
+  const isPhone = S.authMethod==='phone';
+  return `${topbar(true,false)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${crumbs(['Save your case'], 'sq-butter')}
+    <h1 class="headline">Keep this case. NextMove walks with you.</h1>
+    <p class="lede">Sign in once and this becomes a living casefile: add updates as things happen, watch your journey build, and always know your next move — whenever you come back.</p>
+    <p class="prep-trust">Your details are used for exactly one thing: bringing your case back to you — including anything you typed about your case. No marketing, nothing else. Remove or Sign out deletes all of it from this device. And the diagnosis you just got never required signing in — this is only for keeping it.</p>
+    `, `
+    <button class="btn-google" onclick="authGoogle()">${ICONS.google} Continue with Google</button>
+    <div class="auth-divider">or</div>
+    <div class="auth-field">
+      <div class="auth-label">${isPhone ? 'Mobile number' : 'Email address'}</div>
+      <input class="auth-input" type="${isPhone?'tel':'email'}" placeholder="${isPhone?'10-digit mobile number':'you@example.com'}" value="${S.authId||''}" oninput="S.authId=this.value" onkeydown="if(event.key==='Enter')authSubmitId()">
+      ${S.authErr ? `<div class="auth-err">${S.authErr}</div>` : ''}
+    </div>
+    <button class="btn btn-primary btn-block" style="margin-top:0;" onclick="authSubmitId()">Send me a code <span class="btn-arrow">${ICONS.arrow}</span></button>
+    <button class="auth-switch" onclick="S.authMethod='${isPhone?'email':'phone'}'; S.authId=''; S.authErr=null; render();">${isPhone ? 'Use email instead' : 'Use mobile number instead'}</button>
+    <p class="auth-note">Signing in never changes your diagnosis, and NextMove still never acts on your behalf.</p>
+    `)}
+  </div>`;
+}
+function renderSaveOtp(){
+  const dest = S.authMethod==='phone' ? ('+91 ' + S.authId) : S.authId;
+  return `${topbar(true,false)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${crumbs(['Save your case','One-time code'], 'sq-butter')}
+    <h1 class="headline">Enter the code we sent.</h1>
+    <p class="lede">A 6-digit code is on its way to <b>${dest}</b>.</p>
+    `, `
+    <div class="auth-field">
+      <div class="auth-label">6-digit code</div>
+      <input class="auth-input otp-input" type="text" inputmode="numeric" maxlength="6" placeholder="••••••" value="${S.otp||''}" oninput="S.otp=this.value" onkeydown="if(event.key==='Enter')authVerifyOtp()">
+      ${S.authErr ? `<div class="auth-err">${S.authErr}</div>` : ''}
+    </div>
+    <button class="btn btn-primary btn-block" style="margin-top:0;" onclick="authVerifyOtp()">Verify and save my case <span class="btn-arrow">${ICONS.arrow}</span></button>
+    <button class="auth-switch" onclick="authResend()">${S.otpResent ? 'Code sent again ✓' : "Didn't get it? Send again"}</button>
+    <div class="demo-hint">Design prototype — any 6 digits work here.</div>
+    `)}
+  </div>`;
+}
+function renderSaveDone(){
+  const p = S.pendingSave;
+  return `${topbar(false,false)}
+  <div class="stage screen">
+    <div class="narrow">
+      ${crumbs(['Case saved'], 'sq-butter')}
+      <h2 class="headline">Your casefile is saved.</h2>
+      <p class="lede">It's waiting on the Home screen whenever you come back — your answers, your diagnosis, and any steps you've already ticked off. Nothing else happens with your ${S.user && S.user.method==='phone' ? 'number' : 'account'}.</p>
+      ${p ? `<button class="btn btn-primary btn-block" onclick="nav('${p.returnScreen}')">Back to my case <span class="btn-arrow">${ICONS.arrow}</span></button>` : ''}
+      <button class="btn btn-secondary btn-block" onclick="restart()">Go to Home</button>
+    </div>
+  </div>`;
+}
+
+/* ================= ROUTER ================= */
+function render(){
+  const el = document.getElementById('app');
+  // Entrance animations only on a genuine screen change; a same-screen
+  // re-render (trust toggle, selection, inline explainer) keeps the page
+  // still instead of replaying the choreography.
+  el.classList.toggle('settled', S.renderedScreen === S.screen);
+  S.renderedScreen = S.screen;
+  let html;
+  switch(S.screen){
+    case 'home': html = renderHome(); break;
+    case 'passport-guardrail': html = renderPassportGuardrail(); break;
+    case 'passport-outofscope': html = renderPassportOutOfScope(); break;
+    case 'passport-q1': html = renderPassportQ1(); break;
+    case 'passport-recovery': html = renderPassportRecovery(); break;
+    case 'passport-recovery-paste': html = renderPassportRecoveryPaste(); break;
+    case 'passport-recovery-show': html = renderPassportRecoveryShow(); break;
+    case 'passport-q2': html = renderPassportQ2(); break;
+    case 'passport-diagnosis': html = renderPassportDiagnosis(); break;
+    case 'passport-nextmove': html = renderNextMove('Passport','passport'); break;
+    case 'passport-prepare': html = renderPrepare('Passport','passport'); break;
+    case 'voter-entry': html = renderVoterEntry(); break;
+    case 'voter-q1': html = renderVoterQ1(); break;
+    case 'voter-q2': html = renderVoterQ2(); break;
+    case 'voter-diagnosis': html = renderVoterDiagnosis(); break;
+    case 'voter-nextmove': html = renderNextMove('Voter Services','voter'); break;
+    case 'voter-prepare': html = renderPrepare('Voter Services','voter'); break;
+    case 'sir-state': html = renderSirState(); break;
+    case 'sir-unsupported': html = renderSirUnsupported(); break;
+    case 'sir-q1': html = renderSirQ1(); break;
+    case 'sir-diagnosis': html = renderSirDiagnosis(); break;
+    case 'sir-nextmove': html = renderNextMove('SIR','sir'); break;
+    case 'sir-prepare': html = renderPrepare('SIR','sir'); break;
+    case 'interp-confirm': html = renderInterpConfirm(); break;
+    case 'save-case': html = renderSaveCase(); break;
+    case 'save-otp': html = renderSaveOtp(); break;
+    case 'save-done': html = renderSaveDone(); break;
+    case 'checkin': html = renderCheckin(); break;
+    case 'dead-end': html = renderDeadEnd(); break;
+    case 'case-closed': html = renderCaseClosed(); break;
+    default: html = renderHome();
+  }
+  el.innerHTML = html + `<div class="protofooter">Design prototype — not the build. Static reference for review only. Every recommendation above traces to an official source cited in "Why am I seeing this?" or the Voter/SIR Verification Matrix; anything without one is marked UNVERIFIED in the source docs and never hard-coded as a rule. Sign-in and saving are simulated: Google sign-in is instant, any 6-digit code is accepted, and your casefile lives only in this browser.</div>`;
+}
+render();
+</script>
