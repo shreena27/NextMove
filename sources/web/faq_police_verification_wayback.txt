@@ -1,0 +1,19 @@
+SOURCE ARCHIVE - captured 2026-09-05 via Wayback Machine (web.archive.org)
+Original URL: https://www.passportindia.gov.in/AppOnlineProject/online/faqPoliceVerification
+(Pre-migration official Passport Seva FAQ page; live portal moved to /psp/ shell ~July 2026
+ and the FAQ route was not reachable at capture time - see manifest note.)
+
+Relevant extracted Q&A (verbatim):
+Other Police Verification (PV) Related Queries
+Q20: 
+The file status shows that my police
+								report is "adverse". How should I proceed further?
+A: 
+Please contact Passport Office (PO) to understand the reason of adverse report. Post clarification, if required a re-verification can be requested. PO needs to get a clear police report from the re-verification, for issue of a passport 
+On receipt of a clear report from the police, your file will be processed further for issue of a passport. 
+Q21: 
+Is police verification done before
+								issuance of passport under the Tatkaal scheme?
+A: 
+No, police verification is not done before issuance of
+							passport under the Tatkaal scheme. In c

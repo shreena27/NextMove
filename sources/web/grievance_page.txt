@@ -1,0 +1,16 @@
+SOURCE ARCHIVE — captured 2026-09-05 via browser
+URL: https://www.passportindia.gov.in/psp/Grievance
+Page title: Passport Seva — Feedback / Grievance
+Site last-updated stamp: 28/07/2026
+
+Key verbatim passage (cited by NextMove passport rule state-dpg / dpg-p):
+"If your passport-related grievance has not been satisfactory redressed by the
+MEA/Passport issuing Authority within a reasonable period of time, you may lodge
+a grievance with the Directorate of Public Grievances (DPG), Cabinet Secretariat,
+Government of India at https://dpg.gov.in/Default.aspx"
+
+Note: no numeric deadline is stated anywhere on the page — supports the rule's
+"no numeric deadline is stated" verified-absence claim.
+
+Other page content (context): status check via 1800-258-1800 or portal login;
+feedback/grievance registration + status links; CPGRAMS link.
