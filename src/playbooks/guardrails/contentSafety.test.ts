@@ -57,7 +57,12 @@ describe('the lifted BANNED_PATTERNS table', () => {
 describe('copyStrings', () => {
   it('collects the citizen-facing fields, where.label and needList items', () => {
     const ats = copyStrings(book([
-      rule('toy-1', { needList: ['Item one', 'Item two'], howLong: 'Toy how long.', expectNext: 'Toy expect next.' }),
+      rule('toy-1', {
+        needList: ['Item one', 'Item two'],
+        howLong: 'Toy how long.',
+        expectNext: 'Toy expect next.',
+        rungLabel: 'Toy rung.',
+      }),
     ])).map(s => s.at)
     for (const f of COPY_FIELDS) expect(ats).toContain(`toy:toy-1.${f}`)
     expect(ats).toContain('toy:toy-1.where.label')
@@ -71,6 +76,16 @@ describe('copyStrings', () => {
     expect(ats.some(a => a.endsWith('.mustNot'))).toBe(false)
     expect(ats.some(a => a.endsWith('.state'))).toBe(false)
     expect(ats.some(a => a.includes('source'))).toBe(false)
+  })
+
+  it('scans rungLabel when a rule declares one (stage·rung decoration is citizen-facing text)', () => {
+    const ats = copyStrings(book([rule('toy-1', { rungLabel: 'Stage 2 of 3' })])).map(s => s.at)
+    expect(ats).toContain('toy:toy-1.rungLabel')
+  })
+
+  it('produces no rungLabel entry when a rule does not declare one', () => {
+    const ats = copyStrings(book([rule('toy-1')])).map(s => s.at)
+    expect(ats.some(a => a.endsWith('.rungLabel'))).toBe(false)
   })
 })
 

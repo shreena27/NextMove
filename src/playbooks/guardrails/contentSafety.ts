@@ -113,7 +113,7 @@ export const CAUSE_STATES: { ruleId: string; needsDisclaimer: boolean }[] = [
 ]
 
 export const COPY_FIELDS = [
-  'label', 'dependency', 'explanation', 'whatShort', 'whatToDo', 'need', 'howLong', 'expectNext',
+  'label', 'dependency', 'explanation', 'whatShort', 'whatToDo', 'need', 'howLong', 'expectNext', 'rungLabel',
 ] as const
 
 const ACTION_FIELDS = ['whatShort', 'whatToDo'] as const
@@ -137,7 +137,10 @@ function contentStrings(serviceId: string, id: string, c: RuleContent): CopyStri
 }
 
 /** Every citizen-facing string in a playbook, addressed serviceId-first.
- *  mustNot, state and source are excluded on purpose (see the design notes). */
+ *  rungLabel IS scanned: decorateStageRung splices it verbatim into the
+ *  rendered label, so it is citizen-facing text like any other COPY_FIELDS
+ *  entry. Only mustNot, state and source are excluded on purpose (see the
+ *  design notes). */
 export function copyStrings(playbook: Playbook): CopyString[] {
   return [
     ...playbook.rules.flatMap(r => contentStrings(playbook.serviceId, r.id, r)),
