@@ -716,20 +716,44 @@ h2.headline{
   border:1px dashed var(--line-strong); border-radius:8px; padding:8px 12px; margin-top:14px;
   display:inline-block;
 }
-/* the saved casefile on Home */
+/* the saved casefile on Home — a compact, whole-card tap target that
+   opens the casefile screen; detail (log, check-ins, Remove) lives there */
 .saved-card{
-  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  display:flex; align-items:center; gap:16px; width:100%; text-align:left;
   background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
-  box-shadow:var(--shadow-float); padding:18px 20px; margin:10px 0 30px;
+  box-shadow:var(--shadow-float); padding:16px 20px; margin:10px 0 30px;
+  cursor:pointer; font-family:'Work Sans',sans-serif; color:var(--ink);
+  transition:border-color 150ms ease, transform 180ms var(--ease);
 }
-.saved-body{flex:1; min-width:220px;}
+.saved-card:hover{border-color:var(--ink); transform:translateY(-1px);}
+.saved-card:hover .arow-chevron{transform:translateX(4px); color:var(--ink);}
+.saved-body{flex:1; min-width:220px; display:block;}
 .saved-kicker{
   font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase;
   color:var(--ink-faint); margin:0 0 5px; display:flex; align-items:center; gap:7px;
 }
-.saved-title{font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:18px; line-height:1.25;}
+.saved-title{display:block; font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:18px; line-height:1.25;}
+.saved-next{display:block;}
 .saved-meta{font-size:12.5px; color:var(--ink-soft); margin-top:4px;}
 .saved-actions{display:flex; align-items:center; gap:10px; flex:0 0 auto;}
+.case-meta-line{
+  font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.04em;
+  color:var(--ink-soft); margin:0 0 14px;
+}
+.case-links{border-top:1px solid var(--line); margin-top:20px;}
+.case-link{
+  display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+  padding:13px 4px; border:none; border-bottom:1px solid var(--line); background:none;
+  cursor:pointer; font-family:'Work Sans',sans-serif; font-size:14px; font-weight:500; color:var(--ink);
+  transition:background 150ms ease;
+}
+.case-link:hover{background:var(--butter-soft);}
+.case-remove{
+  background:none; border:none; cursor:pointer; font-family:'Work Sans',sans-serif;
+  font-size:12.5px; color:var(--ink-faint); text-decoration:underline; text-underline-offset:3px;
+  padding:4px; margin-top:18px;
+}
+.case-remove:hover{color:var(--escalate);}
 .saved-continue{
   display:inline-flex; align-items:center; gap:7px; font-family:'Work Sans',sans-serif;
   font-weight:600; font-size:13.5px; color:var(--ink); background:var(--butter);
@@ -2471,12 +2495,37 @@ function renderCheckin(){
       ${S.ciConsecutive ? `<p class="small" style="margin:10px 0 0; color:var(--ink-faint);">This stage doesn't change day to day — checking more often won't move it.</p>` : ''}
     </div>`;
   }
+  // The casefile screen — the case's home, opened from its Home card.
+  // Closed cases: record + reopen + remove, no check-in machinery.
+  const removeCtl = S.removeConfirm===c.id
+    ? `<span class="restart-confirm" style="margin-top:18px; display:inline-flex;">Remove this case and its history?
+        <button class="yes" onclick="S.screen='home'; S.history=[]; removeSaved('${c.id}');">Yes</button>
+        <button class="no" onclick="S.removeConfirm=null; render();">Cancel</button></span>`
+    : `<button class="case-remove" onclick="S.removeConfirm='${c.id}'; render();">Remove this case and its history</button>`;
+  if(c.outcome!=='still_open'){
+    return `${topbar(true,false)}
+  <div class="stage screen">
+    ${splitCols(`
+    ${crumbs([c.serviceLabel + ' · ' + c.stateLabel, 'Your casefile'], SERVICE_SQ[c.serviceLabel]||null)}
+    <h1 class="headline">${c.outcome==='deliverable_received' ? 'Case closed — you got it.' : 'Case closed — the record stays.'}</h1>
+    <p class="lede">Nothing further is tracked on a closed case. The journey record below stays yours — it's the paper trail any future step would start from.</p>
+    <div class="case-meta-line">Saved ${fmtDay(c.savedAt)}${c.closedAt ? ' · closed '+fmtDay(c.closedAt) : ''}</div>
+    `, `
+    ${renderLog(c)}
+    <div class="case-links">
+      <button class="case-link" onclick="reopenCase('${c.id}')">This came back — reopen it<span class="arow-chevron" style="margin-left:auto;">${ICONS.chevron}</span></button>
+    </div>
+    ${removeCtl}
+    `)}
+  </div>`;
+  }
   return `${topbar(true,false)}
   <div class="stage screen">
     ${splitCols(`
-    ${crumbs([c.serviceLabel + ' · ' + d.label, 'Add an update'], SERVICE_SQ[c.serviceLabel]||null)}
+    ${crumbs([c.serviceLabel + ' · ' + d.label, 'Your casefile'], SERVICE_SQ[c.serviceLabel]||null)}
     <h1 class="headline">What's happened since?</h1>
     <p class="lede">Pick what actually happened — your casefile and diagnosis update from it. Nothing here guesses: if none of these fit, "Something else happened" re-checks your case properly.</p>
+    <div class="case-meta-line">Saved ${fmtDay(c.savedAt)}${c.remindAt ? ' · check back '+c.remindAt : ''}</div>
     ${renderLog(c)}
     `, `
     ${freshBanner(c.engineKey)}
@@ -2493,6 +2542,11 @@ function renderCheckin(){
       <input type="date" class="remind-input" value="${c.remindAt||''}" onchange="setRemind('${c.id}', this.value)" aria-label="Check-back date">
     </div>
     ${c.remindAt ? `<p class="small" style="margin-top:6px;">Your own reminder (copy it to your phone): <b>Check NextMove case — ${c.remindAt}</b></p>` : ''}
+    <div class="case-links">
+      <button class="case-link" onclick="nav('${c.engineKey}-diagnosis')">See my diagnosis<span class="arow-chevron" style="margin-left:auto;">${ICONS.chevron}</span></button>
+      ${d.id && PREP[d.id] ? `<button class="case-link" onclick="nav('${c.engineKey}-prepare')">Continue preparing<span class="arow-chevron" style="margin-left:auto;">${ICONS.chevron}</span></button>` : ''}
+    </div>
+    ${removeCtl}
     `)}
   </div>`;
 }
@@ -2630,34 +2684,26 @@ function renderInterpConfirm(){
 }
 
 /* ================= SCREENS ================= */
+// Compact, glanceable card — the whole card is the tap target (locked
+// list-row pattern) and everything deeper (journey log, check-ins,
+// Remove) lives INSIDE the casefile screen it opens. Spec:
+// 2026-09-05-compact-card-casefile-screen-design.md
 function caseCard(c){
   const open = c.outcome==='still_open';
-  return `<div class="saved-card ${open?'':'closed'}">
-      <div class="saved-body">
-        <div class="saved-kicker"><span class="crumb-sq ${SERVICE_SQ[c.serviceLabel]||'sq-butter'}"></span>${c.serviceLabel} · ${open ? 'Saved '+fmtDay(c.savedAt) : (c.outcome==='deliverable_received'?'Closed — got it':'Closed — unresolved')}</div>
-        <div class="saved-title">${c.stateLabel}</div>
-        ${open && c.whatShort ? `<div class="saved-next">Next: ${c.whatShort}</div>` : ''}
-        <div class="saved-meta">
+  return `<button class="saved-card ${open?'':'closed'}" onclick="openCheckin('${c.id}')">
+      <span class="saved-body">
+        <span class="saved-kicker"><span class="crumb-sq ${SERVICE_SQ[c.serviceLabel]||'sq-butter'}"></span>${c.serviceLabel} · ${open ? 'Saved '+fmtDay(c.savedAt) : (c.outcome==='deliverable_received'?'Closed — got it':'Closed — unresolved')}</span>
+        <span class="saved-title">${c.stateLabel}</span>
+        ${open && c.whatShort ? `<span class="saved-next">Next: ${c.whatShort}</span>` : ''}
+        <span class="saved-meta">
           <span class="stamp mini ${stampClass(c.rec)}">${stampLabel(c.rec)}</span>
           ${open && c.stepsTotal ? `<span class="saved-steps">${c.stepsDone} of ${c.stepsTotal} steps done</span>` : ''}
           ${open && c.lastCheck ? `<span class="saved-steps">last update ${daysAgo(c.lastCheck)}</span>` : ''}
           ${open && c.remindAt ? `<span class="saved-steps">check back ${c.remindAt}</span>` : ''}
-        </div>
-        ${(c.log||[]).length>1 || S.logOpen[c.id] ? renderLog(c) : ''}
-      </div>
-      <div class="saved-actions">
-        ${S.removeConfirm===c.id
-          ? `<span class="restart-confirm">Remove this case and its history?
-              <button class="yes" onclick="removeSaved('${c.id}')">Yes</button>
-              <button class="no" onclick="S.removeConfirm=null; render();">Cancel</button></span>`
-          : open
-            ? `<button class="saved-continue" onclick="openCheckin('${c.id}')">Add an update ${ICONS.chevron}</button>
-               <button class="saved-remove" onclick="continueSaved('${c.id}')">Open</button>
-               <button class="saved-remove" onclick="S.removeConfirm='${c.id}'; render();">Remove</button>`
-            : `<button class="saved-remove" onclick="reopenCase('${c.id}')">This came back</button>
-               <button class="saved-remove" onclick="S.removeConfirm='${c.id}'; render();">Remove</button>`}
-      </div>
-    </div>`;
+        </span>
+      </span>
+      <span class="arow-chevron">${ICONS.chevron}</span>
+    </button>`;
 }
 function renderHome(){
   const open = S.savedCases.filter(c=>c.outcome==='still_open');
