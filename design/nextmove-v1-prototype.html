@@ -754,6 +754,29 @@ h2.headline{
   padding:4px; margin-top:18px;
 }
 .case-remove:hover{color:var(--escalate);}
+/* casefile screen: the case's identity (left) and the add-an-update
+   module (right). Butter border marks the primary action area — the one
+   place the accent is allowed to frame a container. */
+.case-h1{
+  font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:30px; line-height:1.12;
+  letter-spacing:-0.012em; margin:0 0 12px; color:var(--ink); text-wrap:balance;
+}
+@media (min-width:960px){ .case-h1{font-size:36px;} }
+.case-progress{margin:20px 0 4px;}
+.cp-head{display:flex; align-items:center; justify-content:space-between; margin:0 0 7px;}
+.cp-count{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-soft);}
+.cp-bar{height:9px; border-radius:999px; background:var(--line); overflow:hidden;}
+.cp-fill{display:block; height:100%; background:var(--butter); border-radius:999px; transition:width 300ms var(--ease);}
+.update-mod{
+  background:var(--card); border:1.5px solid var(--butter); border-radius:16px;
+  padding:20px 22px;
+}
+.um-head{display:flex; align-items:center; gap:12px; margin:0 0 10px;}
+.um-kicker{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--ink-soft); margin:0 0 2px;
+}
+.um-title{font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:21px; margin:0; line-height:1.2;}
 .saved-continue{
   display:inline-flex; align-items:center; gap:7px; font-family:'Work Sans',sans-serif;
   font-weight:600; font-size:13.5px; color:var(--ink); background:var(--butter);
@@ -2507,10 +2530,11 @@ function renderCheckin(){
   <div class="stage screen">
     ${splitCols(`
     ${crumbs([c.serviceLabel + ' · ' + c.stateLabel, 'Your casefile'], SERVICE_SQ[c.serviceLabel]||null)}
-    <h1 class="headline">${c.outcome==='deliverable_received' ? 'Case closed — you got it.' : 'Case closed — the record stays.'}</h1>
-    <p class="lede">Nothing further is tracked on a closed case. The journey record below stays yours — it's the paper trail any future step would start from.</p>
+    <h1 class="case-h1">${c.outcome==='deliverable_received' ? 'Case closed — you got it.' : 'Case closed — the record stays.'}</h1>
+    <p class="lede">Nothing further is tracked on a closed case. The journey record stays yours — it's the paper trail any future step would start from.</p>
     <div class="case-meta-line">Saved ${fmtDay(c.savedAt)}${c.closedAt ? ' · closed '+fmtDay(c.closedAt) : ''}</div>
     `, `
+    <div class="nm-k" style="margin:0 0 4px;">Journey — ${(c.log||[]).length} entr${(c.log||[]).length===1?'y':'ies'}</div>
     ${renderLog(c)}
     <div class="case-links">
       <button class="case-link" onclick="reopenCase('${c.id}')">This came back — reopen it<span class="arow-chevron" style="margin-left:auto;">${ICONS.chevron}</span></button>
@@ -2519,32 +2543,51 @@ function renderCheckin(){
     `)}
   </div>`;
   }
+  // Honest progress only: the passport case trail is a real verified
+  // sequence; the prepare bar is the user's own ticked work; the journey
+  // count is their own record. No invented timelines for Voter/SIR.
+  const trail = c.engineKey==='passport' ? PASSPORT_STEPS_FOR(d) : null;
+  const prep = d.id ? PREP[d.id] : null;
+  const prepDone = prep ? prep.steps.filter((_,i)=>S.prepChecks[i]).length : 0;
   return `${topbar(true,false)}
   <div class="stage screen">
     ${splitCols(`
-    ${crumbs([c.serviceLabel + ' · ' + d.label, 'Your casefile'], SERVICE_SQ[c.serviceLabel]||null)}
-    <h1 class="headline">What's happened since?</h1>
-    <p class="lede">Pick what actually happened — your casefile and diagnosis update from it. Nothing here guesses: if none of these fit, "Something else happened" re-checks your case properly.</p>
+    ${crumbs([c.serviceLabel, 'Your casefile'], SERVICE_SQ[c.serviceLabel]||null)}
+    <h1 class="case-h1">${d.label}</h1>
+    <div class="stamp-row"><span class="stamp ${stampClass(d.rec)}">${stampIcon(d.rec)}${stampLabel(d.rec)}</span></div>
     <div class="case-meta-line">Saved ${fmtDay(c.savedAt)}${c.remindAt ? ' · check back '+c.remindAt : ''}</div>
+    ${trail ? renderTimeline(trail) : ''}
+    ${prep ? `<div class="case-progress">
+      <div class="cp-head"><span class="nm-k" style="margin:0;">Prepare steps</span><span class="cp-count">${prepDone} of ${prep.steps.length} done</span></div>
+      <div class="cp-bar"><span class="cp-fill" style="width:${prep.steps.length ? Math.round(prepDone/prep.steps.length*100) : 0}%"></span></div>
+    </div>` : ''}
+    <div class="nm-k" style="margin:24px 0 4px;">Journey — ${(c.log||[]).length} entr${(c.log||[]).length===1?'y':'ies'}</div>
     ${renderLog(c)}
     `, `
     ${freshBanner(c.engineKey)}
-    ${panel}
-    <div class="answers" style="margin-top:${panel?'18px':'6px'};">
-      ${list.map((o,i)=>`<button class="arow" onclick="ciChoose(${i})">
-        <span class="arow-check" style="${o.k==='deliverable'?'background:var(--butter); border-color:var(--ink);':''}"></span>
-        <span class="arow-body"><div class="arow-label">${o.label}</div></span>
-        <span class="arow-chevron">${ICONS.chevron}</span>
-      </button>`).join('')}
+    <div class="update-mod">
+      <div class="um-head">
+        <span class="dr-icon">${ICONS.pen}</span>
+        <span><span class="um-kicker">Add an update</span><h2 class="um-title">What's happened since?</h2></span>
+      </div>
+      <p class="small" style="margin:0 0 6px;">Pick what actually happened — your casefile and diagnosis update from it. If none of these fit, "Something else happened" re-checks your case properly.</p>
+      ${panel ? `<div style="margin-top:14px;">${panel}</div>` : ''}
+      <div class="answers" style="margin-top:${panel?'14px':'8px'};">
+        ${list.map((o,i)=>`<button class="arow" onclick="ciChoose(${i})">
+          <span class="arow-check" style="${o.k==='deliverable'?'background:var(--butter); border-color:var(--ink);':''}"></span>
+          <span class="arow-body"><div class="arow-label">${o.label}</div></span>
+          <span class="arow-chevron">${ICONS.chevron}</span>
+        </button>`).join('')}
+      </div>
+      <div class="remind-row">
+        <span class="small">Want to check back on a date of your choosing?</span>
+        <input type="date" class="remind-input" value="${c.remindAt||''}" onchange="setRemind('${c.id}', this.value)" aria-label="Check-back date">
+      </div>
+      ${c.remindAt ? `<p class="small" style="margin-top:6px;">Your own reminder (copy it to your phone): <b>Check NextMove case — ${c.remindAt}</b></p>` : ''}
     </div>
-    <div class="remind-row">
-      <span class="small">Want to check back on a date of your choosing?</span>
-      <input type="date" class="remind-input" value="${c.remindAt||''}" onchange="setRemind('${c.id}', this.value)" aria-label="Check-back date">
-    </div>
-    ${c.remindAt ? `<p class="small" style="margin-top:6px;">Your own reminder (copy it to your phone): <b>Check NextMove case — ${c.remindAt}</b></p>` : ''}
     <div class="case-links">
       <button class="case-link" onclick="nav('${c.engineKey}-diagnosis')">See my diagnosis<span class="arow-chevron" style="margin-left:auto;">${ICONS.chevron}</span></button>
-      ${d.id && PREP[d.id] ? `<button class="case-link" onclick="nav('${c.engineKey}-prepare')">Continue preparing<span class="arow-chevron" style="margin-left:auto;">${ICONS.chevron}</span></button>` : ''}
+      ${prep ? `<button class="case-link" onclick="nav('${c.engineKey}-prepare')">Continue preparing<span class="arow-chevron" style="margin-left:auto;">${ICONS.chevron}</span></button>` : ''}
     </div>
     ${removeCtl}
     `)}
