@@ -6,57 +6,169 @@
       "url": "https://ceodelhi.gov.in/PDFFolders/2026/FAQ_SIR2026.pdf",
       "captured": "2026-09-05",
       "extracted_text": "FAQ_SIR2026.extracted.txt",
-      "note": "32 numbered questions. Q4 is the operative Delhi SIR calendar (corroborated by news reporting of the 31 Aug draft publication and 30 Sep claims deadline): house-to-house 30.06–17.08; draft publication 31.08; claims & objections FILING 31.08–30.09; notice phase & DISPOSAL 31.08–29.10; final publication 04.11.2026."
+      "note": "32 numbered questions. Q4 is the operative Delhi SIR calendar (corroborated by news reporting of the 31 Aug draft publication and 30 Sep claims deadline): house-to-house 30.06–17.08; draft publication 31.08; claims & objections FILING 31.08–30.09; notice phase & DISPOSAL 31.08–29.10; final publication 04.11.2026.",
+      "sha256": "c5183bc701298cf1aad4523f76652eab9d5e53fa9101705dc04cdebe525d35d3",
+      "check": "auto"
     },
     "SIR_revised_Schedule_2026-07-15.pdf": {
       "title": "ECI order No.23/2026-ERS (Vol.-II) dated 15.07.2026 — revised Delhi SIR schedule",
       "url": "https://ceodelhi.gov.in/PDFFolders/2026/SIR_revised_Schedule15july2026.pdf",
       "captured": "2026-09-05",
       "extracted_text": null,
-      "note": "SUPERSEDED — kept as provenance only. Image-only scan (no text layer). Gives draft 17.08 / C&O to 16.09 / final 19.10, which contradicts both the FAQ and the actually-observed 31 Aug draft publication; the schedule was evidently revised again after this order. Never cite this document for dates."
+      "note": "SUPERSEDED — kept as provenance only. Image-only scan (no text layer). Gives draft 17.08 / C&O to 16.09 / final 19.10, which contradicts both the FAQ and the actually-observed 31 Aug draft publication; the schedule was evidently revised again after this order. Never cite this document for dates.",
+      "sha256": "1e988ebb40c4c51b210b174a0bdac1890d890fef0637282fc450ed354203fadf",
+      "check": "auto"
     },
     "Final-ER-FAQ.pdf": {
       "title": "ECI Electoral Roll FAQ (national) — Final-ER-FAQ.pdf",
       "url": "https://www.eci.gov.in/Documents/Final-ER-FAQ.pdf",
       "captured": "2026-09-05",
-      "extracted_text": "Final-ER-FAQ.extracted.txt"
+      "extracted_text": "Final-ER-FAQ.extracted.txt",
+      "sha256": "a660567efeb622d4155e383e3c7f2ef9c35ec085793e78274d932fafc0abe64e",
+      "check": "auto"
     },
     "Citizens_Charter.pdf": {
       "title": "Citizen's Charter (MEA / Passport Seva)",
       "url": "https://www.passportindia.gov.in/AppOnlineProject/pdf/Citizen_Charter.pdf",
       "captured": "2026-09-05",
-      "extracted_text": "Citizens_Charter.extracted.txt"
+      "extracted_text": "Citizens_Charter.extracted.txt",
+      "sha256": "5dc24aadfb2ed993bd4ea8ad46d99e800702fff12092a99504678952f9c13464",
+      "check": "auto"
     },
     "web/grievance_page.txt": {
       "title": "Grievance page — passportindia.gov.in",
       "url": "https://www.passportindia.gov.in/psp/Grievance",
-      "captured": "2026-09-05 (rendered in browser; raw HTML is a JS shell)"
+      "captured": "2026-09-05 (rendered in browser; raw HTML is a JS shell)",
+      "check": "manual"
     },
     "web/faq_police_verification_wayback.txt": {
       "title": "Official FAQ — passportindia.gov.in (Police Verification section)",
       "url": "https://www.passportindia.gov.in/AppOnlineProject/online/faqPoliceVerification",
       "captured": "2026-09-05 via Wayback Machine snapshot 2025-03-18",
-      "note": "Live portal migrated to the /psp/ shell ~July 2026 and the FAQ route was not reachable at capture time; the archived official page is the checkable copy. Wording independently corroborated by current third-party citations of the Passport Seva answer."
+      "note": "Live portal migrated to the /psp/ shell ~July 2026 and the FAQ route was not reachable at capture time; the archived official page is the checkable copy. Wording independently corroborated by current third-party citations of the Passport Seva answer.",
+      "check": "none"
     }
   },
   "rules": {
-    "state-1": { "file": "Citizens_Charter.pdf", "locator": "Service standards table, item 1 (Fresh issue)", "quote": "Up to 30 working days (Police Verification (PV) period excluded)", "status": "verified", "note": "Supports both the WAIT classification and the no-countdown howLong. PV-exclusion phrasing recurs on the re-issue row." },
-    "state-2": { "file": "web/faq_police_verification_wayback.txt", "locator": "Police Verification FAQ section (general)", "quote": null, "status": "honest_generic", "note": "Rule self-declares 'General stuck-case guidance — no state-specific source found.' Keep that self-label; no verbatim quote exists or is claimed." },
-    "state-3": { "file": "web/faq_police_verification_wayback.txt", "locator": "Police Verification FAQ section (general)", "quote": null, "status": "honest_generic", "note": "Same self-declared generic basis as state-2." },
-    "state-4": { "file": "web/faq_police_verification_wayback.txt", "locator": "FAQ Q20 — file status shows police report is adverse", "quote": "Please contact Passport Office (PO) to understand the reason of adverse report. Post clarification, if required a re-verification can be requested.", "status": "verified", "note": "Rule's whatToDo is a faithful paraphrase of this verbatim answer." },
-    "state-5a": { "file": "Citizens_Charter.pdf", "locator": "Grievance Redressal section", "quote": "Any grievance or complaint arising out of any non-compliance of service standards, failure in delivery of service or in the functioning of a PIA may be logged online at (a) Centralised Public Grievance Redress and Monitoring System (CPGRAMS) www.pgportal.gov.in or (b) https://www.passportindia.gov.in/psp/Grievance or (c) register at toll free no. 1800-258-1800", "status": "verified" },
-    "state-5b": { "file": "Citizens_Charter.pdf", "locator": "Grievance Redressal section", "quote": "Any grievance or complaint arising out of any non-compliance of service standards, failure in delivery of service or in the functioning of a PIA may be logged online at (a) Centralised Public Grievance Redress and Monitoring System (CPGRAMS)", "status": "verified" },
-    "state-dpg": { "file": "web/grievance_page.txt", "locator": "Grievance page, DPG paragraph", "quote": "If your passport-related grievance has not been satisfactory redressed by the MEA/Passport issuing Authority within a reasonable period of time, you may lodge a grievance with the Directorate of Public Grievances (DPG), Cabinet Secretariat, Government of India", "status": "verified", "note": "'Within a reasonable period of time' — supports the rule's verified-absence claim that no numeric deadline exists." },
-    "v-1": { "file": "Final-ER-FAQ.pdf", "locator": "Q21 & Q23", "quote": "As soon as the ERO/AERO receives Form 6 filed on line, the same would be downloaded and BLO would be deputed to visit your residence for verification.", "status": "verified", "note": "expectNext's post-and-SMS claim is Q25: 'The decision of the Electoral Registration Officer will be communicated to the applicant by post on his address given by him in Form 6 and also by SMS on the mobile number given by him in Form 6.'" },
-    "v-2": { "file": "Final-ER-FAQ.pdf", "locator": "Q23", "quote": "BLO would be deputed to visit your residence for verification", "status": "verified" },
-    "v-3": { "file": "Final-ER-FAQ.pdf", "locator": "Q34", "quote": "During the period of revision, you can file an appeal to the District Election Officer. In the case of the period of continuous updation, such appeal against any order of ERO will lie before the District Magistrate/Additional DM/Executive Magistrate/District Collector of the District concerned.", "status": "verified", "note": "Q34 states NO deadline for the first appeal — confirms the rule's 'no deadline in verified sources' claim. PRD §23 research question (b) closed 2026-09-05." },
-    "v-4": { "file": "Final-ER-FAQ.pdf", "locator": "Q34", "quote": "During the period of revision, you can file an appeal to the District Election Officer.", "status": "verified" },
-    "v-5": { "file": "Final-ER-FAQ.pdf", "locator": "Q34", "quote": "A further appeal against the order of the Appellate Authority will lie before the Chief Electoral Officer of the State.", "status": "verified" },
-    "s-roll-present": { "file": "FAQ_SIR2026.pdf", "locator": "Q4 (calendar), Q31", "quote": "Electoral Roll will be published on 04th Nov 2026", "status": "verified" },
-    "s-roll-unchecked": { "file": "FAQ_SIR2026.pdf", "locator": "Q25, Q27, Q4", "quote": "After publication of the Draft Electoral Roll, voters must check whether their name has been correctly included in the draft electoral roll.", "status": "verified_discrepancy", "note": "DISCREPANCY: prototype howLong says the window 'runs through 29 Oct 2026'; Q4 says claims & objections FILING ends 30.09.2026 — 29.10 is the notice/DISPOSAL phase end (the ERO's deadline, not the citizen's). Fix in the fix-pass: cite 30 Sep for anything the citizen must file." },
-    "s-roll-absent": { "file": "FAQ_SIR2026.pdf", "locator": "Q21, Q28, Q30, Q4", "quote": "You may file Form 6 during the period of claims and objection alongwith Declaration Form and other supporting documents prescribed by the ECI.", "status": "verified_discrepancy", "note": "Same DISCREPANCY as s-roll-unchecked: 'file within it — through 29 Oct' must become 'file by 30 Sep 2026' (Q4 row 3; corroborated by news reporting of the 30 Sep claims deadline)." },
-    "s-notice": { "file": "FAQ_SIR2026.pdf", "locator": "Q23 (12-document list), Q11", "quote": "He/she has to provide any of the 12 documents prescribed by the ECI upon receipt of notice from ERO during Notice phase, as the case may be.", "status": "verified_discrepancy", "note": "12-document list verified verbatim at Q23. DISCREPANCY: no elector-facing response deadline is stated anywhere; the prototype's 'submit before 29 Oct' instruction is an inference from the DISPOSAL phase end. Per grill A11: state the sourced facts (notice/disposal phase runs to 29.10; respond per your notice), drop the invented deadline instruction." },
-    "s-duplicate": { "file": "FAQ_SIR2026.pdf", "locator": "Q22", "quote": "If registered at more than one place, submit the Enumeration Form in the constituency only, where you are currently residing. Other entry will get deleted from the fresh Draft Electoral Roll.", "status": "dormant", "note": "The FAQ answer itself is phase-stale — enumeration ended 17.08 (Q4 row 1), so its instruction can no longer be followed. Rule retired to sirDormantRules_enumeration per grill A1; the source being verbatim does not rescue an action the calendar has retired. Lesson: phase-gating must be applied ON TOP of sources, because sources go stale without being republished." },
-    "s-5-dormant-final-roll": { "file": "FAQ_SIR2026.pdf", "locator": "Q32", "quote": "The applicant can file an appeal before the District Election Officer/District Magistrate of concerned District within 15 days.", "status": "verified", "note": "Dormant until Delhi's final_roll phase (04.11.2026). The playbook's sole sourced numeric interval." }
+    "state-1": {
+      "file": "Citizens_Charter.pdf",
+      "locator": "Service standards table, item 1 (Fresh issue)",
+      "quote": "Up to 30 working days (Police Verification (PV) period excluded)",
+      "status": "verified",
+      "note": "Supports both the WAIT classification and the no-countdown howLong. PV-exclusion phrasing recurs on the re-issue row."
+    },
+    "state-2": {
+      "file": "web/faq_police_verification_wayback.txt",
+      "locator": "Police Verification FAQ section (general)",
+      "quote": null,
+      "status": "honest_generic",
+      "note": "Rule self-declares 'General stuck-case guidance — no state-specific source found.' Keep that self-label; no verbatim quote exists or is claimed."
+    },
+    "state-3": {
+      "file": "web/faq_police_verification_wayback.txt",
+      "locator": "Police Verification FAQ section (general)",
+      "quote": null,
+      "status": "honest_generic",
+      "note": "Same self-declared generic basis as state-2."
+    },
+    "state-4": {
+      "file": "web/faq_police_verification_wayback.txt",
+      "locator": "FAQ Q20 — file status shows police report is adverse",
+      "quote": "Please contact Passport Office (PO) to understand the reason of adverse report. Post clarification, if required a re-verification can be requested.",
+      "status": "verified",
+      "note": "Rule's whatToDo is a faithful paraphrase of this verbatim answer."
+    },
+    "state-5a": {
+      "file": "Citizens_Charter.pdf",
+      "locator": "Grievance Redressal section",
+      "quote": "Any grievance or complaint arising out of any non-compliance of service standards, failure in delivery of service or in the functioning of a PIA may be logged online at (a) Centralised Public Grievance Redress and Monitoring System (CPGRAMS) www.pgportal.gov.in or (b) https://www.passportindia.gov.in/psp/Grievance or (c) register at toll free no. 1800-258-1800",
+      "status": "verified"
+    },
+    "state-5b": {
+      "file": "Citizens_Charter.pdf",
+      "locator": "Grievance Redressal section",
+      "quote": "Any grievance or complaint arising out of any non-compliance of service standards, failure in delivery of service or in the functioning of a PIA may be logged online at (a) Centralised Public Grievance Redress and Monitoring System (CPGRAMS)",
+      "status": "verified"
+    },
+    "state-dpg": {
+      "file": "web/grievance_page.txt",
+      "locator": "Grievance page, DPG paragraph",
+      "quote": "If your passport-related grievance has not been satisfactory redressed by the MEA/Passport issuing Authority within a reasonable period of time, you may lodge a grievance with the Directorate of Public Grievances (DPG), Cabinet Secretariat, Government of India",
+      "status": "verified",
+      "note": "'Within a reasonable period of time' — supports the rule's verified-absence claim that no numeric deadline exists."
+    },
+    "v-1": {
+      "file": "Final-ER-FAQ.pdf",
+      "locator": "Q21 & Q23",
+      "quote": "As soon as the ERO/AERO receives Form 6 filed on line, the same would be downloaded and BLO would be deputed to visit your residence for verification.",
+      "status": "verified",
+      "note": "expectNext's post-and-SMS claim is Q25: 'The decision of the Electoral Registration Officer will be communicated to the applicant by post on his address given by him in Form 6 and also by SMS on the mobile number given by him in Form 6.'"
+    },
+    "v-2": {
+      "file": "Final-ER-FAQ.pdf",
+      "locator": "Q23",
+      "quote": "BLO would be deputed to visit your residence for verification",
+      "status": "verified"
+    },
+    "v-3": {
+      "file": "Final-ER-FAQ.pdf",
+      "locator": "Q34",
+      "quote": "During the period of revision, you can file an appeal to the District Election Officer. In the case of the period of continuous updation, such appeal against any order of ERO will lie before the District Magistrate/Additional DM/Executive Magistrate/District Collector of the District concerned.",
+      "status": "verified",
+      "note": "Q34 states NO deadline for the first appeal — confirms the rule's 'no deadline in verified sources' claim. PRD §23 research question (b) closed 2026-09-05."
+    },
+    "v-4": {
+      "file": "Final-ER-FAQ.pdf",
+      "locator": "Q34",
+      "quote": "During the period of revision, you can file an appeal to the District Election Officer.",
+      "status": "verified"
+    },
+    "v-5": {
+      "file": "Final-ER-FAQ.pdf",
+      "locator": "Q34",
+      "quote": "A further appeal against the order of the Appellate Authority will lie before the Chief Electoral Officer of the State.",
+      "status": "verified"
+    },
+    "s-roll-present": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q4 (calendar), Q31",
+      "quote": "Electoral Roll will be published on 04th Nov 2026",
+      "status": "verified"
+    },
+    "s-roll-unchecked": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q25, Q27, Q4",
+      "quote": "After publication of the Draft Electoral Roll, voters must check whether their name has been correctly included in the draft electoral roll.",
+      "status": "verified_discrepancy",
+      "note": "DISCREPANCY: prototype howLong says the window 'runs through 29 Oct 2026'; Q4 says claims & objections FILING ends 30.09.2026 — 29.10 is the notice/DISPOSAL phase end (the ERO's deadline, not the citizen's). Fix in the fix-pass: cite 30 Sep for anything the citizen must file."
+    },
+    "s-roll-absent": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q21, Q28, Q30, Q4",
+      "quote": "You may file Form 6 during the period of claims and objection alongwith Declaration Form and other supporting documents prescribed by the ECI.",
+      "status": "verified_discrepancy",
+      "note": "Same DISCREPANCY as s-roll-unchecked: 'file within it — through 29 Oct' must become 'file by 30 Sep 2026' (Q4 row 3; corroborated by news reporting of the 30 Sep claims deadline)."
+    },
+    "s-notice": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q23 (12-document list), Q11",
+      "quote": "He/she has to provide any of the 12 documents prescribed by the ECI upon receipt of notice from ERO during Notice phase, as the case may be.",
+      "status": "verified_discrepancy",
+      "note": "12-document list verified verbatim at Q23. DISCREPANCY: no elector-facing response deadline is stated anywhere; the prototype's 'submit before 29 Oct' instruction is an inference from the DISPOSAL phase end. Per grill A11: state the sourced facts (notice/disposal phase runs to 29.10; respond per your notice), drop the invented deadline instruction."
+    },
+    "s-duplicate": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q22",
+      "quote": "If registered at more than one place, submit the Enumeration Form in the constituency only, where you are currently residing. Other entry will get deleted from the fresh Draft Electoral Roll.",
+      "status": "dormant",
+      "note": "The FAQ answer itself is phase-stale — enumeration ended 17.08 (Q4 row 1), so its instruction can no longer be followed. Rule retired to sirDormantRules_enumeration per grill A1; the source being verbatim does not rescue an action the calendar has retired. Lesson: phase-gating must be applied ON TOP of sources, because sources go stale without being republished."
+    },
+    "s-5-dormant-final-roll": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q32",
+      "quote": "The applicant can file an appeal before the District Election Officer/District Magistrate of concerned District within 15 days.",
+      "status": "verified",
+      "note": "Dormant until Delhi's final_roll phase (04.11.2026). The playbook's sole sourced numeric interval."
+    }
   }
 }

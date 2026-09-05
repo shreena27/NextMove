@@ -41,11 +41,22 @@ gems stay small and appear at exactly two moments.
 ADHD/cognitive-accessibility pass (2026-09-05, adhd-design-expert
 skill, user-approved "apply what's logical"): (1) a per-rule
 `howLong` field renders as a "How long?" row on Next Move — sourced
-dates stated as facts (Delhi's 29 Oct window, 4 Nov Final Roll, the
-Citizen's Charter PV exclusion), verified ABSENCE stated everywhere
-else ("no official timeline exists — that's why there's no
-countdown"); omitted on UNCLASSIFIED fallbacks and on SIR S-6 (its
-window claim would compound a pre-existing enumeration-form tension).
+dates stated as facts (Delhi's 30 Sep claims-filing deadline, 4 Nov
+Final Roll, the Citizen's Charter PV exclusion), verified ABSENCE
+stated everywhere else ("no official timeline exists — that's why
+there's no countdown"); omitted on UNCLASSIFIED fallbacks.
+
+Freshness model (2026-09-05, user-approved): detect automatically →
+degrade automatically → adopt only after human verification. Sources
+live committed under sources/ with manifest.json (rule → verbatim
+quote) and check_freshness.py (hash-compare against the live URLs).
+When a source changes, affected guidance DEGRADES — the paused
+"re-verifying" screen and banners below — rather than continuing to
+assert claims the project can no longer back, and never auto-adopts
+the newer document (two official Delhi SIR calendars contradicted
+each other on the day this was designed; recency is not truth). The
+footer carries a labeled preview toggle so reviewers can see the
+degraded state. Trust panels show the last human-verification date.
 (2) Honest brevity promises only where structurally true: Passport
 guardrail lede ("two quick questions"), "Last question" chips on
 Passport Q2 / Voter Q2, "Just one question" on SIR Q1 — this does NOT
@@ -1128,21 +1139,12 @@ const sirPlaybook = {
       state:'S-4', label:'Notice requesting documents', dependency:'You, then ERO', rec:'FOLLOW_UP',
       explanation:"You've received an official notice asking for documents. NextMove can't tell you why the notice was issued specifically — only that it means your last-SIR record couldn't be confirmed from the form alone.",
       whatShort:'Submit the requested documents',
-      whatToDo:'Submit one of the ECI-prescribed documents before your state\'s notice-phase deadline.',
+      whatToDo:'Submit one of the ECI-prescribed documents as your notice directs.',
       where:{label:'Submit to your BLO / ERO per the notice\'s instructions'},
       need:'Any ONE of these:<ul class="need-list"><li>A government/PSU ID or pension order</li><li>A pre-1987 government/bank/LIC/PSU-issued ID</li><li>Birth certificate</li><li>Passport</li><li>Matriculation/educational certificate</li><li>Permanent residence certificate</li><li>Forest right certificate</li><li>Caste certificate</li><li>NRC (where it exists)</li><li>Family register</li><li>Land/house allotment certificate</li><li>Aadhaar (per the specific 2025 ECI direction)</li></ul>',
-      howLong:"Delhi's notice / Claims & Objections window runs through 29 Oct 2026 — submit before it closes.",
+      howLong:"Your notice's own instructions control the deadline — no separate elector-facing deadline is published. Delhi's notice/disposal phase itself runs through 29 Oct 2026.",
       source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q23, Q11'},
       mustNot:'Why the notice was issued, or which specific document will be accepted for your case.'},
-    {id:'s-duplicate', condition:a=>a.sirQ1==='duplicate',
-      state:'S-6', label:'Possible duplicate registration', dependency:'You — one filing needed', rec:'FOLLOW_UP',
-      explanation:"You may be registered in two places. The law doesn't allow that, but the fix is simple and mostly automatic — you don't need to separately request a deletion.",
-      whatShort:'File at your current-residence constituency',
-      whatToDo:'Submit the Enumeration Form only in the constituency where you currently live. The other entry is removed automatically once you do.',
-      where:{label:'Enumeration Form — your current-residence constituency'},
-      need:'Nothing beyond the standard Enumeration Form.',
-      source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q22'},
-      mustNot:'Nothing further to flag — this state is fully specified.'},
     {id:'s-roll-absent', condition:a=>a.sirQ1==='roll_absent',
       state:'S-3', label:'Not on the Draft Roll', dependency:'You — active follow-up needed', rec:'FOLLOW_UP',
       explanation:"You've checked the Draft Roll and your name isn't there. That can happen for a few different reasons — the Enumeration Form wasn't deposited in time, or you'd moved and it couldn't reach you, among others — and NextMove can't tell which applies to you. But the fix is the same either way, and it's live right now: Delhi is currently in the Claims & Objections window.",
@@ -1150,7 +1152,7 @@ const sirPlaybook = {
       whatToDo:'File Form 6 with a Declaration Form and supporting documents during the Claims & Objections window.',
       where:{label:'Form 6 — Claims & Objections window (online or at the Voter Centre)', url:'https://voters.eci.gov.in'},
       need:'One of the ECI-accepted document types (see your next-move details) and the Declaration Form.',
-      howLong:"The Claims & Objections window is live now and runs through 29 Oct 2026 in Delhi — file within it.",
+      howLong:"The claims filing window is live now and closes 30 Sep 2026 in Delhi — file by then.",
       source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q20, Q21, Q28, Q30'},
       mustNot:'The specific reason your name is missing.'},
     {id:'s-roll-unchecked', condition:a=>a.sirQ1==='roll_unchecked',
@@ -1160,7 +1162,7 @@ const sirPlaybook = {
       whatToDo:'Check the Draft Electoral Roll now via the Voters\' Service Portal, ECINET app, or the Delhi CEO website. What you find determines the next step: if you\'re listed, there\'s nothing further to do; if not, file Form 6 during the current Claims & Objections window.',
       where:{label:'Draft Roll — voters.eci.gov.in, ECINET app, or the Delhi CEO website', url:'https://voters.eci.gov.in'},
       need:'Nothing — just your name and constituency to search.',
-      howLong:"Delhi's Claims & Objections window runs through 29 Oct 2026 — checking now leaves time to act if you're not listed.",
+      howLong:"Delhi's claims filing window closes 30 Sep 2026 — checking now leaves time to file if you're not listed.",
       source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q15, Q25, Q26, Q27'},
       mustNot:'A guess at whether you\'ll be listed — NextMove doesn\'t know until you check.'},
     {id:'s-roll-present', condition:a=>a.sirQ1==='roll_present',
@@ -1202,6 +1204,42 @@ const sirDormantRules_finalRoll = {
     mustNot:'Anything about the appeal\'s likely outcome.'},
 };
 
+// Dormant, phase-RETIRED content (2026-09-05, grill A1 / AC-S-7): the old
+// S-6 duplicate-registration rule. Its remedy is verbatim from FAQ Q22 —
+// "submit the Enumeration Form in the constituency where you currently
+// reside" — but enumeration closed 17 Aug 2026, so the instruction can no
+// longer be followed. The source being verbatim does not rescue an action
+// the calendar has retired: phase-gating applies ON TOP of sources, because
+// official documents go stale without being amended. If a future phase (or
+// ECI guidance) provides a live duplicate-resolution mechanism, this content
+// is re-derived against it — not resurrected as-is.
+const sirDormantRules_enumeration = {
+  's-duplicate': {
+    rule:{state:'S-6', label:'Possible duplicate registration', dependency:'You — one filing needed', rec:'FOLLOW_UP',
+      explanation:"You may be registered in two places. The law doesn't allow that, but the fix is simple and mostly automatic — you don't need to separately request a deletion.",
+      whatShort:'File at your current-residence constituency',
+      whatToDo:'Submit the Enumeration Form only in the constituency where you currently live. The other entry is removed automatically once you do.',
+      where:{label:'Enumeration Form — your current-residence constituency'},
+      need:'Nothing beyond the standard Enumeration Form.',
+      source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q22'},
+      mustNot:'Nothing further to flag — this state is fully specified.'},
+    prep:{steps:[
+      'Identify the constituency where you currently live — that is the only place you file.',
+      {text:'Not sure which constituency covers your address? Look it up on the Voters\' Service Portal, or call 1950.', url:'https://voters.eci.gov.in'},
+      'Submit the Enumeration Form there (and only there).',
+      'The other entry is removed automatically once you do — no separate deletion request needed.',
+      'Keep the acknowledgment.',
+    ],
+    visit:{
+      carry:['Your filled Enumeration Form','A government photo ID (original + photocopy)','Your old EPIC card, if you have it'],
+      after:'After you file: the other entry is removed automatically — no separate deletion request needed (CEO Delhi FAQ Q22).',
+    }},
+    checkin:{prepAware:true, opts:[
+      {k:'action', label:'I filed the Enumeration Form in my current constituency', patch:{sirQ1:'roll_unchecked'}},
+    ]},
+  },
+};
+
 // V1 SIR coverage is locked to Delhi only (2026-09-04 decision) — NextMove
 // gives case-specific SIR diagnosis and next-action guidance for Delhi alone.
 // A state config with `supported:false` never reaches the sirPlaybook; it
@@ -1214,7 +1252,7 @@ const SIR_STATES = {
     phase:{
       id:'claims_notice',
       label:'Claims & Objections / Notice window',
-      note:'Delhi\'s enumeration window ran 30 Jun–17 Aug 2026 and the Draft Roll has already been published. As of now, Delhi is in the Claims & Objections / Notice window (through 29 Oct 2026), ahead of the Final Roll on 4 Nov 2026.',
+      note:'Delhi\'s enumeration ran 30 Jun–17 Aug 2026 and the Draft Roll published on 31 Aug. Claims and objections can be filed through 30 Sep 2026; the notice/disposal phase runs through 29 Oct, ahead of the Final Roll on 4 Nov 2026.',
     }},
   bihar:{name:'Bihar', supported:false},
   maharashtra:{name:'Maharashtra', supported:false},
@@ -1235,7 +1273,13 @@ const SIR_Q1_OPTIONS_FOR = {
     roll_absent:"I checked the Draft Roll and my name isn't there",
     roll_unchecked:"I haven't checked the Draft Roll yet",
     notice:'I got a notice asking for documents',
-    duplicate:'I think I might be registered in two places',
+    // 'duplicate' retired 2026-09-05 (grill A1 / AC-S-7): its only verified
+    // remedy — "submit the Enumeration Form where you currently live" (FAQ
+    // Q22) — belongs to the enumeration phase, which closed 17 Aug. The
+    // source is verbatim but the calendar has retired the action, so the
+    // option is gone and duplicate-suspicion falls through to "I'm not
+    // sure" → UNCLASSIFIED ("check directly"), which is the honest answer.
+    // Content preserved in sirDormantRules_enumeration below.
   },
 };
 
@@ -1423,7 +1467,7 @@ Enclosed: the decision/order from my first appeal.
       'Pick ONE document from the list on the previous screen — any one is enough.',
       "Re-read the notice for where and how to submit — the notice's own instructions control.",
       'Submit the document to your BLO / ERO as the notice directs.',
-      "Do it before Delhi's notice window closes on 29 Oct 2026.",
+      "Act promptly — your notice's own instructions control the timing (Delhi's notice/disposal phase itself runs through 29 Oct 2026).",
       'Keep an acknowledgment or photo of what you submitted, with the date.',
       {text:"If the notice's instructions are unclear, call the toll-free Voter Helpline 1950 before submitting.", url:'https://voters.eci.gov.in'},
     ],
@@ -1431,23 +1475,12 @@ Enclosed: the decision/order from my first appeal.
       carry:['The notice itself','ONE document from the ECI-accepted list (original + photocopy)','A government photo ID (original + photocopy)'],
       after:'After you submit: the decision on your record rests with the ERO.',
     }},
-  's-duplicate': {
-    steps:[
-      'Identify the constituency where you currently live — that is the only place you file.',
-      {text:'Not sure which constituency covers your address? Look it up on the Voters\' Service Portal, or call 1950.', url:'https://voters.eci.gov.in'},
-      'Submit the Enumeration Form there (and only there).',
-      'The other entry is removed automatically once you do — no separate deletion request needed.',
-      'Keep the acknowledgment.',
-    ],
-    visit:{
-      carry:['Your filled Enumeration Form','A government photo ID (original + photocopy)','Your old EPIC card, if you have it'],
-      after:'After you file: the other entry is removed automatically — no separate deletion request needed (CEO Delhi FAQ Q22).',
-    }},
+  // 's-duplicate' prep moved to sirDormantRules_enumeration (phase-retired).
   's-roll-absent': {
     steps:[
       'Gather one ECI-accepted document and the Declaration Form.',
       {text:'Open the Voters\' Service Portal (or go to your Voter Centre in person).', url:'https://voters.eci.gov.in'},
-      "File Form 6 with both attached, during the Claims & Objections window — it's open now, through 29 Oct 2026 in Delhi.",
+      "File Form 6 with both attached — the filing window is open now and closes 30 Sep 2026 in Delhi.",
       'Save the acknowledgment — it is your proof of filing if the Final Roll goes wrong.',
     ],
     visit:{
@@ -1459,7 +1492,7 @@ Enclosed: the decision/order from my first appeal.
       {text:'Open the Voters\' Service Portal, the ECINET app, or the Delhi CEO website.', url:'https://voters.eci.gov.in'},
       'Search the Draft Roll by your name and constituency.',
       "If you're listed: nothing further to do — the Final Roll (4 Nov 2026) is the next milestone.",
-      "If you're not listed: come back and take the \"name isn't there\" path — Form 6 is the fix, and the window is open through 29 Oct 2026.",
+      "If you're not listed: come back and take the \"name isn't there\" path — Form 6 is the fix, and the filing window closes 30 Sep 2026.",
     ],
     doneNote:'All steps done. What you found on the roll decides the next step — NextMove can re-diagnose any time.'},
 };
@@ -1662,6 +1695,24 @@ S.savedCases = store.get('nm_cases') || [];
 })();
 function persistCases(){ store.set('nm_cases', S.savedCases); }
 function activeCase(){ return S.savedCases.find(c=>c.id===S.activeCaseId) || null; }
+
+/* ---- source freshness: detect → degrade → human re-verify ----
+   (user-approved model, 2026-09-05). In production, check_freshness.py's
+   CHANGED verdict flips the affected service into degraded mode
+   automatically; here a labeled footer preview toggle plays that role so
+   reviewers can see the state. Degraded = NextMove pauses case-specific
+   advice for the service (new cases get the re-verifying screen; saved
+   cases keep their record but check-ins offer only the universal options)
+   rather than assert guidance it can't currently back. It never
+   auto-adopts the changed source — recency is not truth. */
+const SOURCES_VERIFIED = '5 Sep 2026'; // last human verification of sources/manifest.json
+const FRESHNESS = { demo:false, changedOn:'5 Sep 2026', services:['sir'] };
+function degradedFor(k){ return FRESHNESS.demo && FRESHNESS.services.includes(k); }
+function toggleFreshDemo(){ FRESHNESS.demo=!FRESHNESS.demo; render(); }
+function freshBanner(engineKey){
+  if(!degradedFor(engineKey)) return '';
+  return `<div class="banner"><p class="small" style="margin:0;"><b>Being re-verified.</b> An official source behind this guidance changed on ${FRESHNESS.changedOn}. A human is re-checking the affected rules against it — until that's done, NextMove pauses its case-specific advice here rather than show guidance it can't currently back. For anything urgent, use the official channel directly.</p></div>`;
+}
 
 function nav(screen, opts){
   if(opts && opts.replace){ /* no history push */ } else { S.history.push(S.screen); }
@@ -1943,7 +1994,7 @@ function trustDisclosure(d, answerLabels, extraToldUs){
     <div class="trust-row"><div class="nm-k">You told us</div><div class="nm-v">${answered.join(' · ') || 'Not enough to safely place your case — see below.'}</div></div>
     ${S.appliedText ? `<div class="trust-row"><div class="nm-k">You wrote</div><div class="nm-v" style="font-style:italic;">"${S.appliedText}"</div>${S.caseFacts.length ? `<div class="small" style="margin-top:6px;">Details kept from it: ${S.caseFacts.map(f=>`${f.label} ${f.value}`).join(' · ')}</div>` : ''}</div>` : ''}
     <div class="trust-row"><div class="nm-k">What that means</div><div class="nm-v">${d.explanation}</div></div>
-    <div class="trust-row"><div class="nm-k">Based on</div><div class="nm-v">${d.source.title}${d.source.quote?`<div class="source-quote">"${d.source.quote}"</div>`:''}</div></div>
+    <div class="trust-row"><div class="nm-k">Based on</div><div class="nm-v">${d.source.title}${d.source.quote?`<div class="source-quote">"${d.source.quote}"</div>`:''}${d.source.title.startsWith("NextMove's own") ? '' : `<div class="small" style="margin-top:5px; color:var(--ink-faint);">Checked against NextMove's archived copy of this source on ${SOURCES_VERIFIED}.</div>`}</div></div>
   </div>` : ''}`;
 }
 
@@ -2144,9 +2195,7 @@ const CHECKIN = {
   'S-4':{prepAware:true, opts:[
     {k:'action', label:'I submitted the requested document to the BLO/ERO', patch:{sirDocsFiled:'yes'}},
   ]},
-  'S-6':{prepAware:true, opts:[
-    {k:'action', label:'I filed the Enumeration Form in my current constituency', patch:{sirQ1:'roll_unchecked'}},
-  ]},
+  // 'S-6' check-in moved to sirDormantRules_enumeration (phase-retired).
 };
 function checkinOptions(c){
   const d = currentDiagnosis(c.engineKey);
@@ -2157,10 +2206,12 @@ function checkinOptions(c){
   const prep = d.id ? PREP[d.id] : null;
   const done = prep ? prep.steps.filter((_,i)=>S.prepChecks[i]).length : 0;
   const list = [];
-  if(cfg && cfg.prepAware && prep && done===0){
+  if(cfg && cfg.prepAware && prep && done===0 && !degradedFor(c.engineKey)){
     list.push({k:'notdone', label:"I haven't done this yet — take me back to the steps"});
   }
-  list.push(...base);
+  // Under source re-verification, state-specific options pause with the
+  // guidance they came from — only the universal three remain.
+  if(!degradedFor(c.engineKey)) list.push(...base);
   list.push({k:'nothing', label:'Nothing yet'});
   list.push({k:'deliverable', label:DELIVERABLE_LABEL[c.engineKey]});
   list.push({k:'else', label:'Something else happened'});
@@ -2346,6 +2397,7 @@ function renderCheckin(){
     <p class="lede">Pick what actually happened — your casefile and diagnosis update from it. Nothing here guesses: if none of these fit, "Something else happened" re-checks your case properly.</p>
     ${renderLog(c)}
     `, `
+    ${freshBanner(c.engineKey)}
     ${panel}
     <div class="answers" style="margin-top:${panel?'18px':'6px'};">
       ${list.map((o,i)=>`<button class="arow" onclick="ciChoose(${i})">
@@ -2569,7 +2621,7 @@ function renderPassportGuardrail(){
     ${splitCols(`
     ${phaseEyebrow('Passport')}
     <h1 class="headline">Already received your passport?</h1>
-    <p class="lede">This version of NextMove is designed for applications where the passport hasn't been issued yet. Still waiting on yours? It's two quick questions from here to your diagnosis.</p>
+    <p class="lede">This version of NextMove is designed for applications where the passport hasn't been issued yet. Still waiting on yours? Two quick questions from here — or a few more if you're not sure, and that's fine too.</p>
     `, `
     <div class="answers">
       ${answerRow('no',{key:'guardrail',onSelect:'guardrailAnswer'},'No — still waiting on it')}
@@ -2854,7 +2906,30 @@ function renderSirState(){
 }
 function sirStateAnswer(k){
   setAns('sirState', k);
+  if(SIR_STATES[k].supported && degradedFor('sir')){ nav('sir-reverifying'); return; }
   nav(SIR_STATES[k].supported ? 'sir-q1' : 'sir-unsupported');
+}
+// The degraded landing for a supported state: same coverage-boundary visual
+// language as renderSirUnsupported (it IS a coverage boundary — a temporal
+// one), different reason. Never styled as an error or as UNCLASSIFIED.
+function renderSirReverifying(){
+  const st = SIR_STATES[S.answers.sirState];
+  return `${topbar(true,true)}
+  <div class="stage screen">
+    <div class="narrow">
+      ${phaseEyebrow('Voter Services','SIR · ' + st.name)}
+      <h2 class="headline">SIR guidance for ${st.name} is being re-verified.</h2>
+      <p class="lede">An official source behind ${st.name}'s SIR guidance changed on ${FRESHNESS.changedOn}. A human is re-checking every affected rule against it. Until that's done, NextMove pauses its case-specific advice here — showing you guidance it can't currently back would be worse than a short wait.</p>
+      <div class="nm-field" style="border-top:none; padding-top:0;">
+        <div class="nm-k">Where to check meanwhile</div>
+        <div class="nm-v"><a href="https://voters.eci.gov.in" target="_blank" rel="noopener">Voters' Service Portal — voters.eci.gov.in</a> · <span class="phone">Toll-free Voter Helpline: 1950</span>
+          <div class="handoff-note">An official ECI channel — always current, straight from the source.</div>
+        </div>
+      </div>
+      <p class="small" style="margin-top:14px;">Guidance here was last human-verified on ${SOURCES_VERIFIED}. Re-verification usually completes within a day.</p>
+      <button class="btn btn-secondary btn-block" onclick="restart()">Back to Home</button>
+    </div>
+  </div>`;
 }
 function renderSirUnsupported(){
   const st = SIR_STATES[S.answers.sirState];
@@ -2930,6 +3005,7 @@ function renderDiagnosis(serviceLabel, d, timeline, answerLabels, engineKey, pre
     <p class="explain">${d.explanation}</p>
     `, `
     ${S.ciJustUpdated ? `<div class="banner" style="border-color:var(--butter); background:var(--butter-soft);"><p class="small" style="margin:0;">Update recorded — this is where it leaves your case. <button class="read-change" style="margin:0 0 0 6px;" onclick="ciUndo()">Undo that update</button></p></div>` : ''}
+    ${freshBanner(engineKey)}
     ${S.phaseDrift ? `<div class="banner"><p class="small" style="margin:0;"><b>The SIR phase changed while this case was saved.</b> NextMove re-checked your case against the current phase — this diagnosis reflects today's rules, not the ones from when you saved.</p></div>` : ''}
     ${preNote||''}
     ${d.dependency && d.dependency!=='Unknown' ? `<div class="dep-block">
@@ -2981,6 +3057,7 @@ function renderNextMove(serviceLabel, engineKey){
     <h1 class="nm-lead">${d.whatShort || d.whatToDo}</h1>
     ${d.whatShort ? `<p class="nm-lead-detail">${d.whatToDo}</p>` : ''}
     `, `
+    ${freshBanner(engineKey)}
     <div class="nm-fields">
       <div class="nm-field"><div class="nm-k">Why</div><div class="nm-v">${d.explanation}</div></div>
       <div class="nm-field"><div class="nm-k">Where</div><div class="nm-v">${d.where.url ? `<a href="${d.where.url}" target="_blank" rel="noopener">${d.where.label}</a>` : d.where.label}${d.where.phone?` · <span class="phone">${d.where.phone}</span>`:''}<div class="handoff-note">An official government channel — NextMove helps you understand and prepare; it doesn't act on your behalf.</div></div></div>
@@ -3066,6 +3143,7 @@ function renderPrepare(serviceLabel, engineKey){
     <p class="lede">${prep.draft ? 'Review the draft, make it yours, then walk the steps. You send it — from your own hands, on the official channel.' : 'Walk the steps below, ticking them off as you go. Every one of them happens on the official channel, by you.'}</p>
     <p class="prep-trust">NextMove drafts and organizes; it never submits anything on your behalf. The final step is always yours — that's by design.</p>
     `, `
+    ${freshBanner(engineKey)}
     ${channel}
     ${prep.draft ? (()=>{ const fd = fillDraft(prep.draft); S.prepFills = fd.fills; return `<div class="prep-card">
       <div class="nm-k" style="margin-bottom:10px;">Your draft</div>
@@ -3204,6 +3282,7 @@ function render(){
     case 'voter-prepare': html = renderPrepare('Voter Services','voter'); break;
     case 'sir-state': html = renderSirState(); break;
     case 'sir-unsupported': html = renderSirUnsupported(); break;
+    case 'sir-reverifying': html = renderSirReverifying(); break;
     case 'sir-q1': html = renderSirQ1(); break;
     case 'sir-diagnosis': html = renderSirDiagnosis(); break;
     case 'sir-nextmove': html = renderNextMove('SIR','sir'); break;
@@ -3217,7 +3296,7 @@ function render(){
     case 'case-closed': html = renderCaseClosed(); break;
     default: html = renderHome();
   }
-  el.innerHTML = html + `<div class="protofooter">Design prototype — not the build. Static reference for review only. Every recommendation above traces to an official source cited in "Why am I seeing this?" or the Voter/SIR Verification Matrix; anything without one is marked UNVERIFIED in the source docs and never hard-coded as a rule. Sign-in and saving are simulated: Google sign-in is instant, any 6-digit code is accepted, and your casefile lives only in this browser.</div>`;
+  el.innerHTML = html + `<div class="protofooter">Design prototype — not the build. Static reference for review only. Every recommendation above traces to an official source cited in "Why am I seeing this?" or the Voter/SIR Verification Matrix; anything without one is marked UNVERIFIED in the source docs and never hard-coded as a rule. Sign-in and saving are simulated: Google sign-in is instant, any 6-digit code is accepted, and your casefile lives only in this browser. Sources last human-verified ${SOURCES_VERIFIED}.<br><button class="read-change" onclick="toggleFreshDemo()">${FRESHNESS.demo ? '✕ Exit source-change preview — sources are actually verified and current' : 'Preview: what users see when an official source changes'}</button></div>`;
 }
 render();
 </script>
