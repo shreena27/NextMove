@@ -139,22 +139,22 @@
       "file": "FAQ_SIR2026.pdf",
       "locator": "Q25, Q27, Q4",
       "quote": "After publication of the Draft Electoral Roll, voters must check whether their name has been correctly included in the draft electoral roll.",
-      "status": "verified_discrepancy",
-      "note": "DISCREPANCY: prototype howLong says the window 'runs through 29 Oct 2026'; Q4 says claims & objections FILING ends 30.09.2026 — 29.10 is the notice/DISPOSAL phase end (the ERO's deadline, not the citizen's). Fix in the fix-pass: cite 30 Sep for anything the citizen must file."
+      "status": "verified",
+      "note": "DISCREPANCY: prototype howLong says the window 'runs through 29 Oct 2026'; Q4 says claims & objections FILING ends 30.09.2026 — 29.10 is the notice/DISPOSAL phase end (the ERO's deadline, not the citizen's). Fix in the fix-pass: cite 30 Sep for anything the citizen must file. RESOLVED 2026-09-05: prototype copy corrected (30 Sep filing deadline; s-notice instruction dropped) — commit 2958d37."
     },
     "s-roll-absent": {
       "file": "FAQ_SIR2026.pdf",
       "locator": "Q21, Q28, Q30, Q4",
       "quote": "You may file Form 6 during the period of claims and objection alongwith Declaration Form and other supporting documents prescribed by the ECI.",
-      "status": "verified_discrepancy",
-      "note": "Same DISCREPANCY as s-roll-unchecked: 'file within it — through 29 Oct' must become 'file by 30 Sep 2026' (Q4 row 3; corroborated by news reporting of the 30 Sep claims deadline)."
+      "status": "verified",
+      "note": "Same DISCREPANCY as s-roll-unchecked: 'file within it — through 29 Oct' must become 'file by 30 Sep 2026' (Q4 row 3; corroborated by news reporting of the 30 Sep claims deadline). RESOLVED 2026-09-05: prototype copy corrected (30 Sep filing deadline; s-notice instruction dropped) — commit 2958d37."
     },
     "s-notice": {
       "file": "FAQ_SIR2026.pdf",
       "locator": "Q23 (12-document list), Q11",
       "quote": "He/she has to provide any of the 12 documents prescribed by the ECI upon receipt of notice from ERO during Notice phase, as the case may be.",
-      "status": "verified_discrepancy",
-      "note": "12-document list verified verbatim at Q23. DISCREPANCY: no elector-facing response deadline is stated anywhere; the prototype's 'submit before 29 Oct' instruction is an inference from the DISPOSAL phase end. Per grill A11: state the sourced facts (notice/disposal phase runs to 29.10; respond per your notice), drop the invented deadline instruction."
+      "status": "verified",
+      "note": "12-document list verified verbatim at Q23. DISCREPANCY: no elector-facing response deadline is stated anywhere; the prototype's 'submit before 29 Oct' instruction is an inference from the DISPOSAL phase end. Per grill A11: state the sourced facts (notice/disposal phase runs to 29.10; respond per your notice), drop the invented deadline instruction. RESOLVED 2026-09-05: prototype copy corrected (30 Sep filing deadline; s-notice instruction dropped) — commit 2958d37."
     },
     "s-duplicate": {
       "file": "FAQ_SIR2026.pdf",
@@ -169,6 +169,55 @@
       "quote": "The applicant can file an appeal before the District Election Officer/District Magistrate of concerned District within 15 days.",
       "status": "verified",
       "note": "Dormant until Delhi's final_roll phase (04.11.2026). The playbook's sole sourced numeric interval."
+    },
+    "state-5a-r": {
+      "file": "Citizens_Charter.pdf",
+      "locator": "Service standards table (processing commitment context)",
+      "quote": null,
+      "status": "honest_generic",
+      "note": "Moving-again WAIT rests on the user's own attestation; the Charter supports only that a processing standard exists. howLong states verified absence for the resumed case."
+    },
+    "state-5b-r": {
+      "file": "Citizens_Charter.pdf",
+      "locator": "Grievance Redressal section",
+      "quote": null,
+      "status": "honest_generic",
+      "note": "As state-5a-r, for the grievance rung."
+    },
+    "state-dpg-r": {
+      "file": "web/grievance_page.txt",
+      "locator": "Grievance page, DPG paragraph",
+      "quote": null,
+      "status": "honest_generic",
+      "note": "As state-5a-r, for the DPG rung."
+    },
+    "v-acc": {
+      "file": "Final-ER-FAQ.pdf",
+      "locator": "Q25",
+      "quote": "The decision of the Electoral Registration Officer will be communicated to the applicant by post on his address given by him in Form 6 and also by SMS on the mobile number given by him in Form 6.",
+      "status": "verified",
+      "note": "Accepted-pending WAIT: watch post/SMS and the CEO roll listing; no delivery interval is published (verified absence)."
+    },
+    "s-final-absent": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q32",
+      "quote": "The applicant can file an appeal before the District Election Officer/District Magistrate of concerned District within 15 days.",
+      "status": "verified",
+      "note": "Former dormant S-5, now structurally reachable under the final_roll phase only."
+    },
+    "s-final-present": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q31, Q4 (calendar)",
+      "quote": "Electoral Roll will be published on 04th Nov 2026",
+      "status": "verified",
+      "note": "On-the-Final-Roll completion state (S-8)."
+    },
+    "s-final-unchecked": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q32 (appeal window motivates prompt checking)",
+      "quote": "within 15 days",
+      "status": "verified",
+      "note": "Check-now state (S-9); the only urgency claim is the sourced appeal window."
     }
   }
 }

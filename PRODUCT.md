@@ -24,13 +24,13 @@ Not a generic government chatbot, not a government portal. The mechanism: a veri
 
 ## Operating Context
 
-Used by a citizen anxious about a real pending government case, most often on their phone, in a moment of frustration or uncertainty. Slice 1 covers Passport only. Voter Services (Voter Services includes SIR as a sub-flow, not a separate top-level service) is planned next; Income Certificate is visible on Home as "Coming Soon," not yet built.
+Used by a citizen anxious about a real pending government case, most often on their phone, in a moment of frustration or uncertainty — and, once a case is saved, returning over days or weeks as a recurring companion (check-ins, journey log). V1 design covers Passport + Voter Services (SIR as a sub-flow, Delhi-only case-specific coverage); Income Certificate is visible on Home as "Coming Soon," not built.
 
 ## Capabilities and Constraints
 
 - Diagnoses case state via two short questions (Q1: current stage, Q2: prior follow-up) plus a recovery path for "I'm not sure."
 - Recommends WAIT / FOLLOW UP / ESCALATE / UNCLASSIFIED, each with a verified official channel and a source citation ("Why am I seeing this?").
-- No authentication, no persistence, no tracking, no AI-drafted follow-ups yet — those are later slices.
+- Deferred authentication (Google/OTP at the save moment only), per-service casefiles with a journey log, a check-in tracking loop with undo, AI-drafted follow-ups with guided (never automatic) submission, and AI answer interpretation behind code-level gates are all in the V1 design (PRD §§22–29); the sole hard boundary is submission on the citizen's behalf.
 - Never invents thresholds, deadlines, or causes for an adverse finding; where official guidance is broad or silent, NextMove stays broad rather than fabricating precision.
 - Government terminology is always explained in plain language; "I don't know" is a first-class, always-available answer.
 
