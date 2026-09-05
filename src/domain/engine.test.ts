@@ -86,6 +86,14 @@ describe('diagnose', () => {
     const d = diagnose(engine, { q1: 'unclassified', extra: 'kept' })
     expect(d.matchedAnswers).toEqual({ q1: 'unclassified', extra: 'kept' })
   })
+
+  it("does not apply the decorator to evaluate()'s own fallback when no rule matches", () => {
+    const decorate = (d: Diagnosis): Diagnosis => ({ ...d, label: 'decorated' })
+    const engine: ServiceEngine = { key: 'toy', playbook: toy, decorate }
+    const d = diagnose(engine, { q1: 'nope' })
+    expect(d.ruleId).toBeNull()
+    expect(d.label).toBe('Toy unclear')
+  })
 })
 
 describe('check-in composition (applyEvent + diagnose): retire, don\'t reset', () => {

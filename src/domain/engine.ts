@@ -8,7 +8,11 @@ import { evaluate } from './evaluate'
 export interface ServiceEngine {
   key: string
   playbook: Playbook
-  /** Applied to matched diagnoses only (e.g. stage·rung composition). */
+  /** Applied only when a rule actually matched (`ruleId !== null`), e.g.
+   *  stage·rung composition. Never applied to an UNCLASSIFIED fallback —
+   *  neither the `unclassifiedKeys` short-circuit nor evaluate()'s own
+   *  fallback when no rule matches — since decorating "we don't know"
+   *  would dress it as a diagnosed state. */
   decorate?: (d: Diagnosis) => Diagnosis
   /** Answer keys whose literal value 'unclassified' means the citizen chose
    *  "I'm not sure" at that point: ANY of them short-circuits to the
@@ -27,5 +31,5 @@ export function diagnose(engine: ServiceEngine, answers: AnswerRecord): Diagnosi
     return { ...engine.playbook.fallback, ruleId: null, matchedAnswers: { ...answers } }
   }
   const d = evaluate(engine.playbook, answers)
-  return engine.decorate ? engine.decorate(d) : d
+  return engine.decorate && d.ruleId !== null ? engine.decorate(d) : d
 }
