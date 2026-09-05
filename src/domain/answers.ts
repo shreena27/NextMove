@@ -8,9 +8,12 @@ export type DependentKeys = Record<string, string[]>
  *  Same value = strict no-op on ANSWERS (same object back; no dependents
  *  cleared). Changed value = set it and clear dependent keys, transitively,
  *  cycle-safe, never the key just written.
- *  `changed` means exactly "dependent answers were invalidated" — the
- *  session layer (C5) resets prepare/derived state on EVERY correction-path
- *  write regardless, and must not gate that reset on this flag. */
+ *  `changed` means "the stored value differed (and any declared dependents
+ *  were cleared)" — not "dependents were invalidated": with no deps map, or
+ *  a key with no declared dependents, `changed` is still true even though
+ *  nothing was cleared. The session layer (C5) resets prepare/derived state
+ *  on EVERY correction-path write regardless, and must not gate that reset
+ *  on this flag. */
 export function applyCorrection(
   answers: AnswerRecord,
   key: string,

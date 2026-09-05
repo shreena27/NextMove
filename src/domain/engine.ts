@@ -1,5 +1,5 @@
 import type { AnswerRecord, Diagnosis, Playbook } from './types'
-import { evaluate } from './evaluate'
+import { evaluate, fallbackDiagnosis } from './evaluate'
 
 /** One service's diagnosis engine: its playbook plus service-specific
  *  composition (passport's stage·rung decorator; the explicit "I'm not
@@ -28,7 +28,7 @@ export interface ServiceEngine {
  *  never stored (implementation plan §5). */
 export function diagnose(engine: ServiceEngine, answers: AnswerRecord): Diagnosis {
   if (engine.unclassifiedKeys?.some(k => answers[k] === 'unclassified')) {
-    return { ...engine.playbook.fallback, ruleId: null, matchedAnswers: { ...answers } }
+    return fallbackDiagnosis(engine.playbook, answers)
   }
   const d = evaluate(engine.playbook, answers)
   return engine.decorate && d.ruleId !== null ? engine.decorate(d) : d

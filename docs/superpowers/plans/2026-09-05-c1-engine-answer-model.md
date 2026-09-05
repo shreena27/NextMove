@@ -37,7 +37,7 @@ src/
     answers.test.ts   (NEW)
     stageRung.ts      (NEW — decorateStageRung composite-label decorator)
     stageRung.test.ts (NEW)
-    sirConfig.ts      (NEW — SirPhase/SirStateConfig, optionsForPhase, sirRoute)
+    sirConfig.ts      (NEW — SirPhase/SirStateConfig, optionsForPhase, sirCoverage)
     sirConfig.test.ts (NEW)
     engine.ts         (NEW — ServiceEngine + diagnose() composition)
     engine.test.ts    (NEW)
@@ -655,7 +655,7 @@ git commit -m "feat(c1): stage-rung composite-label decorator"
 
 ---
 
-### Task 5: SIR phase gating — `SirStateConfig`, `optionsForPhase`, `sirRoute`
+### Task 5: SIR phase gating — `SirStateConfig`, `optionsForPhase`, `sirCoverage`
 
 **Files:**
 - Create: `src/domain/sirConfig.ts`, `src/domain/sirConfig.test.ts`
@@ -815,6 +815,8 @@ git commit -m "feat(c1): SIR phase gating + structural coverage verdict (sirCove
 
 **Recorded deviation from `v1-design-lock-2` (deliberate, resolves a live prototype contradiction):** the prototype implements this short-circuit twice, differently. Its Diagnosis screen checks `voterQ1 === 'unclassified' || voterAppealed === 'unclassified'` (~3472), but `currentDiagnosis()` — feeding Next Move, the casefile, and the check-in loop — checks only `voterQ1` (~3646). The divergence is reachable: answering Voter Q1 "decision received" then "I'm not sure" on the appeal question renders UNCLASSIFIED on Diagnosis but a confident FOLLOW_UP ("file an appeal") on Next Move — two screens contradicting each other on the same case, which the implementation plan's §7 guardrails forbid. `unclassifiedKeys: string[]` (Voter: `['voterQ1', 'voterAppealed']`, set in C2) adopts the SAFER of the two branches everywhere: an explicit "I'm not sure" never produces a confident classification. Not applying the decorator to the short-circuit fallback is likewise a new decision, untestable against the prototype (no engine there has both), chosen because decorating "we don't know" would dress the fallback as a diagnosed state.
 
+**Ruling (2026-09-05, human partner):** the final whole-branch review found that the Step 3 code as originally written applied `decorate` to `evaluate()`'s own UNCLASSIFIED fallback too (the "nothing matched" path inside `evaluate()`), not just to the `unclassifiedKeys` short-circuit — contradicting this very paragraph's own rationale that decorating "we don't know" would dress the fallback as a diagnosed state. The human partner ruled to fix the *code*, not just the doc: `diagnose()` now guards the decorator call with `d.ruleId !== null`, so both fallback paths (the explicit short-circuit and evaluate()'s own no-rule-matched return) are undecorated identically. This shipped in commit `60aab8e`.
+
 - [ ] **Step 1: Write the failing tests** (`src/domain/engine.test.ts`)
 
 ```ts
@@ -951,7 +953,7 @@ Expected: FAIL — `./engine` module not found.
 
 ```ts
 import type { AnswerRecord, Diagnosis, Playbook } from './types'
-import { evaluate } from './evaluate'
+import { evaluate, fallbackDiagnosis } from './evaluate'
 
 /** One service's diagnosis engine: its playbook plus service-specific
  *  composition (passport's stage·rung decorator; the explicit "I'm not
@@ -960,7 +962,11 @@ import { evaluate } from './evaluate'
 export interface ServiceEngine {
   key: string
   playbook: Playbook
-  /** Applied to matched diagnoses only (e.g. stage·rung composition). */
+  /** Applied only when a rule actually matched (`ruleId !== null`), e.g.
+   *  stage·rung composition. Never applied to an UNCLASSIFIED fallback —
+   *  neither the `unclassifiedKeys` short-circuit nor evaluate()'s own
+   *  fallback when no rule matches — since decorating "we don't know"
+   *  would dress it as a diagnosed state. */
   decorate?: (d: Diagnosis) => Diagnosis
   /** Answer keys whose literal value 'unclassified' means the citizen chose
    *  "I'm not sure" at that point: ANY of them short-circuits to the
@@ -976,18 +982,20 @@ export interface ServiceEngine {
  *  never stored (implementation plan §5). */
 export function diagnose(engine: ServiceEngine, answers: AnswerRecord): Diagnosis {
   if (engine.unclassifiedKeys?.some(k => answers[k] === 'unclassified')) {
-    return { ...engine.playbook.fallback, ruleId: null, matchedAnswers: { ...answers } }
+    return fallbackDiagnosis(engine.playbook, answers)
   }
   const d = evaluate(engine.playbook, answers)
-  return engine.decorate ? engine.decorate(d) : d
+  return engine.decorate && d.ruleId !== null ? engine.decorate(d) : d
 }
 ```
+
+(`fallbackDiagnosis` is exported from `evaluate.ts` and is also used by `evaluate()`'s own no-rule-matched return — see the final-review tidy pass that deduplicated fallback-Diagnosis construction into that one helper, commit noted in the report at `.superpowers/sdd/2026-09-05-c1-engine-answer-model/final-review-fix-report.md`.)
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/domain/engine.test.ts`
 Expected: PASS (10 tests). Then run the full suite and build:
-Run: `npx vitest run` — Expected: all C1 tests pass (Tasks 2-6, 46 tests).
+Run: `npx vitest run` — Expected: all C1 tests pass (Tasks 2-6, 46 tests at the time this task was first implemented; 50 after the final-review tidy pass added a new `src/domain/integration.test.ts` covering `diagnose()` composed with `decorateStageRung` and a full `applyEvent`/`applyCorrection`/`diagnose` session walk — see the fix report above).
 Run: `npm run build` — Expected: success.
 
 - [ ] **Step 5: Commit**
