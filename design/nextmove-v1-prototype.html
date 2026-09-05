@@ -105,12 +105,21 @@ Detector defenses (deliberate, do not "fix"):
   --card:#FFFFFF;
   --ink:#3D241C;
   --ink-soft:#6E6152;
-  --ink-faint:#7A7264;
+  /* darkened from #7A7264 (4.44:1 on paper — an AA fail on the small
+     text this token carries) to 4.77:1, kept a step lighter than
+     ink-soft so the two secondary grays stay distinguishable */
+  --ink-faint:#756D5F;
   --line:#EAE4D6;
   --line-strong:#DCD4C2;
   --butter:#F5D848;
   --butter-deep:#E8C51F;
-  --butter-soft:#FBF0C4;
+  /* butter-soft repositioned off the amber axis (2026-09-05 polish):
+     the old #FBF0C4 was visually identical to --follow-bg #FBEFC9,
+     putting the FOLLOW UP status tint on decorative surfaces — the
+     exact defect the reserved-status-colors rule forbids. #FDF8E3 is
+     measurably whiter/lighter; production adds a ΔE floor test between
+     every non-status token and all four status fills. */
+  --butter-soft:#FDF8E3;
   --sq-green:#2FA866;
   --sq-pink:#F0679E;
   --sq-blue:#5FA8E8;
@@ -166,8 +175,11 @@ body{
   transition:border-color 150ms ease, color 150ms ease, transform 150ms var(--ease);
 }
 .ctrl-link:hover{color:var(--ink); border-color:var(--ink); transform:translateY(-1px);}
+/* Focus rings are ink, not butter: butter-deep measured 1.58:1 against
+   the paper ground — a nearly invisible focus indicator (WCAG needs 3:1).
+   Ink clears 10:1 on every surface including the butter CTA itself. */
 .ctrl-link:focus-visible, a:focus-visible, button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible{
-  outline:2.5px solid var(--butter-deep); outline-offset:3px; border-radius:4px;
+  outline:2.5px solid var(--ink); outline-offset:3px; border-radius:4px;
 }
 .restart-confirm{
   display:flex; align-items:center; gap:10px; font-size:13px; color:var(--ink-soft);
@@ -410,7 +422,7 @@ h2.headline{
   .dep-v{font-size:26px;}
 }
 
-.explain{font-size:15px; line-height:1.65; color:var(--ink); margin:0 0 22px; max-width:58ch;}
+.explain{font-size:15.5px; line-height:1.65; color:var(--ink); margin:0 0 22px; max-width:58ch;}
 
 /* ---------- case trail ----------
    Only where a real, verified process sequence exists (Passport's
@@ -490,12 +502,12 @@ h2.headline{
 .field-input{
   width:100%; border:1.5px solid var(--line-strong); border-radius:14px; padding:14px 16px; font-family:'Work Sans',sans-serif;
   font-size:14.5px; color:var(--ink); background:var(--card); resize:vertical; min-height:88px;
-  caret-color:var(--butter-deep);
+  caret-color:var(--ink);
   transition:border-color 150ms ease;
 }
 .field-input::placeholder{color:var(--ink-faint);}
 .field-input:hover{border-color:var(--ink-faint);}
-.field-input:focus-visible{outline:2.5px solid var(--butter-deep); outline-offset:2px; border-color:var(--ink);}
+.field-input:focus-visible{outline:2.5px solid var(--ink); outline-offset:2px; border-color:var(--ink);}
 
 /* ---------- inline explainer ---------- */
 .inline-explain{
@@ -516,9 +528,9 @@ h2.headline{
 .prep-draft{
   width:100%; border:1.5px solid var(--line); border-radius:10px; padding:14px 16px;
   font-family:'Work Sans',sans-serif; font-size:14px; line-height:1.65; color:var(--ink);
-  background:var(--paper); resize:vertical; min-height:230px; caret-color:var(--butter-deep);
+  background:var(--paper); resize:vertical; min-height:230px; caret-color:var(--ink);
 }
-.prep-draft:focus-visible{outline:2.5px solid var(--butter-deep); outline-offset:2px;}
+.prep-draft:focus-visible{outline:2.5px solid var(--ink); outline-offset:2px;}
 .prep-card-foot{display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:12px; flex-wrap:wrap;}
 .prep-hint{font-size:12.5px; color:var(--ink-faint); line-height:1.5; flex:1; min-width:200px;}
 .copy-btn{
@@ -682,10 +694,10 @@ h2.headline{
 .auth-input{
   width:100%; border:1.5px solid var(--line-strong); border-radius:14px; padding:14px 16px;
   font-family:'Work Sans',sans-serif; font-size:16px; color:var(--ink); background:var(--card);
-  caret-color:var(--butter-deep); transition:border-color 150ms ease;
+  caret-color:var(--ink); transition:border-color 150ms ease;
 }
 .auth-input:hover{border-color:var(--ink-faint);}
-.auth-input:focus-visible{outline:2.5px solid var(--butter-deep); outline-offset:2px; border-color:var(--ink);}
+.auth-input:focus-visible{outline:2.5px solid var(--ink); outline-offset:2px; border-color:var(--ink);}
 .otp-input{
   font-family:'IBM Plex Mono',monospace; font-size:26px; letter-spacing:0.45em; text-align:center;
   padding:16px 10px 16px 22px;
@@ -765,8 +777,10 @@ h2.headline{
 .case-progress{margin:20px 0 4px;}
 .cp-head{display:flex; align-items:center; justify-content:space-between; margin:0 0 7px;}
 .cp-count{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-soft);}
-.cp-bar{height:9px; border-radius:999px; background:var(--line); overflow:hidden;}
-.cp-fill{display:block; height:100%; background:var(--butter); border-radius:999px; transition:width 300ms var(--ease);}
+/* fill = butter with an ink edge (the trail dot's own pattern) — raw
+   butter against the line track measured 1.12:1, an invisible bar */
+.cp-bar{height:11px; border-radius:999px; background:var(--line); border:1px solid var(--line-strong); overflow:hidden;}
+.cp-fill{display:block; height:100%; background:var(--butter); border-right:1.5px solid var(--ink); border-radius:999px 3px 3px 999px; transition:width 300ms var(--ease); box-shadow:inset 0 -1px 0 rgba(61,36,28,0.25);}
 .update-mod{
   background:var(--card); border:1.5px solid var(--butter); border-radius:16px;
   padding:20px 22px;
@@ -838,9 +852,9 @@ h2.headline{
 .describe-ta{
   width:100%; border:1.5px solid var(--line-strong); border-radius:14px; padding:14px 16px;
   font-family:'Work Sans',sans-serif; font-size:14.5px; line-height:1.6; color:var(--ink);
-  background:var(--card); resize:vertical; min-height:110px; caret-color:var(--butter-deep);
+  background:var(--card); resize:vertical; min-height:110px; caret-color:var(--ink);
 }
-.describe-ta:focus-visible{outline:2.5px solid var(--butter-deep); outline-offset:2px;}
+.describe-ta:focus-visible{outline:2.5px solid var(--ink); outline-offset:2px;}
 .describe-meta{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:8px; flex-wrap:wrap;}
 .char-count{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink-faint);}
 .lang-note{font-size:12px; color:var(--ink-faint); line-height:1.5;}
@@ -968,43 +982,43 @@ const passportPlaybook = {
     // "Filed and waiting" is its own honest WAIT state — not "unresolved."
     // Most-specific-first: these run before their parent rungs.
     {id:'state-dpg-p', condition:a=>a.dpgFiled==='yes',
-      state:'DPG·W', label:'Escalated to the DPG — response pending', dependency:'Directorate of Public Grievances', rec:'WAIT',
-      explanation:"Your escalation is with the Directorate of Public Grievances — the top of the verified ladder for passport grievances. Nothing further is needed from you while they review.",
-      whatShort:'Nothing to do — escalation filed',
+      state:'DPG·W', label:'Escalated to the DPG, response pending', dependency:'Directorate of Public Grievances', rec:'WAIT',
+      explanation:"Your escalation is with the Directorate of Public Grievances, the top of the verified ladder for passport grievances. Nothing further is needed from you while they review.",
+      whatShort:'Nothing to do while the DPG reviews',
       whatToDo:'Nothing right now. Add an update to your casefile when the DPG responds.',
       where:{label:'Directorate of Public Grievances (DPG)', url:'https://dpg.gov.in'},
-      need:'Nothing — keep your DPG reference number safe.',
-      howLong:"No official DPG response timeline exists in NextMove's verified sources — that's why there's no countdown here.",
+      need:'Nothing. Keep your DPG reference number safe.',
+      howLong:"No official DPG response timeline exists in NextMove's verified sources, so there's no countdown here.",
       source:{title:'Grievance page — passportindia.gov.in'},
       mustNot:'Any prediction of the outcome or its timing.'},
     {id:'state-5b-p', condition:a=>a.q2==='formal_grievance' && a.gOutcome==='pending',
       state:'5b·W', label:'Grievance filed, response pending', dependency:'Grievance cell (CPGRAMS)', rec:'WAIT',
-      explanation:"Your formal grievance is registered. It's with the grievance cell now — your grievance number is the anchor for everything from here.",
-      whatShort:'Nothing to do — grievance registered',
+      explanation:"Your formal grievance is registered. It's with the grievance cell now. Your grievance number is the anchor for everything from here.",
+      whatShort:'Your grievance is in. Nothing to do yet.',
       whatToDo:'Nothing further right now. Keep the grievance number safe and add an update when a response arrives.',
       where:{label:'CPGRAMS · passportindia.gov.in/psp/Grievance', url:'https://www.passportindia.gov.in/psp/Grievance'},
-      need:'Nothing — just your grievance number, kept safe.',
-      howLong:'The official commitment is only "a reasonable period of time" — no numeric deadline is published, so there is no countdown to show.',
+      need:'Nothing. Just keep your grievance number safe.',
+      howLong:'The official commitment is only "a reasonable period of time": no numeric deadline is published, so there is no countdown to show.',
       source:{title:'Grievance page — passportindia.gov.in'},
       mustNot:'Any number of days defining "reasonable."'},
     {id:'state-5a-p', condition:a=>a.q2==='informal' && a.fOutcome==='pending',
       state:'5a·W', label:'Follow-up sent, awaiting their response', dependency:'Passport Office', rec:'WAIT',
-      explanation:"You've sent your follow-up. The ball is with the Passport Office now — nothing further is needed from you until they respond.",
-      whatShort:'Nothing to do — response pending',
+      explanation:"You've sent your follow-up. The ball is with the Passport Office now, and nothing further is needed from you until they respond.",
+      whatShort:'Nothing to do until they respond',
       whatToDo:"Nothing is required from you right now. When a response arrives (or clearly doesn't), add an update to your casefile.",
       where:{label:'Passport Office (PO) concerned', url:'https://www.passportindia.gov.in'},
-      need:'Nothing — keep the date and any ticket number of your follow-up safe.',
-      howLong:"No official response timeline is published for informal follow-ups — NextMove won't invent one.",
+      need:'Nothing. Keep the date and any ticket number of your follow-up safe.',
+      howLong:"No official response timeline is published for informal follow-ups, and NextMove won't invent one.",
       source:{title:"Citizen's Charter — Grievance Redressal section (MEA)"},
       mustNot:'Any claim about when the response "should" arrive.'},
     {id:'state-5b', condition:a=>a.q2==='formal_grievance',
       state:'5b', label:'Formal grievance raised, unresolved', dependency:'Passport-issuing Authority / MEA', rec:'ESCALATE',
       explanation:"You've already raised a formal grievance and it isn't resolved. The right move now is to escalate beyond the Passport Office itself, to the body that oversees grievance redressal.",
       whatShort:'Escalate to the Directorate of Public Grievances',
-      whatToDo:'Escalate to the Directorate of Public Grievances (DPG), Cabinet Secretariat — reference your existing grievance number.',
+      whatToDo:'Escalate to the Directorate of Public Grievances (DPG), Cabinet Secretariat, referencing your existing grievance number.',
       where:{label:'Directorate of Public Grievances (DPG)', url:'https://dpg.gov.in'},
       need:'Your existing CPGRAMS grievance reference number, and the date you filed it.',
-      howLong:'The official grievance page commits only to "a reasonable period of time" — no numeric deadline is published, so NextMove won\'t invent one.',
+      howLong:'The official grievance page commits only to "a reasonable period of time": no numeric deadline is published, so NextMove won\'t invent one.',
       source:{title:"Grievance page — passportindia.gov.in", quote:'"...within a reasonable period of time" — no numeric deadline is stated.'},
       mustNot:'Any specific number of days defining "reasonable."'},
     {id:'state-5a', condition:a=>a.q2==='informal',
@@ -1014,17 +1028,17 @@ const passportPlaybook = {
       whatToDo:'Move to the formal Grievance / CPGRAMS channel, referencing your earlier informal attempt.',
       where:{label:'CPGRAMS · passportindia.gov.in/psp/Grievance', url:'https://www.passportindia.gov.in/psp/Grievance', phone:'1800-258-1800'},
       need:'Your application reference number and a short note on what you already tried informally.',
-      howLong:"No verified official timeline exists for grievance resolution — that's why there's no countdown here.",
+      howLong:"No verified official timeline exists for grievance resolution, so there's no countdown here.",
       source:{title:"Citizen's Charter — Grievance Redressal section (MEA)"},
       mustNot:'That the informal follow-up "should" have worked by a given point.'},
     {id:'state-4', condition:a=>a.q1==='adverse' && a.q2==='no_followup',
       state:'4', label:'Adverse or unclear outcome', dependency:'Applicant + Passport Office', rec:'FOLLOW_UP',
-      explanation:"Something you saw on the portal reads as negative or unclear. NextMove can't tell you why — only the Passport Office can — but the verified next step is to ask them directly.",
+      explanation:"Something you saw on the portal reads as negative or unclear. NextMove can't tell you why (only the Passport Office can), but the verified next step is to ask them directly.",
       whatShort:'Contact the Passport Office',
       whatToDo:'Contact the Passport Office to understand the reason, clarify if required, and request re-verification if applicable.',
       where:{label:'Passport Office (PO) concerned', url:'https://www.passportindia.gov.in'},
       need:'Your application reference number.',
-      howLong:"No official timeline is published for clarifying an adverse status — NextMove won't guess one.",
+      howLong:"No official timeline is published for clarifying an adverse status, and NextMove won't guess one.",
       source:{title:'Official FAQ — passportindia.gov.in', quote:'Verbatim official guidance for adverse/unclear status.'},
       mustNot:'The cause of the adverse finding, or that re-verification will succeed.'},
     {id:'state-3', condition:a=>a.q1==='verified_no_progress' && a.q2==='no_followup',
@@ -1034,7 +1048,7 @@ const passportPlaybook = {
       whatToDo:'Follow up with the Passport Office to confirm your verification is logged and ask about processing status.',
       where:{label:'Passport Office (PO) concerned', url:'https://www.passportindia.gov.in'},
       need:'Your application reference number, and roughly when you believe verification was completed.',
-      howLong:"No official timeline is published for this processing step — NextMove won't guess one.",
+      howLong:"No official timeline is published for this processing step, and NextMove won't guess one.",
       source:{title:'Official FAQ — passportindia.gov.in', quote:'General stuck-case guidance — no state-specific source found.'},
       mustNot:'That "verification complete" is a confirmed system fact rather than your own belief.'},
     {id:'state-2', condition:a=>a.q1==='contacted_incomplete' && a.q2==='no_followup',
@@ -1044,18 +1058,18 @@ const passportPlaybook = {
       whatToDo:'Check with the Passport Office or local police whether anything more is required from you to complete verification.',
       where:{label:'Passport Office (PO) concerned', url:'https://www.passportindia.gov.in'},
       need:'Your application reference number.',
-      howLong:"No official timeline is published for completing verification — NextMove won't guess one.",
+      howLong:"No official timeline is published for completing verification, and NextMove won't guess one.",
       source:{title:'Official FAQ — passportindia.gov.in', quote:'General stuck-case guidance — no state-specific source found.'},
       mustNot:'That contact implies a pending task for you, or that verification is close to finishing.'},
     {id:'state-1', condition:a=>a.q1==='no_contact' && a.q2==='no_followup',
       state:'1', label:'Waiting for police verification to begin', dependency:'Police verification process', rec:'WAIT',
-      explanation:"This is the expected current stage — police verification hasn't started yet, and that's normal, not a sign your case is stuck. The official Citizen's Charter explicitly excludes this period from every service-timeline commitment, so there's no 'on track / overdue' line to measure against.",
+      explanation:"This is the expected current stage: police verification hasn't started yet, and that's normal, not a sign your case is stuck. The official Citizen's Charter explicitly excludes this period from every service-timeline commitment, so there's no 'on track / overdue' line to measure against.",
       whatShort:'Nothing to do right now',
       whatToDo:"Nothing is required from you right now. If you'd like, you can follow up anyway as a secondary, optional step.",
       where:{label:'Passport Office (PO) concerned', url:'https://www.passportindia.gov.in'},
-      need:'Nothing — this step needs no action or documents from you yet.',
-      howLong:"There is officially no clock running yet — the Citizen's Charter explicitly excludes police verification from every service timeline, so there's nothing to count down.",
-      expectNext:"Police verification typically means a visit or a call from your local police station to confirm your identity and address. Keep a government photo ID, an address proof, and your ARN handy at home. Anyone genuinely doing verification will reference your application — and verification never requires paying anyone. (General guidance, not an official checklist.)",
+      need:'Nothing. This step needs no action or documents from you yet.',
+      howLong:"There is officially no clock running yet. The Citizen's Charter explicitly excludes police verification from every service timeline, so there's nothing to count down.",
+      expectNext:"Police verification typically means a visit or a call from your local police station to confirm your identity and address. Keep a government photo ID, an address proof, and your ARN handy at home. Anyone genuinely doing verification will reference your application, and verification never requires paying anyone. (General guidance, not an official checklist.)",
       source:{title:"Citizen's Charter (MEA)", quote:'Police-verification period is explicitly excluded from every stated service timeline.'},
       mustNot:'Any day count as "on track" or "overdue"; that PV is "supposed" to take a defined number of days.'},
   ],
@@ -1085,12 +1099,12 @@ const voterPlaybook = {
     // only written by the user attesting they filed the second appeal.
     {id:'v-5-p', condition:a=>a.ceoAppeal==='filed',
       state:'V-5·W', label:'Second appeal filed with the state CEO', dependency:'State Chief Electoral Officer', rec:'WAIT',
-      explanation:"Your second appeal is with the state CEO — the final tier in the official appeal structure. Nothing further is needed from you while it's considered.",
-      whatShort:'Nothing to do — final appeal filed',
+      explanation:"Your second appeal is with the state CEO, the final tier in the official appeal structure. Nothing further is needed from you while it's considered.",
+      whatShort:'Your final appeal is in. Nothing to do now.',
       whatToDo:'Nothing right now. Add an update to your casefile when the decision arrives.',
       where:{label:'State Chief Electoral Officer (CEO)', url:'https://voters.eci.gov.in'},
-      need:'Nothing — keep your filing acknowledgment safe.',
-      howLong:'No timeframe for second-appeal decisions is stated in official sources — there is no countdown to show.',
+      need:'Nothing. Keep your filing acknowledgment safe.',
+      howLong:'No timeframe for second-appeal decisions is stated in official sources, so there is no countdown to show.',
       source:{title:'ECI Electoral Roll FAQ — Final-ER-FAQ.pdf, Q34'},
       mustNot:'Any predicted outcome or timing.'},
     {id:'v-5', condition:a=>a.voterQ1==='decision' && a.voterAppealed==='decided',
@@ -1100,50 +1114,50 @@ const voterPlaybook = {
       whatToDo:'File a second appeal with your state\'s Chief Electoral Officer, referencing the outcome of your first appeal.',
       where:{label:'State Chief Electoral Officer (CEO)', url:'https://voters.eci.gov.in'},
       need:'The decision/order from your first appeal, and your original application reference number.',
-      howLong:"No timeframe for the second appeal's decision is stated in official sources — NextMove won't invent one.",
+      howLong:"No timeframe for the second appeal's decision is stated in official sources, and NextMove won't invent one.",
       source:{title:'ECI Electoral Roll FAQ — Final-ER-FAQ.pdf, Q34', quote:'Two-tier appeal structure, verbatim.'},
       mustNot:'Any specific timeframe for the second appeal\'s decision, or its likely outcome.'},
     {id:'v-4', condition:a=>a.voterQ1==='decision' && a.voterAppealed==='pending',
       state:'V-4', label:'Appeal already filed, decision pending', dependency:'District Election Officer / District Magistrate (your first-tier appeal)', rec:'WAIT',
       explanation:"You've already filed an appeal and it's still with the appellate authority. There's nothing further to do until they decide.",
-      whatShort:'Nothing to do yet — your appeal is pending',
+      whatShort:'Nothing to do yet. Your appeal is pending.',
       whatToDo:'Nothing is required from you right now. If it\'s been a long time, you can follow up directly with the office where you filed.',
       where:{label:'District Election Officer / District Magistrate (per your district)'},
-      need:'Nothing yet — this is a waiting step.',
-      howLong:'No numeric timeline is stated for appeal decisions — officially there is no "overdue" line to cross, so there\'s no countdown to show.',
-      expectNext:'The appellate authority\'s decision will come from the office where you filed — keep your filing acknowledgment safe; it\'s what a second-tier appeal would be built on if you ever need one.',
+      need:'Nothing yet. This is a waiting step.',
+      howLong:'No numeric timeline is stated for appeal decisions. Officially there is no "overdue" line to cross, so there\'s no countdown to show.',
+      expectNext:'The appellate authority\'s decision will come from the office where you filed. Keep your filing acknowledgment safe; it\'s what a second-tier appeal would be built on if you ever need one.',
       source:{title:'ECI Electoral Roll FAQ — Final-ER-FAQ.pdf, Q34'},
       mustNot:'That the appeal "should" be decided by a given point — no numeric timeline is stated.'},
     {id:'v-3', condition:a=>a.voterQ1==='decision',
-      state:'V-3', label:'Decision received, unclear or disagreed with', dependency:'You — the ball is in your court', rec:'FOLLOW_UP',
-      explanation:"A decision has been issued on your application, communicated by post and SMS. NextMove can't tell you why it went the way it did — no official source describes rejection reasons — but it can point you to where to confirm it and what to do if you disagree.",
+      state:'V-3', label:'Decision received, unclear or disagreed with', dependency:'You: the ball is in your court', rec:'FOLLOW_UP',
+      explanation:"A decision has been issued on your application, communicated by post and SMS. NextMove can't tell you why it went the way it did (no official source describes rejection reasons), but it can point you to where to confirm it and what to do if you disagree.",
       whatShort:'Check the decision, then appeal if needed',
       whatToDo:'Check the decision on your state CEO\'s website / roll listing to confirm exactly what it says. If you disagree, this is your entry point to a formal appeal.',
       where:{label:'State CEO website (roll / decision lookup)', url:'https://voters.eci.gov.in'},
       need:'Your application reference number.',
-      howLong:'You set the pace on this step — no deadline for a first appeal is stated in the official sources NextMove has verified.',
+      howLong:'You set the pace on this step. No deadline for a first appeal is stated in the official sources NextMove has verified.',
       source:{title:'ECI Electoral Roll FAQ — Final-ER-FAQ.pdf, Q25'},
       mustNot:'Any reason for the decision — no official source categorizes rejection reasons.'},
     {id:'v-2', condition:a=>a.voterQ1==='blo_visited',
       state:'V-2', label:'Field verification underway, no decision yet', dependency:'ERO decision', rec:'WAIT',
-      explanation:"A BLO has visited or contacted you — that's the standard next step for every application, and it means things are moving. The decision itself now sits with the Electoral Registration Officer.",
-      whatShort:'Nothing to do — this is expected',
+      explanation:"A BLO has visited or contacted you. That's the standard next step for every application, and it means things are moving. The decision itself now sits with the Electoral Registration Officer.",
+      whatShort:'Nothing to do. This is expected.',
       whatToDo:'Nothing further is required from you yet. Track your status with your reference number if you want a checkpoint.',
       where:{label:'Track status of application (Voters\' Service Portal)', url:'https://voters.eci.gov.in'},
       need:'Your application reference number.',
-      howLong:'No official timeline exists for this verification — there is no published "should be done by" to measure against, so there\'s no countdown to show.',
-      expectNext:'The ERO\'s decision is what comes next — it\'s communicated by post and SMS (ECI FAQ Q25), so watch both. No further visit is normally needed from your side once the BLO step is done.',
+      howLong:'No official timeline exists for this verification, and there is no published "should be done by" to measure against, so there\'s no countdown to show.',
+      expectNext:'The ERO\'s decision is what comes next. It\'s communicated by post and SMS (ECI FAQ Q25), so watch both. No further visit is normally needed from your side once the BLO step is done.',
       source:{title:'ECI Electoral Roll FAQ — Final-ER-FAQ.pdf, Q23'},
       mustNot:'That BLO contact means approval is likely, or that a decision is close.'},
     {id:'v-1', condition:a=>a.voterQ1==='no_word',
       state:'V-1', label:'Application submitted, awaiting decision', dependency:'BLO verification → ERO decision', rec:'WAIT',
       explanation:"Your application has been received, and BLO field verification is the standard next step for every registration or correction. Not hearing anything yet is expected at this point, not a sign of a problem.",
-      whatShort:'Nothing to do — this is expected',
+      whatShort:'Nothing to do. This is expected.',
       whatToDo:'Nothing is required from you right now. You can track progress with your reference number any time.',
       where:{label:'Track status of application (Voters\' Service Portal)', url:'https://voters.eci.gov.in'},
       need:'Your application reference number.',
-      howLong:'No official timeline exists for BLO verification — not hearing anything yet has no official "late," so there\'s no countdown to show.',
-      expectNext:'What comes next is typically a visit or call from your BLO (Booth Level Officer) to verify your details — keep your reference number and the documents from your application handy. The decision itself is communicated by post and SMS (ECI FAQ Q25), so keep an eye on both.',
+      howLong:'No official timeline exists for BLO verification. Not hearing anything yet has no official "late," so there\'s no countdown to show.',
+      expectNext:'What comes next is typically a visit or call from your BLO (Booth Level Officer) to verify your details. Keep your reference number and the documents from your application handy. The decision itself is communicated by post and SMS (ECI FAQ Q25), so keep an eye on both.',
       source:{title:'ECI Electoral Roll FAQ — Final-ER-FAQ.pdf, Q21 & Q23'},
       mustNot:'How long verification "should" take — no numeric timeline exists in official sources.'},
   ],
@@ -1196,62 +1210,62 @@ const sirPlaybook = {
   rules:[
     // Check-in pending states — see the tracking-loop spec.
     {id:'s-4-p', condition:a=>a.sirDocsFiled==='yes',
-      state:'S-4·W', label:'Documents submitted — with the ERO', dependency:'ERO decision', rec:'WAIT',
-      explanation:"You've submitted your document as the notice asked. The decision on your record now rests with the ERO — nothing further is needed from you.",
-      whatShort:'Nothing to do — documents submitted',
+      state:'S-4·W', label:'Documents submitted, with the ERO', dependency:'ERO decision', rec:'WAIT',
+      explanation:"You've submitted your document as the notice asked. The decision on your record now rests with the ERO, and nothing further is needed from you.",
+      whatShort:'Documents in. Nothing to do now.',
       whatToDo:'Nothing right now. Add an update when you hear back, or when the Final Roll publishes.',
       where:{label:'ERO (per your notice)'},
-      need:'Nothing — keep your submission acknowledgment safe.',
+      need:'Nothing. Keep your submission acknowledgment safe.',
       howLong:'The next fixed milestone is Final Roll publication — 4 Nov 2026 in Delhi.',
       source:{title:'CEO Delhi — Official SIR 2026 FAQ; Delhi SIR calendar'},
       mustNot:'Any prediction of the ERO\'s decision.'},
     {id:'s-3-p', condition:a=>a.form6Filed==='yes',
-      state:'S-3·W', label:'Form 6 filed — decision ahead of the Final Roll', dependency:'ERO / Final Roll publication', rec:'WAIT',
-      explanation:"Your Form 6 claim is in during the Claims & Objections window. The decision lands ahead of the Final Roll — nothing further is needed from you.",
-      whatShort:'Nothing to do — claim filed',
+      state:'S-3·W', label:'Form 6 filed, decision ahead of the Final Roll', dependency:'ERO / Final Roll publication', rec:'WAIT',
+      explanation:"Your Form 6 claim is in during the Claims & Objections window. The decision lands ahead of the Final Roll, and nothing further is needed from you.",
+      whatShort:'Claim filed. Nothing to do now.',
       whatToDo:'Nothing right now. Add an update when you hear back, or when the Final Roll publishes.',
       where:{label:'Final Roll publication — 4 Nov 2026 (Delhi)'},
-      need:'Nothing — keep your Form 6 acknowledgment safe; it is your proof of filing.',
+      need:'Nothing. Keep your Form 6 acknowledgment safe: it is your proof of filing.',
       howLong:'The next fixed milestone is Final Roll publication — 4 Nov 2026 in Delhi.',
       source:{title:'CEO Delhi — Official SIR 2026 FAQ; Delhi SIR calendar'},
       mustNot:'Any claim that filing guarantees inclusion.'},
     {id:'s-notice', condition:a=>a.sirQ1==='notice',
       state:'S-4', label:'Notice requesting documents', dependency:'You, then ERO', rec:'FOLLOW_UP',
-      explanation:"You've received an official notice asking for documents. NextMove can't tell you why the notice was issued specifically — only that it means your last-SIR record couldn't be confirmed from the form alone.",
+      explanation:"You've received an official notice asking for documents. NextMove can't tell you why the notice was issued specifically, only that it means your last-SIR record couldn't be confirmed from the form alone.",
       whatShort:'Submit the requested documents',
       whatToDo:'Submit one of the ECI-prescribed documents as your notice directs.',
       where:{label:'Submit to your BLO / ERO per the notice\'s instructions'},
       need:'Any ONE of these:<ul class="need-list"><li>A government/PSU ID or pension order</li><li>A pre-1987 government/bank/LIC/PSU-issued ID</li><li>Birth certificate</li><li>Passport</li><li>Matriculation/educational certificate</li><li>Permanent residence certificate</li><li>Forest right certificate</li><li>Caste certificate</li><li>NRC (where it exists)</li><li>Family register</li><li>Land/house allotment certificate</li><li>Aadhaar (per the specific 2025 ECI direction)</li></ul>',
-      howLong:"Your notice's own instructions control the deadline — no separate elector-facing deadline is published. Delhi's notice/disposal phase itself runs through 29 Oct 2026.",
+      howLong:"Your notice's own instructions control the deadline; no separate elector-facing deadline is published. Delhi's notice/disposal phase itself runs through 29 Oct 2026.",
       source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q23, Q11'},
       mustNot:'Why the notice was issued, or which specific document will be accepted for your case.'},
     {id:'s-roll-absent', condition:a=>a.sirQ1==='roll_absent',
-      state:'S-3', label:'Not on the Draft Roll', dependency:'You — active follow-up needed', rec:'FOLLOW_UP',
-      explanation:"You've checked the Draft Roll and your name isn't there. That can happen for a few different reasons — the Enumeration Form wasn't deposited in time, or you'd moved and it couldn't reach you, among others — and NextMove can't tell which applies to you. But the fix is the same either way, and it's live right now: Delhi is currently in the Claims & Objections window.",
+      state:'S-3', label:'Not on the Draft Roll', dependency:'You: active follow-up needed', rec:'FOLLOW_UP',
+      explanation:"You've checked the Draft Roll and your name isn't there. That can happen for a few different reasons. Maybe the Enumeration Form wasn't deposited in time, or you'd moved and it couldn't reach you. NextMove can't tell which applies to you. But the fix is the same either way, and it's live right now: Delhi is currently in the Claims & Objections window.",
       whatShort:'File Form 6 during Claims & Objections',
       whatToDo:'File Form 6 with a Declaration Form and supporting documents during the Claims & Objections window.',
       where:{label:'Form 6 — Claims & Objections window (online or at the Voter Centre)', url:'https://voters.eci.gov.in'},
       need:'One of the ECI-accepted document types (see your next-move details) and the Declaration Form.',
-      howLong:"The claims filing window is live now and closes 30 Sep 2026 in Delhi — file by then.",
+      howLong:"The claims filing window is live now and closes 30 Sep 2026 in Delhi. File by then.",
       source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q20, Q21, Q28, Q30'},
       mustNot:'The specific reason your name is missing.'},
     {id:'s-roll-unchecked', condition:a=>a.sirQ1==='roll_unchecked',
-      state:'S-2', label:"Haven't checked the Draft Roll yet", dependency:'You — one check needed', rec:'FOLLOW_UP',
-      explanation:"The Draft Roll for Delhi has already been published, so the fastest way to know where you stand is to check it directly — waiting won't surface new information on its own the way it would have during enumeration.",
+      state:'S-2', label:"Haven't checked the Draft Roll yet", dependency:'You: one check needed', rec:'FOLLOW_UP',
+      explanation:"The Draft Roll for Delhi has already been published, so the fastest way to know where you stand is to check it directly. Waiting won't surface new information on its own the way it would have during enumeration.",
       whatShort:'Check the Draft Roll now',
       whatToDo:'Check the Draft Electoral Roll now via the Voters\' Service Portal, ECINET app, or the Delhi CEO website. What you find determines the next step: if you\'re listed, there\'s nothing further to do; if not, file Form 6 during the current Claims & Objections window.',
       where:{label:'Draft Roll — voters.eci.gov.in, ECINET app, or the Delhi CEO website', url:'https://voters.eci.gov.in'},
-      need:'Nothing — just your name and constituency to search.',
-      howLong:"Delhi's claims filing window closes 30 Sep 2026 — checking now leaves time to file if you're not listed.",
+      need:'Nothing. Just your name and constituency to search.',
+      howLong:"Delhi's claims filing window closes 30 Sep 2026, so checking now leaves time to file if you're not listed.",
       source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q15, Q25, Q26, Q27'},
       mustNot:'A guess at whether you\'ll be listed — NextMove doesn\'t know until you check.'},
     {id:'s-roll-present', condition:a=>a.sirQ1==='roll_present',
-      state:'S-1', label:'On the Draft Roll — nothing pending', dependency:'Final Roll publication', rec:'WAIT',
-      explanation:"You've checked the Draft Roll and your name is there. Nothing further is required from you unless a notice arrives — the next official milestone is the Final Roll itself.",
+      state:'S-1', label:'On the Draft Roll, nothing pending', dependency:'Final Roll publication', rec:'WAIT',
+      explanation:"You've checked the Draft Roll and your name is there. Nothing further is required from you unless a notice arrives. The next official milestone is the Final Roll itself.",
       whatShort:'Nothing to do right now',
-      whatToDo:'Nothing is required from you right now. If a notice requesting documents arrives before the Final Roll is published, that changes things — otherwise, just wait.',
+      whatToDo:'Nothing is required from you right now. If a notice requesting documents arrives before the Final Roll is published, that changes things. Otherwise, just wait.',
       where:{label:'Final Roll publication — 4 Nov 2026 (Delhi)'},
-      need:'Nothing — this is a waiting step.',
+      need:'Nothing. This is a waiting step.',
       howLong:'The next official milestone has a real date: Final Roll publication on 4 Nov 2026, per Delhi\'s verified SIR calendar.',
       source:{title:'CEO Delhi — Official SIR 2026 FAQ; Delhi SIR calendar'},
       mustNot:'Any claim that inclusion on the Draft Roll guarantees Final Roll inclusion.'},
@@ -1262,7 +1276,7 @@ const sirPlaybook = {
     whatShort:'Check your status directly',
     whatToDo:'Check directly rather than guess.',
     where:{label:'voters.eci.gov.in', url:'https://voters.eci.gov.in', phone:'1950'},
-    need:'Nothing — just check directly.',
+    need:'Nothing. Just check directly.',
     source:{title:"NextMove's own safety net — not a sourced official state."},
     mustNot:'Any WAIT / FOLLOW UP / ESCALATE claim, or an assumed SIR phase for your state.'
   }
@@ -1275,9 +1289,9 @@ const sirPlaybook = {
 // phase + SIR_Q1_OPTIONS_FOR, not by rewriting rule content.
 const sirDormantRules_finalRoll = {
   's-5': {state:'S-5', label:'Name still missing after the Final Roll', dependency:'Appellate authority', rec:'ESCALATE',
-    explanation:"You did everything asked and your name still isn't on the Final Roll. There's a real, time-bound official appeal for exactly this — it needs to move quickly.",
+    explanation:"You did everything asked and your name still isn't on the Final Roll. There's a real, time-bound official appeal for exactly this, and it needs to move quickly.",
     whatShort:'File an appeal within 15 days',
-    whatToDo:'File an appeal before the District Election Officer / District Magistrate of your district — within 15 days of the Final Roll\'s publication.',
+    whatToDo:'File an appeal before the District Election Officer / District Magistrate of your district, within 15 days of the Final Roll\'s publication.',
     where:{label:'District Election Officer / District Magistrate'},
     need:'Proof of your earlier submission (Enumeration Form acknowledgment or Form 6 filing) and any documents you already submitted.',
     source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q32', quote:'15-day appeal window — one of the few sourced numeric deadlines in this playbook.'},
@@ -1304,10 +1318,10 @@ const sirDormantRules_enumeration = {
       source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q22'},
       mustNot:'Nothing further to flag — this state is fully specified.'},
     prep:{steps:[
-      'Identify the constituency where you currently live — that is the only place you file.',
+      'Identify the constituency where you currently live. That is the only place you file.',
       {text:'Not sure which constituency covers your address? Look it up on the Voters\' Service Portal, or call 1950.', url:'https://voters.eci.gov.in'},
       'Submit the Enumeration Form there (and only there).',
-      'The other entry is removed automatically once you do — no separate deletion request needed.',
+      'The other entry is removed automatically once you do; no separate deletion request needed.',
       'Keep the acknowledgment.',
     ],
     visit:{
@@ -1386,9 +1400,9 @@ const SIR_Q1_OPTIONS_FOR = {
 // never be mistaken for verified process content.
 const VISIT_EXPECT = [
   'An ID check or a visitor register at the entrance is common.',
-  'There may be a queue or a token system — build in time.',
+  'There may be a queue or a token system, so build in time.',
   'Before you leave, ask for an acknowledgment or receipt with a date, and note the name and designation of whoever takes your papers.',
-  "If something is refused or unclear, don't argue it out on the spot — note what was said and use the online channel or helpline instead.",
+  "If something is refused or unclear, don't argue it out on the spot. Note what was said and use the online channel or helpline instead.",
 ];
 
 const PREP = {
@@ -1408,11 +1422,11 @@ I request a review of my application's status and confirmation of the next requi
     steps:[
       {text:'Open the Grievance / CPGRAMS channel (or call 1800-258-1800).', url:'https://www.passportindia.gov.in/psp/Grievance'},
       'Sign in with your File Number or ARN.',
-      'Copy the draft above and paste it into the grievance form — fill every [bracket] first.',
+      'Copy the draft above and paste it into the grievance form. Fill every [bracket] first.',
       'Submit it yourself and note the grievance number you receive.',
-      'Keep that number safe — it becomes your reference if this ever needs to escalate.',
+      'Keep that number safe. It becomes your reference if this ever needs to escalate.',
     ],
-    doneNote:'All steps done. That grievance number is your case\'s anchor now — keep it where you can find it.'},
+    doneNote:'All steps done. That grievance number is your case\'s anchor now. Keep it where you can find it.'},
   'state-5b': {
     title:'Your escalation to the DPG, drafted.',
     draft:
@@ -1430,7 +1444,7 @@ The grievance remains unresolved. I request the Directorate of Public Grievances
       'Copy the draft above, fill every [bracket], and paste it into the escalation form.',
       'Submit it yourself and note the new reference number you receive.',
     ],
-    doneNote:'All steps done. Your case is now with the highest grievance body — keep the new reference number safe.'},
+    doneNote:'All steps done. Your case is now with the highest grievance body. Keep the new reference number safe.'},
   'state-4': {
     title:'Your message to the Passport Office, drafted.',
     draft:
@@ -1448,12 +1462,12 @@ I do not understand what this means for my case. Please tell me:
     steps:[
       {text:'Contact your Passport Office online or via the helpline 1800-258-1800.', url:'https://www.passportindia.gov.in'},
       'Have your File Number / ARN ready before you start.',
-      'Use the draft above as your message or call script — fill every [bracket] first.',
+      'Use the draft above as your message or call script. Fill every [bracket] first.',
       'Note down who you spoke to (or the ticket number) and the date.',
     ],
     visit:{
       carry:['Your ARN / File Number (printout or the SMS)','A screenshot or printout of the portal status you saw','A government photo ID (original + photocopy)'],
-      after:"Afterwards: the office's clarification decides the next stage — if re-verification applies, that runs before processing resumes.",
+      after:"Afterwards: the office's clarification decides the next stage: if re-verification applies, that runs before processing resumes.",
     }},
   'state-3': {
     title:'Your follow-up on processing, drafted.',
@@ -1471,7 +1485,7 @@ Please confirm:
     steps:[
       {text:'Contact your Passport Office online or via the helpline 1800-258-1800.', url:'https://www.passportindia.gov.in'},
       'Have your File Number / ARN ready.',
-      'Use the draft above — fill every [bracket] first.',
+      'Use the draft above, filling every [bracket] first.',
       'Note the response and date; if this goes unresolved, a formal grievance is the next verified step.',
     ]},
   'state-2': {
@@ -1486,17 +1500,17 @@ Please tell me whether anything further is required from me to complete verifica
 [Your name]
 [Your contact number and email]`,
     steps:[
-      {text:'Contact your Passport Office online or via the helpline 1800-258-1800 — or ask your local police station directly.', url:'https://www.passportindia.gov.in'},
+      {text:'Contact your Passport Office online or via the helpline 1800-258-1800, or ask your local police station directly.', url:'https://www.passportindia.gov.in'},
       'Have your File Number / ARN ready.',
-      'Use the draft above — fill every [bracket] first.',
+      'Use the draft above, filling every [bracket] first.',
       'Note what they say is pending, if anything, and the date you asked.',
     ],
     visit:{
       carry:['Your ARN / File Number (printout or the SMS)','A government photo ID (original + photocopy)','Any documents the police mentioned when they contacted you'],
-      after:'Afterwards: completed verification goes back to the Passport Office for processing — the next stage on your case trail.',
+      after:'Afterwards: completed verification goes back to the Passport Office for processing. That is the next stage on your case trail.',
     }},
   'v-3': {
-    title:'Your first appeal, drafted — if you disagree.',
+    title:'Your first appeal, drafted for if you disagree.',
     draft:
 `To: The District Election Officer / District Magistrate, [your district]
 
@@ -1509,14 +1523,14 @@ I request a review of this decision.
 [Your name, as on the application]
 [Your address and contact details]`,
     steps:[
-      {text:"First, confirm the exact decision on your state CEO's website / roll listing — it decides whether an appeal is even needed.", url:'https://voters.eci.gov.in'},
+      {text:"First, confirm the exact decision on your state CEO's website / roll listing. It decides whether an appeal is even needed.", url:'https://voters.eci.gov.in'},
       'If you disagree with it: copy the draft above and fill every [bracket].',
       'File the appeal before the District Election Officer / District Magistrate of your district.',
-      'Keep a copy of what you filed and the date — a second-tier appeal to the state CEO needs both.',
+      'Keep a copy of what you filed and the date. A second-tier appeal to the state CEO needs both.',
     ],
     visit:{
-      carry:['Your printed appeal letter — two copies, one for their stamp','The decision you received (SMS screenshot, letter, or roll printout)','Your application reference number','A government photo ID (original + photocopy)'],
-      after:'After you file: the first appeal is decided by the DEO/DM — and if that still doesn\'t resolve it, one further appeal to the state CEO exists (ECI FAQ Q34).',
+      carry:['Your printed appeal letter (two copies, one for their stamp)','The decision you received (SMS screenshot, letter, or roll printout)','Your application reference number','A government photo ID (original + photocopy)'],
+      after:'After you file: the first appeal is decided by the DEO/DM. If that still doesn\'t resolve it, one further appeal to the state CEO exists (ECI FAQ Q34).',
     }},
   'v-5': {
     title:'Your second appeal to the state CEO, drafted.',
@@ -1535,19 +1549,19 @@ Enclosed: the decision/order from my first appeal.
     steps:[
       {text:"Locate your state CEO's office / appeal channel via your state CEO website (reachable from the national portal).", url:'https://voters.eci.gov.in'},
       'Copy the draft above and fill every [bracket].',
-      'Attach the decision/order from your first appeal — the second tier is built on it.',
+      'Attach the decision/order from your first appeal. The second tier is built on it.',
       'File it yourself and keep the acknowledgment.',
     ],
     visit:{
-      carry:['Your printed second-appeal letter — two copies','The decision/order from your first appeal (original + photocopy)','Your original application reference number','A government photo ID (original + photocopy)'],
+      carry:['Your printed second-appeal letter (two copies)','The decision/order from your first appeal (original + photocopy)','Your original application reference number','A government photo ID (original + photocopy)'],
       after:'After you file: this is the final appeal tier in the official structure (ECI FAQ Q34).',
     }},
   's-notice': {
     steps:[
-      'Pick ONE document from the list on the previous screen — any one is enough.',
-      "Re-read the notice for where and how to submit — the notice's own instructions control.",
+      'Pick ONE document from the list on the previous screen. Any one is enough.',
+      "Re-read the notice for where and how to submit; the notice's own instructions control.",
       'Submit the document to your BLO / ERO as the notice directs.',
-      "Act promptly — your notice's own instructions control the timing (Delhi's notice/disposal phase itself runs through 29 Oct 2026).",
+      "Act promptly: your notice's own instructions control the timing (Delhi's notice/disposal phase itself runs through 29 Oct 2026).",
       'Keep an acknowledgment or photo of what you submitted, with the date.',
       {text:"If the notice's instructions are unclear, call the toll-free Voter Helpline 1950 before submitting.", url:'https://voters.eci.gov.in'},
     ],
@@ -1560,8 +1574,8 @@ Enclosed: the decision/order from my first appeal.
     steps:[
       'Gather one ECI-accepted document and the Declaration Form.',
       {text:'Open the Voters\' Service Portal (or go to your Voter Centre in person).', url:'https://voters.eci.gov.in'},
-      "File Form 6 with both attached — the filing window is open now and closes 30 Sep 2026 in Delhi.",
-      'Save the acknowledgment — it is your proof of filing if the Final Roll goes wrong.',
+      "File Form 6 with both attached. The filing window is open now and closes 30 Sep 2026 in Delhi.",
+      'Save the acknowledgment. It is your proof of filing if the Final Roll goes wrong.',
     ],
     visit:{
       carry:['Form 6, filled','The Declaration Form','One ECI-accepted document (original + photocopy)','A government photo ID (original + photocopy)'],
@@ -1571,10 +1585,10 @@ Enclosed: the decision/order from my first appeal.
     steps:[
       {text:'Open the Voters\' Service Portal, the ECINET app, or the Delhi CEO website.', url:'https://voters.eci.gov.in'},
       'Search the Draft Roll by your name and constituency.',
-      "If you're listed: nothing further to do — the Final Roll (4 Nov 2026) is the next milestone.",
-      "If you're not listed: come back and take the \"name isn't there\" path — Form 6 is the fix, and the filing window closes 30 Sep 2026.",
+      "If you're listed: nothing further to do. The Final Roll (4 Nov 2026) is the next milestone.",
+      "If you're not listed: come back and take the \"name isn't there\" path. Form 6 is the fix, and the filing window closes 30 Sep 2026.",
     ],
-    doneNote:'All steps done. What you found on the roll decides the next step — NextMove can re-diagnose any time.'},
+    doneNote:'All steps done. What you found on the roll decides the next step, and NextMove can re-diagnose any time.'},
 };
 
 /* ================= DESCRIBE IT — AI-INTERPRETED ANSWERS =================
@@ -1803,7 +1817,7 @@ function degradedFor(k){ return FRESHNESS.demo && FRESHNESS.services.includes(k)
 function toggleFreshDemo(){ FRESHNESS.demo=!FRESHNESS.demo; render(); }
 function freshBanner(engineKey){
   if(!degradedFor(engineKey)) return '';
-  return `<div class="banner"><p class="small" style="margin:0;"><b>Being re-verified.</b> An official source behind this guidance changed on ${FRESHNESS.changedOn}. A human is re-checking the affected rules against it — until that's done, NextMove pauses its case-specific advice here rather than show guidance it can't currently back. For anything urgent, use the official channel directly.</p></div>`;
+  return `<div class="banner"><p class="small" style="margin:0;"><b>Being re-verified.</b> An official source behind this guidance changed on ${FRESHNESS.changedOn}. A human is re-checking the affected rules against it. Until that's done, NextMove pauses its case-specific advice here rather than show guidance it can't currently back. For anything urgent, use the official channel directly.</p></div>`;
 }
 
 function nav(screen, opts){
@@ -1945,7 +1959,7 @@ function removeSaved(id){
 }
 function reopenCase(id){
   const c=S.savedCases.find(x=>x.id===id); if(!c) return;
-  c.outcome='still_open'; c.log.push({t:Date.now(), kind:'reopened', text:'Case reopened — this came back'});
+  c.outcome='still_open'; c.log.push({t:Date.now(), kind:'reopened', text:'Case reopened: this came back'});
   persistCases(); loadCase(id); nav(c.engineKey+'-diagnosis');
 }
 // Any answer write means the case (and therefore the diagnosis and its
@@ -2013,10 +2027,10 @@ function acctPopover(){
       <div class="acct-pop-name">${S.user.name || maskId(S.user)}</div>
       ${S.user.name ? `<div class="acct-pop-sub">${maskId(S.user)}</div>` : ''}
     </div>
-    <button class="acct-pop-row" onclick="S.acctOpen=false; restart();">Your casefile${openN===1?'':'s'} — ${openN} open<span class="row-sub">On the Home screen, where they live</span></button>
-    ${S.user.name ? '' : `<button class="acct-pop-row" onclick="S.acctOpen=false; S.pendingName=''; nav('save-name');">Add your name<span class="row-sub">Optional — it's how your casefile greets you</span></button>`}
+    <button class="acct-pop-row" onclick="S.acctOpen=false; restart();">Your casefile${openN===1?'':'s'} · ${openN} open<span class="row-sub">On the Home screen, where they live</span></button>
+    ${S.user.name ? '' : `<button class="acct-pop-row" onclick="S.acctOpen=false; S.pendingName=''; nav('save-name');">Add your name<span class="row-sub">Optional; it's how your casefile greets you</span></button>`}
     ${S.signOutConfirm
-      ? `<div class="acct-pop-confirm">Sign out? Your cases stay on your account — sign back in any time.
+      ? `<div class="acct-pop-confirm">Sign out? Your cases stay on your account. Sign back in any time.
           <div><button class="yes" onclick="signOut()">Sign out</button><button class="no" onclick="S.signOutConfirm=false; render();">Cancel</button></div></div>`
       : `<button class="acct-pop-row" onclick="S.signOutConfirm=true; render();">Sign out</button>`}
   </div>`;
@@ -2044,9 +2058,9 @@ function topbar(showBack, showRestart){
 // design — it must never compete with the case's actual next action.
 function saveControl(engineKey, serviceLabel, returnScreen, stepsDone){
   if(caseIsSaved(engineKey)){
-    return `<div class="saved-note">${ICONS.bookmark} Saved — find it on Home whenever you come back</div>`;
+    return `<div class="saved-note">${ICONS.bookmark} Saved. Find it on Home whenever you come back</div>`;
   }
-  const label = stepsDone > 0 ? 'Save this case — your ticked steps come with it' : 'Save this case — NextMove keeps walking with you';
+  const label = stepsDone > 0 ? 'Save this case (your ticked steps come with it)' : 'Save this case, and NextMove keeps walking with you';
   return `<button class="btn-ghost" onclick="beginSave('${engineKey}','${serviceLabel}','${returnScreen}')">${ICONS.bookmark} ${label}</button>`;
 }
 function restartControl(hasAnswers){
@@ -2120,7 +2134,7 @@ function trustDisclosure(d, answerLabels, extraToldUs){
     ${S.trustOpen ? '▾' : '▸'} Why am I seeing this?
   </button>
   ${S.trustOpen ? `<div class="trust-panel">
-    <div class="trust-row"><div class="nm-k">You told us</div><div class="nm-v">${answered.join(' · ') || 'Not enough to safely place your case — see below.'}</div></div>
+    <div class="trust-row"><div class="nm-k">You told us</div><div class="nm-v">${answered.join(' · ') || 'Not enough to safely place your case; see below.'}</div></div>
     ${S.appliedText ? `<div class="trust-row"><div class="nm-k">You wrote</div><div class="nm-v" style="font-style:italic;">"${S.appliedText}"</div>${S.caseFacts.length ? `<div class="small" style="margin-top:6px;">Details kept from it: ${S.caseFacts.map(f=>`${f.label} ${f.value}`).join(' · ')}</div>` : ''}</div>` : ''}
     <div class="trust-row"><div class="nm-k">What that means</div><div class="nm-v">${d.explanation}</div></div>
     <div class="trust-row"><div class="nm-k">Based on</div><div class="nm-v">${d.source.title}${d.source.quote?`<div class="source-quote">"${d.source.quote}"</div>`:''}${d.source.title.startsWith("NextMove's own") ? '' : `<div class="small" style="margin-top:5px; color:var(--ink-faint);">Checked against NextMove's archived copy of this source on ${SOURCES_VERIFIED}.</div>`}</div></div>
@@ -2172,7 +2186,7 @@ function exampleFill(i){
 }
 function runInterpretation(screenId){
   const text = (S.describeText||'').trim();
-  if(!text){ S.describeErr='Write a line or two first — even rough words are fine.'; render(); return; }
+  if(!text){ S.describeErr='Write a line or two first. Even rough words are fine.'; render(); return; }
   const ctx = DESCRIBE_CTX[screenId];
   S.reading = true; S.describeErr=null; render();
   // Simulated async: the real build awaits a model call here and fails
@@ -2250,7 +2264,7 @@ function unplaceablePick(qid, value){
    before ANY routing), 'deadend' (top of the verified ladder failed).
    Every list also gets: "Nothing yet" (first-class), the deliverable,
    and "Something else happened" (escape hatch → re-diagnosis). */
-const DELIVERABLE_LABEL = { passport:'I got my passport!', voter:'My name is on the roll / my card arrived!', sir:'My name is on the roll — sorted!' };
+const DELIVERABLE_LABEL = { passport:'I got my passport!', voter:'My name is on the roll / my card arrived!', sir:'My name is on the roll. Sorted!' };
 const DELIVERABLE_Q = { passport:'Did you get your passport?', voter:'Is your name / card actually in place now?', sir:'Is your name on the roll now?' };
 const RUNG_RESET = { passport:{q2:'no_followup', fOutcome:null, gOutcome:null, dpgFiled:null} };
 const CHECKIN = {
@@ -2300,7 +2314,7 @@ const CHECKIN = {
   ]},
   'v-3':{prepAware:true, opts:[
     {k:'action', label:'I filed the first appeal with the DEO/DM', patch:{voterAppealedRaw:'pending', voterAppealed:'pending'}},
-    {k:'closureq', label:'I checked — the decision was actually in my favour'},
+    {k:'closureq', label:'I checked, and the decision was actually in my favour'},
   ]},
   'v-4':{opts:[
     {k:'valence', label:'The appeal was decided', rejectPatch:{voterAppealedRaw:'decided', voterAppealed:'decided'}},
@@ -2315,8 +2329,8 @@ const CHECKIN = {
     {k:'event', label:'I got a notice asking for documents', patch:{sirQ1:'notice'}},
   ]},
   'S-2':{opts:[
-    {k:'event', label:'I checked — my name IS on the Draft Roll', patch:{sirQ1:'roll_present'}},
-    {k:'event', label:'I checked — my name is NOT on the Draft Roll', patch:{sirQ1:'roll_absent'}},
+    {k:'event', label:'I checked, and my name IS on the Draft Roll', patch:{sirQ1:'roll_present'}},
+    {k:'event', label:'I checked, and my name is NOT on the Draft Roll', patch:{sirQ1:'roll_absent'}},
   ]},
   'S-3':{prepAware:true, opts:[
     {k:'action', label:'I filed Form 6 with the declaration and a document', patch:{form6Filed:'yes'}},
@@ -2336,7 +2350,7 @@ function checkinOptions(c){
   const done = prep ? prep.steps.filter((_,i)=>S.prepChecks[i]).length : 0;
   const list = [];
   if(cfg && cfg.prepAware && prep && done===0 && !degradedFor(c.engineKey)){
-    list.push({k:'notdone', label:"I haven't done this yet — take me back to the steps"});
+    list.push({k:'notdone', label:"I haven't done this yet; take me back to the steps"});
   }
   // Under source re-verification, state-specific options pause with the
   // guidance they came from — only the universal three remain.
@@ -2374,7 +2388,7 @@ function ciChoose(i){
   }
   if(opt.k==='notdone'){ nav(c.engineKey+'-prepare'); return; }
   if(opt.k==='else'){
-    ciLog('checked','Reported something outside the listed options — re-diagnosing');
+    ciLog('checked','Reported something outside the listed options; re-diagnosing');
     const first={passport:'passport-q1', voter:'voter-entry', sir:'sir-q1'}[c.engineKey];
     nav(first); return;
   }
@@ -2451,7 +2465,7 @@ function setRemind(id, val){
 function closeUnresolved(){
   const c=activeCase(); if(!c) return;
   c.outcome='closed_unresolved'; c.closedAt=Date.now();
-  c.log.push({t:Date.now(), kind:'closed', text:'Closed as unresolved — every verified step used'});
+  c.log.push({t:Date.now(), kind:'closed', text:'Closed as unresolved, every verified step used'});
   persistCases(); restart();
 }
 function fmtDay(t){ return new Date(t).toLocaleDateString('en-IN',{day:'numeric',month:'short'}); }
@@ -2476,7 +2490,7 @@ function renderLog(c){
   return `<div class="journey">
     ${entries.length>3 && !S.logOpen[c.id] ? `<button class="read-change" onclick="S.logOpen['${c.id}']=true; render();">Show all ${entries.length} entries</button>` : ''}
     ${shown.map(line).join('')}
-    <div class="log-note">Your journey record — not an official document.</div>
+    <div class="log-note">Your journey record, not an official document.</div>
   </div>`;
 }
 function renderCheckin(){
@@ -2506,7 +2520,7 @@ function renderCheckin(){
     panel=`<div class="ci-panel">
       <p class="small" style="margin:0 0 12px;"><b>${DELIVERABLE_Q[c.engineKey]}</b></p>
       <div class="inline-explain-actions" style="margin:0;">
-        <button class="btn btn-primary" style="width:auto;" onclick="ciClosureAnswer(true)">Yes — it's done</button>
+        <button class="btn btn-primary" style="width:auto;" onclick="ciClosureAnswer(true)">Yes, it's done</button>
         <button class="btn btn-secondary" onclick="ciClosureAnswer(false)">Not yet</button>
       </div>
     </div>`;
@@ -2515,7 +2529,7 @@ function renderCheckin(){
       <p class="small" style="margin:0 0 10px;"><b>Nothing changing is not a bad sign here.</b></p>
       ${d.howLong ? `<p class="small" style="margin:0 0 8px;">${d.howLong}</p>` : ''}
       ${d.expectNext ? `<p class="small" style="margin:0;">${d.expectNext}</p>` : ''}
-      ${S.ciConsecutive ? `<p class="small" style="margin:10px 0 0; color:var(--ink-faint);">This stage doesn't change day to day — checking more often won't move it.</p>` : ''}
+      ${S.ciConsecutive ? `<p class="small" style="margin:10px 0 0; color:var(--ink-faint);">This stage doesn't change day to day, so checking more often won't move it.</p>` : ''}
     </div>`;
   }
   // The casefile screen — the case's home, opened from its Home card.
@@ -2530,14 +2544,14 @@ function renderCheckin(){
   <div class="stage screen">
     ${splitCols(`
     ${crumbs([c.serviceLabel + ' · ' + c.stateLabel, 'Your casefile'], SERVICE_SQ[c.serviceLabel]||null)}
-    <h1 class="case-h1">${c.outcome==='deliverable_received' ? 'Case closed — you got it.' : 'Case closed — the record stays.'}</h1>
-    <p class="lede">Nothing further is tracked on a closed case. The journey record stays yours — it's the paper trail any future step would start from.</p>
+    <h1 class="case-h1">${c.outcome==='deliverable_received' ? 'Case closed: you got it.' : 'Case closed. The record stays.'}</h1>
+    <p class="lede">Nothing further is tracked on a closed case. The journey record stays yours. It's the paper trail any future step would start from.</p>
     <div class="case-meta-line">Saved ${fmtDay(c.savedAt)}${c.closedAt ? ' · closed '+fmtDay(c.closedAt) : ''}</div>
     `, `
-    <div class="nm-k" style="margin:0 0 4px;">Journey — ${(c.log||[]).length} entr${(c.log||[]).length===1?'y':'ies'}</div>
+    <div class="nm-k" style="margin:0 0 4px;">Journey · ${(c.log||[]).length} entr${(c.log||[]).length===1?'y':'ies'}</div>
     ${renderLog(c)}
     <div class="case-links">
-      <button class="case-link" onclick="reopenCase('${c.id}')">This came back — reopen it<span class="arow-chevron" style="margin-left:auto;">${ICONS.chevron}</span></button>
+      <button class="case-link" onclick="reopenCase('${c.id}')">This came back; reopen it<span class="arow-chevron" style="margin-left:auto;">${ICONS.chevron}</span></button>
     </div>
     ${removeCtl}
     `)}
@@ -2561,7 +2575,7 @@ function renderCheckin(){
       <div class="cp-head"><span class="nm-k" style="margin:0;">Prepare steps</span><span class="cp-count">${prepDone} of ${prep.steps.length} done</span></div>
       <div class="cp-bar"><span class="cp-fill" style="width:${prep.steps.length ? Math.round(prepDone/prep.steps.length*100) : 0}%"></span></div>
     </div>` : ''}
-    <div class="nm-k" style="margin:24px 0 4px;">Journey — ${(c.log||[]).length} entr${(c.log||[]).length===1?'y':'ies'}</div>
+    <div class="nm-k" style="margin:24px 0 4px;">Journey · ${(c.log||[]).length} entr${(c.log||[]).length===1?'y':'ies'}</div>
     ${renderLog(c)}
     `, `
     ${freshBanner(c.engineKey)}
@@ -2570,7 +2584,7 @@ function renderCheckin(){
         <span class="dr-icon">${ICONS.pen}</span>
         <span><span class="um-kicker">Add an update</span><h2 class="um-title">What's happened since?</h2></span>
       </div>
-      <p class="small" style="margin:0 0 6px;">Pick what actually happened — your casefile and diagnosis update from it. If none of these fit, "Something else happened" re-checks your case properly.</p>
+      <p class="small" style="margin:0 0 6px;">Pick what actually happened, and your casefile and diagnosis update from it. If none of these fit, "Something else happened" re-checks your case properly.</p>
       ${panel ? `<div style="margin-top:14px;">${panel}</div>` : ''}
       <div class="answers" style="margin-top:${panel?'14px':'8px'};">
         ${list.map((o,i)=>`<button class="arow" onclick="ciChoose(${i})">
@@ -2583,7 +2597,7 @@ function renderCheckin(){
         <span class="small">Want to check back on a date of your choosing?</span>
         <input type="date" class="remind-input" value="${c.remindAt||''}" onchange="setRemind('${c.id}', this.value)" aria-label="Check-back date">
       </div>
-      ${c.remindAt ? `<p class="small" style="margin-top:6px;">Your own reminder (copy it to your phone): <b>Check NextMove case — ${c.remindAt}</b></p>` : ''}
+      ${c.remindAt ? `<p class="small" style="margin-top:6px;">Your own reminder (copy it to your phone): <b>Check NextMove case: ${c.remindAt}</b></p>` : ''}
     </div>
     <div class="case-links">
       <button class="case-link" onclick="nav('${c.engineKey}-diagnosis')">See my diagnosis<span class="arow-chevron" style="margin-left:auto;">${ICONS.chevron}</span></button>
@@ -2601,7 +2615,7 @@ function renderDeadEnd(){
     <div class="narrow">
       ${crumbs([c.serviceLabel, 'End of the verified ladder'], SERVICE_SQ[c.serviceLabel]||null)}
       <h2 class="headline">You've used every step this playbook can verify.</h2>
-      <p class="lede">That's a hard place to be, and NextMove won't pretend otherwise. There is no further official rung in the verified sources — and inventing one would be worse than saying so. What you've built still matters: every filing, number, and date in your journey record is exactly what any lawyer, RTI request, or public representative would ask for first.</p>
+      <p class="lede">That's a hard place to be, and NextMove won't pretend otherwise. There is no further official rung in the verified sources, and inventing one would be worse than saying so. What you've built still matters: every filing, number, and date in your journey record is exactly what any lawyer, RTI request, or public representative would ask for first.</p>
       ${renderLog(c)}
       <button class="btn btn-secondary btn-block" onclick="restart()">Keep the case open</button>
       <button class="btn-ghost" onclick="closeUnresolved()">Close it as unresolved</button>
@@ -2616,7 +2630,7 @@ function renderCaseClosed(){
     ${gems('reveal')}
     ${crumbs(['Case closed'], 'sq-butter')}
     <h1 class="headline">You <span class="mark">got it</span>.</h1>
-    <p class="lede">The thing you were waiting for is in your hands. That's the whole point of all of this — the diagnosis, the letters, the waiting. NextMove's part is done; the casefile and its journey stay under "Closed" on Home if you ever need the record.</p>
+    <p class="lede">The thing you were waiting for is in your hands. That's the whole point of all of this: the diagnosis, the letters, the waiting. NextMove's part is done; the casefile and its journey stay under "Closed" on Home if you ever need the record.</p>
     `, `
     ${c ? renderLog(c) : ''}
     <button class="btn btn-primary btn-block" onclick="restart()">Back to Home <span class="btn-arrow">${ICONS.arrow}</span></button>
@@ -2636,7 +2650,7 @@ function describeBlock(screenId){
     ${S.describeOpen ? `<div class="describe-box">
       <textarea class="describe-ta" maxlength="${DESCRIBE_MAX}" placeholder="e.g. Police came to my house in June, I called the office twice since, nothing has moved" oninput="describeInput(this)" aria-label="Describe your situation">${S.describeText||''}</textarea>
       <div class="describe-meta">
-        <span class="lang-note">English works best here — the real product will understand Hindi and Hinglish too.</span>
+        <span class="lang-note">English works best here; the real product will understand Hindi and Hinglish too.</span>
         <span class="char-count" id="char-count">${(S.describeText||'').length} / ${DESCRIBE_MAX}</span>
       </div>
       ${stories.length ? `<div class="ex-chips">${stories.map((s,i)=>`<button class="ex-chip" onclick="exampleFill(${i})">"${s.length>52 ? s.slice(0,52)+'…' : s}"</button>`).join('')}</div>` : ''}
@@ -2662,7 +2676,7 @@ function renderInterpConfirm(){
   const ctx = DESCRIBE_CTX[it.ctxScreen];
   const sq = SERVICE_SQ[it.service] || null;
   const youWrote = `<div class="youwrote"><div class="nm-k">You wrote</div><div class="youwrote-text">"${it.text}"</div></div>`;
-  const discardNote = it.discarded.length ? `<p class="small" style="margin-top:14px;">We also read something about "${it.discarded[0].q.label.toLowerCase()}" but set it aside — it only applies on a different path.</p>` : '';
+  const discardNote = it.discarded.length ? `<p class="small" style="margin-top:14px;">We also read something about "${it.discarded[0].q.label.toLowerCase()}" but set it aside; it only applies on a different path.</p>` : '';
   if(it.unplaceable){
     const q0 = ctx.chain.find(c=>!S.answers[c.id]) || ctx.chain[0];
     const opts = q0.opts();
@@ -2671,7 +2685,7 @@ function renderInterpConfirm(){
       ${splitCols(`
       ${crumbs([it.service,'How we read it'], sq)}
       <h1 class="headline">We couldn't safely place this.</h1>
-      <p class="lede">That's not a problem with what you wrote — NextMove only matches words against its verified categories, and it couldn't do that safely here. Rather than guess, pick the closest option yourself.</p>
+      <p class="lede">That's not a problem with what you wrote. NextMove only matches words against its verified categories, and it couldn't do that safely here. Rather than guess, pick the closest option yourself.</p>
       ${youWrote}
       ${discardNote}
       `, `
@@ -2682,7 +2696,7 @@ function renderInterpConfirm(){
         </div>
       </div>
       ${factChips(it.facts)}
-      <div class="demo-hint" style="margin-top:20px;">Here, only a few example phrasings are understood. The real build uses an AI model, which will sometimes get things wrong — that is why this check step exists.</div>
+      <div class="demo-hint" style="margin-top:20px;">Here, only a few example phrasings are understood. The real build uses an AI model, which will sometimes get things wrong. That is why this check step exists.</div>
       `)}
     </div>`;
   }
@@ -2713,7 +2727,7 @@ function renderInterpConfirm(){
     ${splitCols(`
     ${crumbs([it.service,'How we read it'], sq)}
     <h1 class="headline">Here's how we read it.</h1>
-    <p class="interp-frame">AI matched your words to NextMove's fixed categories. It cannot change what happens next — the verified playbook does that. Please check the matches below.</p>
+    <p class="interp-frame">AI matched your words to NextMove's fixed categories. It cannot change what happens next; the verified playbook does that. Please check the matches below.</p>
     ${youWrote}
     ${discardNote}
     `, `
@@ -2721,7 +2735,7 @@ function renderInterpConfirm(){
     ${factChips(it.facts)}
     <button class="btn btn-primary btn-block" onclick="applyInterpretation()">Use these answers <span class="btn-arrow">${ICONS.arrow}</span></button>
     <button class="btn-ghost" onclick="back()">I'll answer the questions myself instead</button>
-    <div class="demo-hint" style="margin-top:14px;">Here, only a few example phrasings are understood. The real build uses an AI model, which will sometimes get things wrong — that is why this check step exists.</div>
+    <div class="demo-hint" style="margin-top:14px;">Here, only a few example phrasings are understood. The real build uses an AI model, which will sometimes get things wrong. That is why this check step exists.</div>
     `)}
   </div>`;
 }
@@ -2792,11 +2806,11 @@ function renderPassportGuardrail(){
     ${splitCols(`
     ${phaseEyebrow('Passport')}
     <h1 class="headline">Already received your passport?</h1>
-    <p class="lede">This version of NextMove is designed for applications where the passport hasn't been issued yet. Still waiting on yours? Two quick questions from here — or a few more if you're not sure, and that's fine too.</p>
+    <p class="lede">This version of NextMove is designed for applications where the passport hasn't been issued yet. Still waiting on yours? Two quick questions from here, or a few more if you're not sure. That's fine too.</p>
     `, `
     <div class="answers">
-      ${answerRow('no',{key:'guardrail',onSelect:'guardrailAnswer'},'No — still waiting on it')}
-      ${answerRow('yes',{key:'guardrail',onSelect:'guardrailAnswer'},'Yes — I already have it')}
+      ${answerRow('no',{key:'guardrail',onSelect:'guardrailAnswer'},'No, still waiting on it')}
+      ${answerRow('yes',{key:'guardrail',onSelect:'guardrailAnswer'},'Yes, I already have it')}
     </div>
     `)}
   </div>`;
@@ -2807,7 +2821,7 @@ function renderPassportOutOfScope(){
   <div class="stage screen">
     <div class="narrow">
       <div class="banner">
-        <p class="small" style="margin:0;">This version of NextMove is designed for applications where the passport hasn't been issued yet — since yours has already arrived, there's nothing here for NextMove to diagnose.</p>
+        <p class="small" style="margin:0;">This version of NextMove is designed for applications where the passport hasn't been issued yet, and since yours has already arrived, there's nothing here for NextMove to diagnose.</p>
       </div>
       <button class="btn btn-secondary" onclick="restart()">Back to Home</button>
     </div>
@@ -2894,7 +2908,7 @@ function renderPassportRecoveryPaste(){
     ${splitCols(`
     ${phaseEyebrow('Passport','Recovery')}
     <h2 class="headline">Paste the status text you see.</h2>
-    <p class="lede">NextMove only matches a small set of known example phrases exactly — anything else is treated as unknown rather than guessed. Try one of these, or paste your own:</p>
+    <p class="lede">NextMove only matches a small set of known example phrases exactly; anything else is treated as unknown rather than guessed. Try one of these, or paste your own:</p>
     `, `
     <div class="inline-explain-actions" style="margin:0 0 16px;">
       ${PASTE_MATCH_EXAMPLES.map(e=>`<button class="btn btn-secondary" onclick="pasteExampleFill('${e.text.replace(/'/g,"\\'")}')" style="text-transform:capitalize;">"${e.text}"</button>`).join('')}
@@ -2971,8 +2985,8 @@ function renderVoterEntry(){
       ${answerRow('notsure',{key:'voterEntry',onSelect:'voterEntryAnswer'},"I'm not sure")}
     </div>
     ${S.answers.voterEntryExplain ? `<div class="inline-explain">
-      <b>Regular application</b> — you filled a form (new registration, address change, name correction, replacement card) and are waiting on a decision.<br><br>
-      <b>SIR</b> — a special, area-wide re-check of the entire electoral roll happening in batches by state, separate from any individual application you may have also filed.
+      <b>Regular application</b>: you filled a form (new registration, address change, name correction, replacement card) and are waiting on a decision.<br><br>
+      <b>SIR</b>: a special, area-wide re-check of the entire electoral roll happening in batches by state, separate from any individual application you may have also filed.
       <div class="inline-explain-actions">
         <button class="btn btn-secondary" onclick="voterEntryAnswer('applied')">It's a regular application</button>
         <button class="btn btn-secondary" onclick="voterEntryAnswer('sir')">It's about SIR</button>
@@ -3067,7 +3081,7 @@ function renderSirState(){
     ${splitCols(`
     ${phaseEyebrow('Voter Services','SIR')}
     <h1 class="headline">Which state is this for?</h1>
-    <p class="lede">SIR's document list and appeal rules are the same nationally — but the current phase and dates differ by state, so NextMove checks yours before saying "wait" or "act now."</p>
+    <p class="lede">SIR's document list and appeal rules are the same nationally, but the current phase and dates differ by state, so NextMove checks yours before saying "wait" or "act now."</p>
     `, `
     <div class="answers">
       ${Object.entries(SIR_STATES).map(([k,s])=>answerRow(k,{key:'sirState',onSelect:'sirStateAnswer'},s.name)).join('')}
@@ -3090,11 +3104,11 @@ function renderSirReverifying(){
     <div class="narrow">
       ${phaseEyebrow('Voter Services','SIR · ' + st.name)}
       <h2 class="headline">SIR guidance for ${st.name} is being re-verified.</h2>
-      <p class="lede">An official source behind ${st.name}'s SIR guidance changed on ${FRESHNESS.changedOn}. A human is re-checking every affected rule against it. Until that's done, NextMove pauses its case-specific advice here — showing you guidance it can't currently back would be worse than a short wait.</p>
+      <p class="lede">An official source behind ${st.name}'s SIR guidance changed on ${FRESHNESS.changedOn}. A human is re-checking every affected rule against it. Until that's done, NextMove pauses its case-specific advice here. Showing you guidance it can't currently back would be worse than a short wait.</p>
       <div class="nm-field" style="border-top:none; padding-top:0;">
         <div class="nm-k">Where to check meanwhile</div>
         <div class="nm-v"><a href="https://voters.eci.gov.in" target="_blank" rel="noopener">Voters' Service Portal — voters.eci.gov.in</a> · <span class="phone">Toll-free Voter Helpline: 1950</span>
-          <div class="handoff-note">An official ECI channel — always current, straight from the source.</div>
+          <div class="handoff-note">An official ECI channel, always current and straight from the source.</div>
         </div>
       </div>
       <p class="small" style="margin-top:14px;">Guidance here was last human-verified on ${SOURCES_VERIFIED}. Re-verification usually completes within a day.</p>
@@ -3109,11 +3123,11 @@ function renderSirUnsupported(){
     <div class="narrow">
       ${phaseEyebrow('Voter Services','SIR · ' + st.name)}
       <h2 class="headline">SIR guidance for your state isn't available in NextMove yet.</h2>
-      <p class="lede">SIR processes can differ by state and revision stage. We only give case-specific guidance where we've verified the official workflow — right now, that's Delhi only.</p>
+      <p class="lede">SIR processes can differ by state and revision stage. We only give case-specific guidance where we've verified the official workflow. Right now, that's Delhi only.</p>
       <div class="nm-field" style="border-top:none; padding-top:0;">
         <div class="nm-k">Where to check instead</div>
         <div class="nm-v"><a href="https://voters.eci.gov.in" target="_blank" rel="noopener">Voters' Service Portal — voters.eci.gov.in</a> · <span class="phone">Toll-free Voter Helpline: 1950</span>
-          <div class="handoff-note">An official ECI channel — NextMove hasn't verified state-specific SIR rules for ${st.name} yet, so it can't safely tell you WAIT, FOLLOW UP, or ESCALATE here.</div>
+          <div class="handoff-note">An official ECI channel. NextMove hasn't verified state-specific SIR rules for ${st.name} yet, so it can't safely tell you WAIT, FOLLOW UP, or ESCALATE here.</div>
         </div>
       </div>
       <button class="btn btn-secondary btn-block" onclick="restart()">Back to Home</button>
@@ -3128,7 +3142,7 @@ function renderSirQ1(){
     ${splitCols(`
     ${phaseEyebrow('SIR · ' + st.name,'Just one question')}
     <h1 class="headline">What's happening with your SIR situation?</h1>
-    <p class="lede">${st.name} is currently in the ${st.phase.label} — enumeration and the Draft Roll are both already behind us, so that's what these options reflect.</p>
+    <p class="lede">${st.name} is currently in the ${st.phase.label}. Enumeration and the Draft Roll are both already behind us, so that's what these options reflect.</p>
     `, `
     <div class="answers">
       ${Object.entries(options).map(([v,l])=>answerRow(v,{key:'sirQ1',onSelect:'sirQ1Answer'},l)).join('')}
@@ -3153,7 +3167,7 @@ function renderSirDiagnosis(){
   const a = S.answers.sirQ1==='unclassified' ? {} : S.answers;
   const d = S.answers.sirQ1==='unclassified' ? {...sirPlaybook.fallback, matchedAnswers:S.answers} : evaluate(sirPlaybook, a);
   const st = SIR_STATES[S.answers.sirState];
-  const stateNote = `<div class="banner"><p class="small" style="margin:0;"><b>${st.name} — ${st.phase.label}:</b> ${st.phase.note}</p></div>`;
+  const stateNote = `<div class="banner"><p class="small" style="margin:0;"><b>${st.name} · ${st.phase.label}:</b> ${st.phase.note}</p></div>`;
   const labels = labelMap('sirQ1', {...SIR_Q1_OPTIONS_FOR[st.phase.id], unclassified:"I'm not sure"});
   return renderDiagnosis('SIR', d, null, labels, 'sir', stateNote);
 }
@@ -3175,9 +3189,9 @@ function renderDiagnosis(serviceLabel, d, timeline, answerLabels, engineKey, pre
     <div class="stamp-row"><span class="stamp ${stampClass(d.rec)}">${stampIcon(d.rec)}${stampLabel(d.rec)}</span></div>
     <p class="explain">${d.explanation}</p>
     `, `
-    ${S.ciJustUpdated ? `<div class="banner" style="border-color:var(--butter); background:var(--butter-soft);"><p class="small" style="margin:0;">Update recorded — this is where it leaves your case. <button class="read-change" style="margin:0 0 0 6px;" onclick="ciUndo()">Undo that update</button></p></div>` : ''}
+    ${S.ciJustUpdated ? `<div class="banner" style="border-color:var(--butter); background:var(--butter-soft);"><p class="small" style="margin:0;">Update recorded. This is where it leaves your case. <button class="read-change" style="margin:0 0 0 6px;" onclick="ciUndo()">Undo that update</button></p></div>` : ''}
     ${freshBanner(engineKey)}
-    ${S.phaseDrift ? `<div class="banner"><p class="small" style="margin:0;"><b>The SIR phase changed while this case was saved.</b> NextMove re-checked your case against the current phase — this diagnosis reflects today's rules, not the ones from when you saved.</p></div>` : ''}
+    ${S.phaseDrift ? `<div class="banner"><p class="small" style="margin:0;"><b>The SIR phase changed while this case was saved.</b> NextMove re-checked your case against the current phase, so this diagnosis reflects today's rules, not the ones from when you saved.</p></div>` : ''}
     ${preNote||''}
     ${d.dependency && d.dependency!=='Unknown' ? `<div class="dep-block">
       <div class="dep-k">Waiting on</div>
@@ -3231,7 +3245,7 @@ function renderNextMove(serviceLabel, engineKey){
     ${freshBanner(engineKey)}
     <div class="nm-fields">
       <div class="nm-field"><div class="nm-k">Why</div><div class="nm-v">${d.explanation}</div></div>
-      <div class="nm-field"><div class="nm-k">Where</div><div class="nm-v">${d.where.url ? `<a href="${d.where.url}" target="_blank" rel="noopener">${d.where.label}</a>` : d.where.label}${d.where.phone?` · <span class="phone">${d.where.phone}</span>`:''}<div class="handoff-note">An official government channel — NextMove helps you understand and prepare; it doesn't act on your behalf.</div></div></div>
+      <div class="nm-field"><div class="nm-k">Where</div><div class="nm-v">${d.where.url ? `<a href="${d.where.url}" target="_blank" rel="noopener">${d.where.label}</a>` : d.where.label}${d.where.phone?` · <span class="phone">${d.where.phone}</span>`:''}<div class="handoff-note">An official government channel. NextMove helps you understand and prepare; it doesn't act on your behalf.</div></div></div>
       <div class="nm-field"><div class="nm-k">What you'll need</div><div class="nm-v">${d.need}</div></div>
       ${d.howLong ? `<div class="nm-field"><div class="nm-k">How long?</div><div class="nm-v">${d.howLong}</div></div>` : ''}
       ${d.expectNext ? `<div class="nm-field"><div class="nm-k">What to expect</div><div class="nm-v">${d.expectNext}</div></div>` : ''}
@@ -3273,9 +3287,9 @@ function fillDraft(base){
 function bracketHintText(t){
   const n = bracketCount(t);
   const fills = (S.prepFills||[]).length;
-  if(n>0) return `${n} blank${n>1?'s':''} in [brackets] left to fill — everything else is ready.`;
-  if(fills>0 && !S.fillsReviewed) return 'All blanks filled — check the details filled from your text below.';
-  return 'All blanks filled — ready to copy and send.';
+  if(n>0) return `${n} blank${n>1?'s':''} in [brackets] left to fill; everything else is ready.`;
+  if(fills>0 && !S.fillsReviewed) return 'All blanks filled. Check the details filled from your text below.';
+  return 'All blanks filled. Ready to copy and send.';
 }
 function updateBracketHint(v){
   const el = document.getElementById('bracket-hint');
@@ -3311,8 +3325,8 @@ function renderPrepare(serviceLabel, engineKey){
     ${splitCols(`
     ${crumbs([serviceLabel + ' · ' + d.label, 'Prepare'], SERVICE_SQ[serviceLabel] || null)}
     <h1 class="headline">${prep.title || "Here's how to get this done."}</h1>
-    <p class="lede">${prep.draft ? 'Review the draft, make it yours, then walk the steps. You send it — from your own hands, on the official channel.' : 'Walk the steps below, ticking them off as you go. Every one of them happens on the official channel, by you.'}</p>
-    <p class="prep-trust">NextMove drafts and organizes; it never submits anything on your behalf. The final step is always yours — that's by design.</p>
+    <p class="lede">${prep.draft ? 'Review the draft, make it yours, then walk the steps. You send it yourself, from your own hands, on the official channel.' : 'Walk the steps below, ticking them off as you go. Every one of them happens on the official channel, by you.'}</p>
+    <p class="prep-trust">NextMove drafts and organizes; it never submits anything on your behalf. The final step is always yours. That's by design.</p>
     `, `
     ${freshBanner(engineKey)}
     ${channel}
@@ -3321,10 +3335,10 @@ function renderPrepare(serviceLabel, engineKey){
       <textarea id="prep-draft" class="prep-draft" oninput="S.prepDraft=this.value; updateBracketHint(this.value)" aria-label="Editable draft">${S.prepDraft ?? fd.text}</textarea>
       <div class="prep-card-foot">
         <div class="prep-hint" id="bracket-hint">${bracketHintText(S.prepDraft ?? fd.text)}</div>
-        <button class="copy-btn ${S.copied ? (S.copiedBrackets>0?'copied-warn':'copied') : ''}" onclick="copyDraft()">${S.copied ? (S.copiedBrackets>0 ? `Copied — ${S.copiedBrackets} blank${S.copiedBrackets>1?'s':''} left` : 'Copied ✓') : 'Copy draft'}</button>
+        <button class="copy-btn ${S.copied ? (S.copiedBrackets>0?'copied-warn':'copied') : ''}" onclick="copyDraft()">${S.copied ? (S.copiedBrackets>0 ? `Copied, ${S.copiedBrackets} blank${S.copiedBrackets>1?'s':''} left` : 'Copied ✓') : 'Copy draft'}</button>
       </div>
       ${fd.fills.length ? `<div class="fill-list">
-        <span class="fk">Filled from your text — please check them</span>
+        <span class="fk">Filled from your text; please check them</span>
         ${fd.fills.map(f=>`${f.label}: <b>${f.value}</b>`).join(' · ')}
         <button class="fill-review" onclick="S.fillsReviewed=!S.fillsReviewed; render();" aria-pressed="${!!S.fillsReviewed}">
           <span class="pstep-box" style="${S.fillsReviewed?'background:var(--butter); border-color:var(--ink);':''}">${S.fillsReviewed?ICONS.stepCheck:''}</span>
@@ -3344,7 +3358,7 @@ function renderPrepare(serviceLabel, engineKey){
         ${step.url ? `<a class="pstep-link" href="${step.url}" target="_blank" rel="noopener">Open ↗</a>` : ''}
       </div>`;}).join('')}
     </div>
-    ${done===prep.steps.length ? `<p class="psteps-done">${prep.doneNote || "All steps done — you've completed everything this stage needs from you."}</p>` : ''}
+    ${done===prep.steps.length ? `<p class="psteps-done">${prep.doneNote || "All steps done. You've completed everything this stage needs from you."}</p>` : ''}
     ${prep.visit ? `<div class="visit-card">
       <div class="visit-title">If you're going in person</div>
       <div class="visit-cols">
@@ -3358,9 +3372,9 @@ function renderPrepare(serviceLabel, engineKey){
         </div>
       </div>
       ${prep.visit.after ? `<div class="visit-k" style="margin-top:14px;">Then what?</div><ul class="visit-list"><li>${prep.visit.after}</li></ul>` : ''}
-      <div class="visit-note">The carry list combines this case's verified requirements with common-sense basics. The tips are general practical guidance for any government office — not official rules.</div>
+      <div class="visit-note">The carry list combines this case's verified requirements with common-sense basics. The tips are general practical guidance for any government office, not official rules.</div>
     </div>` : ''}
-    <button class="btn btn-secondary btn-block" onclick="restart()">Done — back to Home</button>
+    <button class="btn btn-secondary btn-block" onclick="restart()">Done, back to Home</button>
     ${saveControl(engineKey, serviceLabel, engineKey+'-prepare', done)}
     `)}
   </div>`;
@@ -3374,8 +3388,8 @@ function renderSaveCase(){
     ${splitCols(`
     ${crumbs(['Save your case'], 'sq-butter')}
     <h1 class="headline">Keep this case. NextMove walks with you.</h1>
-    <p class="lede">Sign in once and this becomes a living casefile: add updates as things happen, watch your journey build, and always know your next move — whenever you come back.</p>
-    <p class="prep-trust">Your details are used for exactly one thing: bringing your case back to you — including anything you typed about your case. No marketing, nothing else. Remove or Sign out deletes all of it from this device. And the diagnosis you just got never required signing in — this is only for keeping it.</p>
+    <p class="lede">Sign in once and this becomes a living casefile: add updates as things happen, watch your journey build, and always know your next move, whenever you come back.</p>
+    <p class="prep-trust">Your details are used for exactly one thing: bringing your case back to you, including anything you typed about your case. No marketing, nothing else. Remove deletes a case for good; Sign out just signs you out, and your cases stay on your account. And the diagnosis you just got never required signing in. This is only for keeping it.</p>
     `, `
     <button class="btn-google" onclick="authGoogle()">${ICONS.google} Continue with Google</button>
     <div class="auth-divider">or</div>
@@ -3406,7 +3420,7 @@ function renderSaveOtp(){
     </div>
     <button class="btn btn-primary btn-block" style="margin-top:0;" onclick="authVerifyOtp()">Verify and save my case <span class="btn-arrow">${ICONS.arrow}</span></button>
     <button class="auth-switch" onclick="authResend()">${S.otpResent ? 'Code sent again ✓' : "Didn't get it? Send again"}</button>
-    <div class="demo-hint">Design prototype — any 6 digits work here.</div>
+    <div class="demo-hint">Design prototype: any 6 digits work here.</div>
     `)}
   </div>`;
 }
@@ -3419,15 +3433,15 @@ function renderSaveName(){
   return `${topbar(false,false)}
   <div class="stage screen">
     <div class="narrow">
-      ${crumbs(midSave ? ['Save your case','One last thing — optional'] : ['Your name — optional'], 'sq-butter')}
+      ${crumbs(midSave ? ['Save your case','One last thing, optional'] : ['Your name (optional)'], 'sq-butter')}
       <h2 class="headline">What should we call you?</h2>
-      <p class="lede">Just a first name is fine — it's how your casefile greets you when you come back. ${midSave ? 'Skip it and nothing changes about your case.' : 'It changes nothing about your cases.'}</p>
+      <p class="lede">Just a first name is fine; it's how your casefile greets you when you come back. ${midSave ? 'Skip it and nothing changes about your case.' : 'It changes nothing about your cases.'}</p>
       <div class="auth-field">
         <div class="auth-label">Your name</div>
         <input class="auth-input" type="text" placeholder="First name" value="${S.pendingName||''}" oninput="S.pendingName=this.value" onkeydown="if(event.key==='Enter')saveNameFinish(true)">
       </div>
       <button class="btn btn-primary btn-block" style="margin-top:0;" onclick="saveNameFinish(true)">${midSave ? 'Save my case' : 'Save name'} <span class="btn-arrow">${ICONS.arrow}</span></button>
-      <button class="auth-switch" onclick="saveNameFinish(false)">${midSave ? 'Skip — save without a name' : 'Never mind'}</button>
+      <button class="auth-switch" onclick="saveNameFinish(false)">${midSave ? 'Skip and save without a name' : 'Never mind'}</button>
     </div>
   </div>`;
 }
@@ -3438,7 +3452,7 @@ function renderSaveDone(){
     <div class="narrow">
       ${crumbs(['Case saved'], 'sq-butter')}
       <h2 class="headline">Your casefile is saved.</h2>
-      <p class="lede">It's waiting on the Home screen whenever you come back — your answers, your diagnosis, and any steps you've already ticked off. Nothing else happens with your ${S.user && S.user.method==='phone' ? 'number' : 'account'}.</p>
+      <p class="lede">It's waiting on the Home screen whenever you come back: your answers, your diagnosis, and any steps you've already ticked off. Nothing else happens with your ${S.user && S.user.method==='phone' ? 'number' : 'account'}.</p>
       ${p ? `<button class="btn btn-primary btn-block" onclick="nav('${p.returnScreen}')">Back to my case <span class="btn-arrow">${ICONS.arrow}</span></button>` : ''}
       <button class="btn btn-secondary btn-block" onclick="restart()">Go to Home</button>
     </div>
@@ -3489,7 +3503,7 @@ function render(){
     case 'case-closed': html = renderCaseClosed(); break;
     default: html = renderHome();
   }
-  el.innerHTML = html + `<div class="protofooter">Design prototype — not the build. Static reference for review only. Every recommendation above traces to an official source cited in "Why am I seeing this?" or the Voter/SIR Verification Matrix; anything without one is marked UNVERIFIED in the source docs and never hard-coded as a rule. Sign-in and saving are simulated: Google sign-in is instant, any 6-digit code is accepted, and your casefile lives only in this browser. Sources last human-verified ${SOURCES_VERIFIED}.<br><button class="read-change" onclick="toggleFreshDemo()">${FRESHNESS.demo ? '✕ Exit source-change preview — sources are actually verified and current' : 'Preview: what users see when an official source changes'}</button></div>`;
+  el.innerHTML = html + `<div class="protofooter">Design prototype, not the build. Static reference for review only. Every recommendation above traces to an official source cited in "Why am I seeing this?" or the Voter/SIR Verification Matrix; anything without one is marked UNVERIFIED in the source docs and never hard-coded as a rule. Sign-in and saving are simulated: Google sign-in is instant, any 6-digit code is accepted, and your casefile lives only in this browser. Sources last human-verified ${SOURCES_VERIFIED}.<br><button class="read-change" onclick="toggleFreshDemo()">${FRESHNESS.demo ? '✕ Exit source-change preview — sources are actually verified and current' : 'Preview: what users see when an official source changes'}</button></div>`;
 }
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape' && S.acctOpen){ S.acctOpen=false; S.signOutConfirm=false; render(); }
