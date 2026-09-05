@@ -62,7 +62,10 @@ src/
 - Consumes: nothing.
 - Produces: a repo where `npm run build` and `npx vitest run` both pass with the old domain gone, ready for the v2 domain. `src/domain/types.ts` still exists (old content) and is rewritten in Task 2.
 
-**Why this is safe:** the Slice-1 UI implements the pre-design-lock Ramp/Acctual visual world and the old `Answer[]` domain model, both explicitly superseded by the locked prototype (`v1-design-lock-2`). C2 rebuilds the playbooks and C3 rebuilds every screen from the locked design. Git history preserves all of it.
+**Why this is safe:** the Slice-1 UI implements the pre-design-lock Ramp/Acctual visual world and the old `Answer[]` domain model, both explicitly superseded by the locked prototype (`v1-design-lock-2`). C2 rebuilds the playbooks and C3 rebuilds every screen from the locked design. Git history preserves all of it. Specifics:
+- `matchStatusText.ts` deletion is not just safe, it is **required**: the prototype explicitly retired loose keyword matching (its comment at ~line 3290: the bare-substring `'verif'` match let "verification completed" and "verification incomplete" hit the same branch — a real misclassification risk). `PASTE_MATCH_EXAMPLES` exact-normalized matching (prototype ~3297) is the authority; C3 rebuilds from that.
+- `contentSafety.test.ts` holds a hand-authored `BANNED_PATTERNS` table (day/week/month thresholds, "deadline", "guarantee", "we submitted/filed", affiliation claims, causal language) with written reasons — **not derivable from the prototype**. C2 must lift that table from git history (`91ff7a1`) rather than reinvent it, and extend it with the manifest-backed date allowlist (the real copy legitimately contains "15 days", "30 Sep 2026", "4 Nov 2026").
+- `caseSession.ts` is two things: the answer reducer (rebuilt in **C5**) and screen history / NAVIGATE / BACK / RESTART (rebuilt in **C3** — §9 lists "restart confirm" under C3). Neither half is lost; the prototype's `nav`/`S.history`/`restart` is strictly richer.
 
 - [ ] **Step 1: Add the test script**
 
@@ -97,7 +100,7 @@ export default function App() {
 - [ ] **Step 4: Verify build and suite pass**
 
 Run: `npm run build` — Expected: success, no TS errors.
-Run: `npx vitest run` — Expected: passes (zero or near-zero tests remaining is fine; no failures).
+Run: `npx vitest run --passWithNoTests` — Expected: exit 0. (After Step 2 **zero** test files remain, and plain `vitest run` exits 1 with "No test files found" — that is the expected state here, not a failure. The flag is only needed for this one task; Task 2 onward has real test files.)
 
 - [ ] **Step 5: Commit**
 
@@ -127,6 +130,7 @@ screens in C3, session/persistence in C5. History preserves the old code."
   - `SourceReference { title: string; url?: string; quote?: string }`
   - `PlaybookRule`, `FallbackDiagnosis`, `Diagnosis`, `Playbook` (below)
   - `evaluate(playbook: Playbook, answers: AnswerRecord): Diagnosis`
+  - **Naming note (deliberate rename, record for the docs):** `Diagnosis.ruleId` unifies what the prototype splits across two shapes (`matchedRuleId: null` on the fallback only, a bare `id` on matched rules) and what `NextMove_Implementation_Plan_FINAL.md` §3 calls `matchedRuleId`. One field, both paths. **`ruleId` replaces the prototype's `d.id` as the PREP/CHECKIN lookup key** — C4/C5 read `PREP[d.ruleId]` and `CHECKIN[d.state] ?? CHECKIN[d.ruleId]` where the prototype read `d.id`.
 
 - [ ] **Step 1: Rewrite `src/domain/types.ts`**
 
@@ -167,7 +171,14 @@ export interface RuleContent {
   whatShort: string
   whatToDo: string
   where: OfficialChannel
-  need?: string
+  /** Required: every one of the 31 locked content objects defines it, and the
+   *  Next Move template renders it unguarded. */
+  need: string
+  /** Structured alternative for rules whose "what you'll need" is a list
+   *  (currently SIR's notice rule, which the prototype ships as raw <ul>
+   *  markup inside `need`). Renderers prefer this when present — C3 must
+   *  never dangerouslySetInnerHTML a data field. */
+  needList?: string[]
   howLong?: string
   expectNext?: string
   source: SourceReference
@@ -196,6 +207,10 @@ export interface Diagnosis extends RuleContent {
 }
 
 export interface Playbook {
+  /** Data identity of the rule set ('passport' | 'voter' | 'sir').
+   *  Distinct on purpose from ServiceEngine.key, which is the routing/
+   *  storage prefix (the prototype's engineKey) — the two happen to share
+   *  values in V1 but serve different layers. */
   serviceId: string
   /** Ordered; evaluate() is first-match-wins. */
   rules: PlaybookRule[]
@@ -221,6 +236,7 @@ const rule = (id: string, condition: PlaybookRule['condition'], rec: PlaybookRul
   whatShort: 'Toy short.',
   whatToDo: 'Toy what to do.',
   where: { label: 'Toy channel' },
+  need: 'Toy need.',
   source: { title: 'Toy source' },
 })
 
@@ -239,6 +255,7 @@ const toy: Playbook = {
     whatShort: 'Toy check directly.',
     whatToDo: 'Toy check status directly.',
     where: { label: 'Toy portal' },
+    need: 'Toy need.',
     source: { title: "Toy safety net" },
   },
 }
@@ -333,8 +350,12 @@ git commit -m "feat(c1): v2 domain types (keyed AnswerRecord) + evaluate()"
   - `applyEvent(answers, patch): AnswerRecord` — pure merge; `null` deletes a key; never clears unrelated keys.
 
 **Design notes (locked prototype behavior being translated):**
-- *Correction path* = the citizen changed their mind about a question. Locked behavior: "changing Q1 after Q2 was answered clears Q2" — and a same-value re-tap must NOT clear anything (the "same-vs-changed check", a previously-regressed locked fix). Clearing is transitive through the deps map, cycle-safe.
-- *Event path* = a check-in reported something new happening in the world (`updateAns` in the prototype): facts always survive; keys merge in; `null` in a patch deletes that key (used when a check-in consumes an outcome key). It never touches keys outside the patch.
+- *Correction path* = the citizen changed their mind about a question. The prototype has **two separate reset triggers here, not one** — do not conflate them:
+  1. *Change-gated* (prototype ~3256): dependent **answers** (q2) are cleared only when the value actually differs — a same-value re-tap must NOT clear dependent answers (the "same-vs-changed check", a previously-regressed locked fix). This is what `applyCorrection` and its `changed` flag implement; `changed` means exactly "the stored value differed, so dependent answers were invalidated."
+  2. *Every-write* (prototype `setAns` ~2195): prepare progress, draft, describe-it facts and the fills acknowledgment reset on **every** answer write via the correction path, including a same-value re-tap. That reset is session-layer behavior owned by **C5** — C5 must trigger it on every correction-path write and must NOT gate it on this task's `changed` flag.
+- Clearing of dependents is transitive through the deps map and cycle-safe — and the key being corrected is **never** cleared, even when a cyclic deps map points back at it (the guard is seeded with the write key).
+- *Event path* = a check-in reported something new happening in the world (`updateAns` in the prototype): facts always survive; keys merge in; `null` in a patch deletes that key (used when a check-in consumes an outcome key — the "retire, don't reset" mechanism). It never touches keys outside the patch. (`updateAns` also deletes on `undefined`; the patch type narrows that to `null` only, which is safe for typed callers — C5's JSON-parsed persistence layer must normalize before calling.) `applyEvent` is pure and non-mutating **specifically so C5's `ciUndo` can restore the pre-patch record by keeping a reference to it** — do not "optimize" it into a mutation.
+- *Outcome fields* (`fOutcome`, `gOutcome`, `dpgOutcome`, `dpgFiled`, `voterOutcome`, `ceoAppeal`, `form6Filed`, `sirDocsFiled`) are deliberately **plain string keys in the same AnswerRecord**, not a separate typed structure — that is the whole point of the keyed record (§9's "outcome fields" scope item is satisfied by this design decision, recorded here). They are never dependents of question keys: a Q1 correction clears q2 but leaves every outcome key intact ("the ladder never descends itself" — C5 is built entirely on this invariant, pinned by test below).
 
 - [ ] **Step 1: Write the failing tests** (`src/domain/answers.test.ts`)
 
@@ -373,6 +394,19 @@ describe('applyCorrection', () => {
     const cyclic = { a: ['b'], b: ['a'] }
     const r = applyCorrection({ a: '1', b: '2' }, 'a', '9', cyclic)
     expect(r.answers).toEqual({ a: '9' })
+  })
+
+  it('never clears the key being corrected, even if the deps map points back at it', () => {
+    const r = applyCorrection({ q1: 'a', q2: 'b' }, 'q1', 'c', { q1: ['q2'], q2: ['q1'] })
+    expect(r.answers.q1).toBe('c')
+  })
+
+  it('a correction clears only declared dependents — outcome keys survive', () => {
+    const r = applyCorrection(
+      { q1: 'a', q2: 'b', fOutcome: 'pending', dpgFiled: 'yes' },
+      'q1', 'c', { q1: ['q2'] },
+    )
+    expect(r.answers).toEqual({ q1: 'c', fOutcome: 'pending', dpgFiled: 'yes' })
   })
 
   it('leaves unrelated keys alone', () => {
@@ -436,8 +470,12 @@ import type { AnswerRecord } from './types'
 export type DependentKeys = Record<string, string[]>
 
 /** Correction path: the citizen changed their mind about a question.
- *  Same value = strict no-op (same object back; nothing cleared).
- *  Changed value = set it and clear dependent keys, transitively, cycle-safe. */
+ *  Same value = strict no-op on ANSWERS (same object back; no dependents
+ *  cleared). Changed value = set it and clear dependent keys, transitively,
+ *  cycle-safe, never the key just written.
+ *  `changed` means exactly "dependent answers were invalidated" — the
+ *  session layer (C5) resets prepare/derived state on EVERY correction-path
+ *  write regardless, and must not gate that reset on this flag. */
 export function applyCorrection(
   answers: AnswerRecord,
   key: string,
@@ -446,7 +484,9 @@ export function applyCorrection(
 ): { answers: AnswerRecord; changed: boolean } {
   if (answers[key] === value) return { answers, changed: false }
   const next: AnswerRecord = { ...answers, [key]: value }
-  const visited = new Set<string>()
+  // Seeded with the write key: a cyclic deps map must never delete the
+  // answer this correction just wrote.
+  const visited = new Set<string>([key])
   const queue = [...(deps[key] ?? [])]
   while (queue.length > 0) {
     const k = queue.shift()!
@@ -476,7 +516,7 @@ export function applyEvent(
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/domain/answers.test.ts`
-Expected: PASS (13 tests). Then `npm run build` — Expected: success.
+Expected: PASS (15 tests). Then `npm run build` — Expected: success.
 
 - [ ] **Step 5: Commit**
 
@@ -517,6 +557,7 @@ const base = (over: Partial<Diagnosis>): Diagnosis => ({
   whatShort: 'Toy short.',
   whatToDo: 'Toy what to do.',
   where: { label: 'Toy channel' },
+  need: 'Toy need.',
   source: { title: 'Toy source' },
   ...over,
 })
@@ -551,6 +592,16 @@ describe('decorateStageRung', () => {
     expect(decorateStageRung(d, stages, 'q1')).toBe(d)
   })
 
+  it('an empty stage map is a legal engine config — nothing decorates', () => {
+    const d = base({ rungLabel: 'rung one', matchedAnswers: { q1: 'stage_a' } })
+    expect(decorateStageRung(d, {}, 'q1')).toBe(d)
+  })
+
+  it('never composes from prototype-chain properties of the stage map', () => {
+    const d = base({ rungLabel: 'rung one', matchedAnswers: { q1: 'constructor' } })
+    expect(decorateStageRung(d, stages, 'q1')).toBe(d)
+  })
+
   it('does not mutate the input diagnosis', () => {
     const d = base({ rungLabel: 'rung one', matchedAnswers: { q1: 'stage_a' } })
     decorateStageRung(d, stages, 'q1')
@@ -579,7 +630,10 @@ export function decorateStageRung(
   stageKey: string,
 ): Diagnosis {
   const stageValue = d.matchedAnswers[stageKey]
-  const stage = stageValue !== undefined ? stageShort[stageValue] : undefined
+  const stage =
+    stageValue !== undefined && Object.hasOwn(stageShort, stageValue)
+      ? stageShort[stageValue]
+      : undefined
   if (d.rungLabel && stage) {
     return { ...d, label: `${stage} · ${d.rungLabel}` }
   }
@@ -590,7 +644,7 @@ export function decorateStageRung(
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/domain/stageRung.test.ts`
-Expected: PASS (6 tests). Then `npm run build` — Expected: success.
+Expected: PASS (8 tests). Then `npm run build` — Expected: success.
 
 - [ ] **Step 5: Commit**
 
@@ -612,15 +666,18 @@ git commit -m "feat(c1): stage-rung composite-label decorator"
   - `SirPhase { id: string; label: string; note: string }`
   - `SirStateConfig { id: string; name: string; supported: boolean; phase?: SirPhase }`
   - `optionsForPhase<T>(state: SirStateConfig, optionsByPhase: Record<string, T>): T` — throws on unsupported states or unconfigured phases (impossible options are structurally absent, not filtered).
-  - `sirRoute(state: SirStateConfig): 'sir-q1' | 'sir-unsupported'` — the structural coverage gate: an unsupported state can never reach the playbook, by construction.
+  - `sirCoverage(state: SirStateConfig): 'covered' | 'out-of-coverage'` — the structural coverage **verdict**. Deliberately NOT a screen id: screen selection is C3's job, and C6 adds a third destination (the source-degraded "re-verifying" screen, prototype `sirStateAnswer` ~3497-3500) that layers freshness state on top of this verdict without changing this signature.
 
-**Design notes:** the locked prototype's coverage boundary is structural — `sirStateAnswer()` only routes to SIR Q1 when `supported === true`, so `sirPlaybook` is unreachable for Bihar/Maharashtra/UP/other. Phase-gating means SIR Q1's options are *generated* from the state's current verified phase (`SIR_Q1_OPTIONS_FOR[phase.id]`), so an option belonging to a past or future phase is never offered. The extensibility promise (implementation plan §8): flipping a state's configured phase changes exactly which option set is offered, with zero engine changes.
+**Design notes:** the locked prototype's coverage boundary is structural — `sirStateAnswer()` only routes to SIR Q1 when `supported === true`, so `sirPlaybook` is unreachable for Bihar/Maharashtra/UP/other. Phase-gating means SIR Q1's options are *generated* from the state's current verified phase (`SIR_Q1_OPTIONS_FOR[phase.id]`), so an option belonging to a past or future phase is never offered. The extensibility promise (implementation plan §8): flipping a state's configured phase changes exactly which option set is offered, with zero engine changes. Three recorded details:
+- The prototype's `SIR_STATES` is a map keyed by state id with `{name, supported, phase}` values — C2 materializes the map key into each record's `id` field when building the real data.
+- "I'm not sure" is appended by the question screen *outside* the phase option set (prototype ~3554) — it is deliberately not phase-gated, so `optionsForPhase` correctly returns only the phase's own options.
+- **Deliberate hardening over the prototype:** a `supported: true` state with no `phase` config crashes the prototype (`st.phase.label` throws at render); here it is treated as out-of-coverage instead. A misconfigured state degrades to the honest boundary screen, never a crash.
 
 - [ ] **Step 1: Write the failing tests** (`src/domain/sirConfig.test.ts`)
 
 ```ts
-import { describe, it, expect, vi } from 'vitest'
-import { optionsForPhase, sirRoute, type SirStateConfig, type SirPhase } from './sirConfig'
+import { describe, it, expect } from 'vitest'
+import { optionsForPhase, sirCoverage, type SirStateConfig, type SirPhase } from './sirConfig'
 
 const phaseA: SirPhase = { id: 'phase_a', label: 'Toy phase A', note: 'Toy note A.' }
 const phaseB: SirPhase = { id: 'phase_b', label: 'Toy phase B', note: 'Toy note B.' }
@@ -656,27 +713,18 @@ describe('optionsForPhase', () => {
   })
 })
 
-describe('sirRoute (structural coverage gate)', () => {
-  it('routes a supported state to SIR Q1', () => {
-    expect(sirRoute(supported)).toBe('sir-q1')
+describe('sirCoverage (structural coverage verdict)', () => {
+  it('a supported state with a verified phase is covered', () => {
+    expect(sirCoverage(supported)).toBe('covered')
   })
 
-  it('routes an unsupported state to the coverage-boundary screen', () => {
-    expect(sirRoute(unsupported)).toBe('sir-unsupported')
+  it('an unsupported state is out of coverage', () => {
+    expect(sirCoverage(unsupported)).toBe('out-of-coverage')
   })
 
-  it('a supported state missing its phase config is treated as unsupported, never diagnosed', () => {
+  it('a supported state missing its phase config is out of coverage, never diagnosed (hardening: the prototype crashes here)', () => {
     const broken: SirStateConfig = { id: 'broken', name: 'Broken', supported: true }
-    expect(sirRoute(broken)).toBe('sir-unsupported')
-  })
-
-  it('the unsupported path can never invoke a playbook evaluation', () => {
-    // The gate is structural: given the route, the caller never calls
-    // evaluate. This test encodes the contract the C3 router must keep.
-    const evaluateSpy = vi.fn()
-    const route = sirRoute(unsupported)
-    if (route === 'sir-q1') evaluateSpy()
-    expect(evaluateSpy).not.toHaveBeenCalled()
+    expect(sirCoverage(broken)).toBe('out-of-coverage')
   })
 })
 ```
@@ -710,8 +758,8 @@ export interface SirStateConfig {
 
 /** Derive the question options for a state's current verified phase.
  *  Throws (rather than returning something) for unsupported/misconfigured
- *  states: callers must gate on sirRoute() first, so reaching this without
- *  a phase is a programming error, not a user state. */
+ *  states: callers must gate on sirCoverage() first, so reaching this
+ *  without a phase is a programming error, not a user state. */
 export function optionsForPhase<T>(
   state: SirStateConfig,
   optionsByPhase: Record<string, T>,
@@ -726,24 +774,28 @@ export function optionsForPhase<T>(
   return options
 }
 
-/** The structural coverage gate: only a supported state with a verified
- *  phase calendar ever reaches SIR Q1 (and therefore the SIR playbook).
- *  Everything else gets the honest coverage-boundary screen. */
-export function sirRoute(state: SirStateConfig): 'sir-q1' | 'sir-unsupported' {
-  return state.supported && state.phase ? 'sir-q1' : 'sir-unsupported'
+/** The structural coverage verdict: only a supported state with a verified
+ *  phase calendar is ever diagnosed (and therefore reaches the SIR
+ *  playbook). Everything else is out of coverage — the C3 router maps that
+ *  to the honest coverage-boundary screen, and C6 layers the
+ *  source-degraded "re-verifying" destination on top without changing this
+ *  signature. A supported state missing its phase config is out of
+ *  coverage by deliberate hardening (the prototype crashes on it). */
+export function sirCoverage(state: SirStateConfig): 'covered' | 'out-of-coverage' {
+  return state.supported && state.phase ? 'covered' : 'out-of-coverage'
 }
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/domain/sirConfig.test.ts`
-Expected: PASS (8 tests). Then `npm run build` — Expected: success.
+Expected: PASS (7 tests). Then `npm run build` — Expected: success.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/domain/sirConfig.ts src/domain/sirConfig.test.ts
-git commit -m "feat(c1): SIR phase gating + structural coverage gate (sirRoute)"
+git commit -m "feat(c1): SIR phase gating + structural coverage verdict (sirCoverage)"
 ```
 
 ---
@@ -756,16 +808,19 @@ git commit -m "feat(c1): SIR phase gating + structural coverage gate (sirRoute)"
 **Interfaces:**
 - Consumes: `evaluate` (Task 2), `Diagnosis`, `Playbook`, `AnswerRecord` (Task 2).
 - Produces (C2 defines the three real engines with this exact shape; C3+ call `diagnose`):
-  - `ServiceEngine { key: string; playbook: Playbook; decorate?: (d: Diagnosis) => Diagnosis; unclassifiedKey?: string }`
+  - `ServiceEngine { key: string; playbook: Playbook; decorate?: (d: Diagnosis) => Diagnosis; unclassifiedKeys?: string[] }`
   - `diagnose(engine: ServiceEngine, answers: AnswerRecord): Diagnosis`
 
-**Design notes:** translates the prototype's `currentDiagnosis()`: (1) an explicit "I'm not sure" (`answers[unclassifiedKey] === 'unclassified'`) short-circuits straight to the fallback — this must win even when stale check-in outcome keys would otherwise match a rule first; (2) the service's decorator (stage·rung for passport) applies after evaluation; (3) diagnosis is always computed fresh — `diagnose` is pure.
+**Design notes:** translates the prototype's `currentDiagnosis()`: (1) an explicit "I'm not sure" on ANY of the engine's `unclassifiedKeys` short-circuits straight to the fallback — this must win even when stale check-in outcome keys would otherwise match a rule first; (2) the service's decorator (stage·rung for passport) applies after evaluation; (3) diagnosis is always computed fresh — `diagnose` is pure.
+
+**Recorded deviation from `v1-design-lock-2` (deliberate, resolves a live prototype contradiction):** the prototype implements this short-circuit twice, differently. Its Diagnosis screen checks `voterQ1 === 'unclassified' || voterAppealed === 'unclassified'` (~3472), but `currentDiagnosis()` — feeding Next Move, the casefile, and the check-in loop — checks only `voterQ1` (~3646). The divergence is reachable: answering Voter Q1 "decision received" then "I'm not sure" on the appeal question renders UNCLASSIFIED on Diagnosis but a confident FOLLOW_UP ("file an appeal") on Next Move — two screens contradicting each other on the same case, which the implementation plan's §7 guardrails forbid. `unclassifiedKeys: string[]` (Voter: `['voterQ1', 'voterAppealed']`, set in C2) adopts the SAFER of the two branches everywhere: an explicit "I'm not sure" never produces a confident classification. Not applying the decorator to the short-circuit fallback is likewise a new decision, untestable against the prototype (no engine there has both), chosen because decorating "we don't know" would dress the fallback as a diagnosed state.
 
 - [ ] **Step 1: Write the failing tests** (`src/domain/engine.test.ts`)
 
 ```ts
 import { describe, it, expect } from 'vitest'
 import { diagnose, type ServiceEngine } from './engine'
+import { applyEvent } from './answers'
 import type { Playbook, PlaybookRule, Diagnosis } from './types'
 
 const rule = (id: string, condition: PlaybookRule['condition']): PlaybookRule => ({
@@ -779,6 +834,7 @@ const rule = (id: string, condition: PlaybookRule['condition']): PlaybookRule =>
   whatShort: 'Toy short.',
   whatToDo: 'Toy what to do.',
   where: { label: 'Toy channel' },
+  need: 'Toy need.',
   source: { title: 'Toy source' },
 })
 
@@ -797,6 +853,7 @@ const toy: Playbook = {
     whatShort: 'Toy check directly.',
     whatToDo: 'Toy check status.',
     where: { label: 'Toy portal' },
+    need: 'Toy need.',
     source: { title: 'Toy safety net' },
   },
 }
@@ -807,20 +864,27 @@ describe('diagnose', () => {
     expect(diagnose(engine, { q1: 'a' }).ruleId).toBe('toy-q1')
   })
 
-  it("short-circuits to the fallback when the unclassified key says 'unclassified'", () => {
-    const engine: ServiceEngine = { key: 'toy', playbook: toy, unclassifiedKey: 'q1' }
+  it("short-circuits to the fallback when an unclassified key says 'unclassified'", () => {
+    const engine: ServiceEngine = { key: 'toy', playbook: toy, unclassifiedKeys: ['q1'] }
     const d = diagnose(engine, { q1: 'unclassified' })
     expect(d.ruleId).toBeNull()
     expect(d.rec).toBe('UNCLASSIFIED')
   })
 
+  it("short-circuits when only a LATER configured key is 'unclassified' (the Voter appeal case)", () => {
+    const engine: ServiceEngine = { key: 'toy', playbook: toy, unclassifiedKeys: ['q1', 'q2followup'] }
+    const d = diagnose(engine, { q1: 'a', q2followup: 'unclassified' })
+    expect(d.ruleId).toBeNull()
+    expect(d.rec).toBe('UNCLASSIFIED')
+  })
+
   it('the short-circuit beats a rule that stale outcome keys would match first', () => {
-    const engine: ServiceEngine = { key: 'toy', playbook: toy, unclassifiedKey: 'q1' }
+    const engine: ServiceEngine = { key: 'toy', playbook: toy, unclassifiedKeys: ['q1'] }
     const d = diagnose(engine, { q1: 'unclassified', someOutcome: 'yes' })
     expect(d.ruleId).toBeNull()
   })
 
-  it('without an unclassifiedKey, the literal value just falls through to the fallback via evaluate', () => {
+  it('without unclassifiedKeys, the literal value just falls through to the fallback via evaluate', () => {
     const engine: ServiceEngine = { key: 'toy', playbook: toy }
     expect(diagnose(engine, { q1: 'unclassified' }).ruleId).toBeNull()
   })
@@ -833,14 +897,47 @@ describe('diagnose', () => {
 
   it('does not apply the decorator to the short-circuit fallback', () => {
     const decorate = (d: Diagnosis): Diagnosis => ({ ...d, label: 'decorated' })
-    const engine: ServiceEngine = { key: 'toy', playbook: toy, decorate, unclassifiedKey: 'q1' }
+    const engine: ServiceEngine = { key: 'toy', playbook: toy, decorate, unclassifiedKeys: ['q1'] }
     expect(diagnose(engine, { q1: 'unclassified' }).label).toBe('Toy unclear')
   })
 
   it('carries matchedAnswers on the short-circuit fallback too', () => {
-    const engine: ServiceEngine = { key: 'toy', playbook: toy, unclassifiedKey: 'q1' }
+    const engine: ServiceEngine = { key: 'toy', playbook: toy, unclassifiedKeys: ['q1'] }
     const d = diagnose(engine, { q1: 'unclassified', extra: 'kept' })
     expect(d.matchedAnswers).toEqual({ q1: 'unclassified', extra: 'kept' })
+  })
+})
+
+describe('check-in composition (applyEvent + diagnose): retire, don\'t reset', () => {
+  // Toy ladder shaped like the real rung states: the "moving again" rule
+  // (*-r) sits AHEAD of its parent rung, and the parent rung sits ahead of
+  // the base state — most-specific-first, exactly how the real playbooks
+  // are ordered.
+  const ladder: Playbook = {
+    ...toy,
+    rules: [
+      rule('toy-rung1-r', a => a.step === 'one' && a.stepOutcome === 'resolved'),
+      rule('toy-rung1', a => a.step === 'one'),
+      rule('toy-base', a => a.q1 === 'a'),
+    ],
+  }
+
+  it("consuming a resolved outcome via {key: null} lands on the rung's own recommendation, not back at base", () => {
+    const engine: ServiceEngine = { key: 'toy', playbook: ladder }
+    const atRestingRung = { q1: 'a', step: 'one', stepOutcome: 'resolved' }
+    expect(diagnose(engine, atRestingRung).ruleId).toBe('toy-rung1-r')
+
+    const stalledAgain = applyEvent(atRestingRung, { stepOutcome: null })
+    const d = diagnose(engine, stalledAgain)
+    expect(d.ruleId).toBe('toy-rung1')
+    expect(d.matchedAnswers.step).toBe('one')
+  })
+
+  it('an event patch never disturbs question answers (facts survive the check-in)', () => {
+    const engine: ServiceEngine = { key: 'toy', playbook: ladder }
+    const next = applyEvent({ q1: 'a', step: 'one' }, { stepOutcome: 'resolved' })
+    expect(diagnose(engine, next).ruleId).toBe('toy-rung1-r')
+    expect(next.q1).toBe('a')
   })
 })
 ```
@@ -865,16 +962,20 @@ export interface ServiceEngine {
   playbook: Playbook
   /** Applied to matched diagnoses only (e.g. stage·rung composition). */
   decorate?: (d: Diagnosis) => Diagnosis
-  /** Answer key whose literal value 'unclassified' means the citizen chose
-   *  "I'm not sure": short-circuits to the fallback, beating any rule that
-   *  stale outcome keys might otherwise match first. */
-  unclassifiedKey?: string
+  /** Answer keys whose literal value 'unclassified' means the citizen chose
+   *  "I'm not sure" at that point: ANY of them short-circuits to the
+   *  fallback, beating any rule that stale outcome keys might otherwise
+   *  match first. Voter carries two ('voterQ1', 'voterAppealed') — this
+   *  resolves a live contradiction between the prototype's two
+   *  implementations of the same check in favor of the safer one (see the
+   *  plan's recorded-deviation note). */
+  unclassifiedKeys?: string[]
 }
 
 /** Pure: diagnosis is always derived fresh from the current answers,
  *  never stored (implementation plan §5). */
 export function diagnose(engine: ServiceEngine, answers: AnswerRecord): Diagnosis {
-  if (engine.unclassifiedKey && answers[engine.unclassifiedKey] === 'unclassified') {
+  if (engine.unclassifiedKeys?.some(k => answers[k] === 'unclassified')) {
     return { ...engine.playbook.fallback, ruleId: null, matchedAnswers: { ...answers } }
   }
   const d = evaluate(engine.playbook, answers)
@@ -885,15 +986,15 @@ export function diagnose(engine: ServiceEngine, answers: AnswerRecord): Diagnosi
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/domain/engine.test.ts`
-Expected: PASS (7 tests). Then run the full suite and build:
-Run: `npx vitest run` — Expected: all C1 tests pass (Tasks 2-6).
+Expected: PASS (10 tests). Then run the full suite and build:
+Run: `npx vitest run` — Expected: all C1 tests pass (Tasks 2-6, 46 tests).
 Run: `npm run build` — Expected: success.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/domain/engine.ts src/domain/engine.test.ts
-git commit -m "feat(c1): ServiceEngine + diagnose() — unclassified short-circuit, decorator hook"
+git commit -m "feat(c1): ServiceEngine + diagnose() — unclassified-keys short-circuit, decorator hook, check-in composition"
 ```
 
 ---
@@ -901,6 +1002,14 @@ git commit -m "feat(c1): ServiceEngine + diagnose() — unclassified short-circu
 ## Out of Scope for C1 (do not build these)
 
 - Real playbook rules, copy, sources, stage maps, deps maps, SIR state/phase data → **C2**.
-- Content-safety / guardrail test suite (manifest resolution, deadline allowlist, retired-action scan) → **C2**.
-- Screens, templates, routing, visual system → **C3**.
+- Content-safety / guardrail test suite (manifest resolution, deadline allowlist, retired-action scan) → **C2**. C2 must lift the hand-authored `BANNED_PATTERNS` table from git history (`91ff7a1`, `src/playbooks/contentSafety.test.ts`) rather than reinvent it.
+- The §8 coverage-boundary **spy** test ("selecting an unsupported SIR state never calls the SIR playbook's evaluate, verified via a spy") → **C3**, once a real router exists to spy on. C1's `sirCoverage` tests pin the verdict; only a router can prove the verdict is consulted before evaluation.
+- Screens, templates, routing, visual system → **C3**. The SIR degraded "re-verifying" destination layers onto `sirCoverage` in **C6**.
 - Prepare plans, session/persistence, casefiles, check-in loop, auth, describe-it → **C4–C8**.
+
+## Handoff notes for C2 (recorded now so they aren't rediscovered)
+
+- **Manifest coverage policy needed:** `sources/manifest.json` has 25 rule entries; the playbooks carry 28 rules + 3 fallbacks. C2's manifest-resolution test needs a written policy for the unmatched rules and for fallbacks (whose `source` is the "NextMove's own safety net" line — not a manifest source; the ERD models this as a null `source_id`). Decide there whether to branch the test on a discriminator rather than string-matching the safety-net title.
+- **`SIR_STATES` map keys → `SirStateConfig.id`:** materialize the key into each record.
+- **Voter engine config:** `unclassifiedKeys: ['voterQ1', 'voterAppealed']` (see Task 6's recorded deviation).
+- **`s-notice`'s `need` markup → `needList`:** the prototype ships that one rule's list as raw `<ul>` inside the string; C2 must move the items into `needList` and keep `need` as the plain-text lead-in.
