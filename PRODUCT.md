@@ -24,7 +24,7 @@ Not a generic government chatbot, not a government portal. The mechanism: a veri
 
 ## Operating Context
 
-Used by a citizen anxious about a real pending government case, most often on their phone, in a moment of frustration or uncertainty — and, once a case is saved, returning over days or weeks as a recurring companion (check-ins, journey log). V1 design covers Passport + Voter Services (SIR as a sub-flow, Delhi-only case-specific coverage); Income Certificate is visible on Home as "Coming Soon," not built.
+Used by a citizen anxious about a real pending government case, most often on their phone, in a moment of frustration or uncertainty — and, once a case is saved, returning over days or weeks as a recurring companion (check-ins, journey log). V1 design covers Passport + Voter Services (SIR as a sub-flow, Delhi-only case-specific coverage); certificate services (Income, Caste, EWS, Domicile) appear only as inert "Coming Soon" rows on the Other-services roadmap screen reached from Home's third menu row, not built.
 
 ## Capabilities and Constraints
 
