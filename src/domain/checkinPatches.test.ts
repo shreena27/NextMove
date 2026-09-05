@@ -9,6 +9,24 @@ import { sirPlaybook } from '../playbooks/sirPlaybook'
 
 const ALL = [passportPlaybook, voterPlaybook, sirPlaybook]
 const PAYLOAD_KEYS = ['patch', 'pendingPatch', 'rejectPatch', 'acceptPendingPatch'] as const
+type PatchField = (typeof PAYLOAD_KEYS)[number]
+
+/** Resolves the SHIPPED patch straight out of CHECKIN_PATCHES, keyed by the
+ *  option's own key/index/field, instead of a hand-typed literal in the test
+ *  table. This is what makes the post-patch assertions below self-pinning: a
+ *  future edit that swaps patch<->pendingPatch, reorders options within a
+ *  CHECKIN_PATCHES key, or changes a payload value now fails HERE (a shape
+ *  mismatch or a different resulting diagnosis), not silently, since the old
+ *  hardcoded literal would have kept matching whatever was typed by hand at
+ *  test-authoring time regardless of what actually shipped. */
+function shippedPatch(key: string, index: number, field: PatchField): Record<string, string | null> {
+  const opt = CHECKIN_PATCHES[key]?.[index]
+  const patch = opt?.[field]
+  if (!patch) {
+    throw new Error(`CHECKIN_PATCHES['${key}'][${index}].${field} is not defined — check the row's key/index/field.`)
+  }
+  return patch
+}
 
 describe('CHECKIN_PATCHES shape', () => {
   it('carries payloads only — never a label, a kind, or a prepAware flag (those are C5)', () => {
@@ -50,26 +68,30 @@ describe('CHECKIN_PATCHES shape', () => {
 
 describe('passport post-patch assertions', () => {
   it.each([
-    ['state-1[0]', { q1: 'no_contact', q2: 'no_followup' }, { q1: 'contacted_incomplete' }, 'state-2'],
-    ['state-1[1]', { q1: 'no_contact', q2: 'no_followup' }, { q1: 'verified_no_progress' }, 'state-3'],
-    ['state-1[2]', { q1: 'no_contact', q2: 'no_followup' }, { q1: 'adverse' }, 'state-4'],
-    ['state-2[2]', { q1: 'contacted_incomplete', q2: 'no_followup' }, { q2: 'informal', fOutcome: 'pending' }, 'state-5a-p'],
-    ['state-3[0]', { q1: 'verified_no_progress', q2: 'no_followup' }, { q2: 'informal', fOutcome: 'pending' }, 'state-5a-p'],
-    ['state-4[0]', { q1: 'adverse', q2: 'no_followup' }, { q2: 'informal', fOutcome: 'pending' }, 'state-5a-p'],
-    ['state-5a-p[0]', { q1: 'no_contact', q2: 'informal', fOutcome: 'pending' }, { fOutcome: 'resolved' }, 'state-5a-r'],
-    ['state-5a-p[1]', { q1: 'no_contact', q2: 'informal', fOutcome: 'pending' }, { fOutcome: 'unhelpful' }, 'state-5a'],
-    ['state-5a-p[2]', { q1: 'no_contact', q2: 'informal', fOutcome: 'pending' }, { fOutcome: 'no_response' }, 'state-5a'],
-    ['state-5a-r[0]', { q1: 'no_contact', q2: 'informal', fOutcome: 'resolved' }, { fOutcome: null }, 'state-5a'],
-    ['state-5a[0]', { q1: 'no_contact', q2: 'informal' }, { q2: 'formal_grievance', gOutcome: 'pending' }, 'state-5b-p'],
-    ['state-5b-p[0]', { q1: 'no_contact', q2: 'formal_grievance', gOutcome: 'pending' }, { gOutcome: 'resolved' }, 'state-5b-r'],
-    ['state-5b-p[1]', { q1: 'no_contact', q2: 'formal_grievance', gOutcome: 'pending' }, { gOutcome: 'unhelpful' }, 'state-5b'],
-    ['state-5b-p[2]', { q1: 'no_contact', q2: 'formal_grievance', gOutcome: 'pending' }, { gOutcome: 'no_response' }, 'state-5b'],
-    ['state-5b-r[0]', { q1: 'no_contact', q2: 'formal_grievance', gOutcome: 'resolved' }, { gOutcome: null }, 'state-5b'],
-    ['state-5b[0]', { q1: 'no_contact', q2: 'formal_grievance' }, { dpgFiled: 'yes' }, 'state-dpg-p'],
-    ['state-dpg-p[0]', { q1: 'no_contact', q2: 'formal_grievance', dpgFiled: 'yes' }, { dpgOutcome: 'resolved' }, 'state-dpg-r'],
-  ])('%s reads %s after the patch', (_at, answers, patch, expected) => {
-    expect(diagnose(passportEngine, applyEvent(answers, patch)).ruleId).toBe(expected)
-  })
+    ['state-1', 0, 'patch', 'state-2', { q1: 'no_contact', q2: 'no_followup' }],
+    ['state-1', 1, 'patch', 'state-3', { q1: 'no_contact', q2: 'no_followup' }],
+    ['state-1', 2, 'patch', 'state-4', { q1: 'no_contact', q2: 'no_followup' }],
+    ['state-2', 2, 'patch', 'state-5a-p', { q1: 'contacted_incomplete', q2: 'no_followup' }],
+    ['state-3', 0, 'patch', 'state-5a-p', { q1: 'verified_no_progress', q2: 'no_followup' }],
+    ['state-4', 0, 'patch', 'state-5a-p', { q1: 'adverse', q2: 'no_followup' }],
+    ['state-5a-p', 0, 'pendingPatch', 'state-5a-r', { q1: 'no_contact', q2: 'informal', fOutcome: 'pending' }],
+    ['state-5a-p', 1, 'patch', 'state-5a', { q1: 'no_contact', q2: 'informal', fOutcome: 'pending' }],
+    ['state-5a-p', 2, 'patch', 'state-5a', { q1: 'no_contact', q2: 'informal', fOutcome: 'pending' }],
+    ['state-5a-r', 0, 'patch', 'state-5a', { q1: 'no_contact', q2: 'informal', fOutcome: 'resolved' }],
+    ['state-5a', 0, 'patch', 'state-5b-p', { q1: 'no_contact', q2: 'informal' }],
+    ['state-5b-p', 0, 'pendingPatch', 'state-5b-r', { q1: 'no_contact', q2: 'formal_grievance', gOutcome: 'pending' }],
+    ['state-5b-p', 1, 'patch', 'state-5b', { q1: 'no_contact', q2: 'formal_grievance', gOutcome: 'pending' }],
+    ['state-5b-p', 2, 'patch', 'state-5b', { q1: 'no_contact', q2: 'formal_grievance', gOutcome: 'pending' }],
+    ['state-5b-r', 0, 'patch', 'state-5b', { q1: 'no_contact', q2: 'formal_grievance', gOutcome: 'resolved' }],
+    ['state-5b', 0, 'patch', 'state-dpg-p', { q1: 'no_contact', q2: 'formal_grievance' }],
+    ['state-dpg-p', 0, 'pendingPatch', 'state-dpg-r', { q1: 'no_contact', q2: 'formal_grievance', dpgFiled: 'yes' }],
+  ] as [string, number, PatchField, string, Record<string, string>][])(
+    '%s[%i].%s reads %s after the SHIPPED patch',
+    (key, index, field, expected, answers) => {
+      const patch = shippedPatch(key, index, field)
+      expect(diagnose(passportEngine, applyEvent(answers, patch)).ruleId).toBe(expected)
+    },
+  )
 
   it('an unhelpful or unanswered follow-up climbs the ladder, never descends it', () => {
     for (const outcome of ['unhelpful', 'no_response']) {
@@ -84,21 +106,25 @@ describe('passport post-patch assertions', () => {
 
 describe('voter post-patch assertions', () => {
   it.each([
-    ['v-1[0]', { voterQ1: 'no_word' }, { voterQ1: 'blo_visited' }, 'v-2'],
-    ['v-1[1] reject', { voterQ1: 'no_word' }, { voterQ1: 'decision', voterAppealedRaw: 'none', voterAppealed: 'none' }, 'v-3'],
-    ['v-1[1] acceptPending', { voterQ1: 'no_word' }, { voterQ1: 'decision', voterOutcome: 'accepted_pending' }, 'v-acc'],
-    ['v-2[0] reject', { voterQ1: 'blo_visited' }, { voterQ1: 'decision', voterAppealedRaw: 'none', voterAppealed: 'none' }, 'v-3'],
-    ['v-2[0] acceptPending', { voterQ1: 'blo_visited' }, { voterQ1: 'decision', voterOutcome: 'accepted_pending' }, 'v-acc'],
-    ['v-3[0]', { voterQ1: 'decision', voterAppealed: 'none' }, { voterAppealedRaw: 'pending', voterAppealed: 'pending' }, 'v-4'],
-    ['v-3[1]', { voterQ1: 'decision', voterAppealed: 'none' }, { voterOutcome: 'accepted_pending' }, 'v-acc'],
-    ['v-4[0] reject', { voterQ1: 'decision', voterAppealed: 'pending' }, { voterAppealedRaw: 'decided', voterAppealed: 'decided' }, 'v-5'],
-    ['v-4[0] acceptPending', { voterQ1: 'decision', voterAppealed: 'pending' }, { voterOutcome: 'accepted_pending' }, 'v-acc'],
-    ['v-5[0]', { voterQ1: 'decision', voterAppealed: 'decided' }, { ceoAppeal: 'filed' }, 'v-5-p'],
-    ['v-5-p[0] acceptPending', { voterQ1: 'decision', voterAppealed: 'decided', ceoAppeal: 'filed' }, { voterOutcome: 'accepted_pending' }, 'v-acc'],
-    ['v-acc[0]', { voterQ1: 'decision', voterOutcome: 'accepted_pending' }, { voterOutcome: null }, 'v-3'],
-  ])('%s reads %s after the patch', (_at, answers, patch, expected) => {
-    expect(diagnose(voterEngine, applyEvent(answers, patch)).ruleId).toBe(expected)
-  })
+    ['v-1', 0, 'patch', 'v-2', { voterQ1: 'no_word' }],
+    ['v-1', 1, 'rejectPatch', 'v-3', { voterQ1: 'no_word' }],
+    ['v-1', 1, 'acceptPendingPatch', 'v-acc', { voterQ1: 'no_word' }],
+    ['v-2', 0, 'rejectPatch', 'v-3', { voterQ1: 'blo_visited' }],
+    ['v-2', 0, 'acceptPendingPatch', 'v-acc', { voterQ1: 'blo_visited' }],
+    ['v-3', 0, 'patch', 'v-4', { voterQ1: 'decision', voterAppealed: 'none' }],
+    ['v-3', 1, 'pendingPatch', 'v-acc', { voterQ1: 'decision', voterAppealed: 'none' }],
+    ['v-4', 0, 'rejectPatch', 'v-5', { voterQ1: 'decision', voterAppealed: 'pending' }],
+    ['v-4', 0, 'acceptPendingPatch', 'v-acc', { voterQ1: 'decision', voterAppealed: 'pending' }],
+    ['v-5', 0, 'patch', 'v-5-p', { voterQ1: 'decision', voterAppealed: 'decided' }],
+    ['v-5-p', 0, 'acceptPendingPatch', 'v-acc', { voterQ1: 'decision', voterAppealed: 'decided', ceoAppeal: 'filed' }],
+    ['v-acc', 0, 'patch', 'v-3', { voterQ1: 'decision', voterOutcome: 'accepted_pending' }],
+  ] as [string, number, PatchField, string, Record<string, string>][])(
+    '%s[%i].%s reads %s after the SHIPPED patch',
+    (key, index, field, expected, answers) => {
+      const patch = shippedPatch(key, index, field)
+      expect(diagnose(voterEngine, applyEvent(answers, patch)).ruleId).toBe(expected)
+    },
+  )
 
   it("deleting a stale favourable outcome returns the case to the citizen's own answers, not to the start", () => {
     const next = applyEvent({ voterQ1: 'decision', voterAppealed: 'none', voterOutcome: 'accepted_pending' }, { voterOutcome: null })
@@ -109,16 +135,20 @@ describe('voter post-patch assertions', () => {
 
 describe('sir post-patch assertions', () => {
   it.each([
-    ['S-1[0]', { sirQ1: 'roll_present' }, { sirQ1: 'notice' }, 's-notice'],
-    ['S-2[0]', { sirQ1: 'roll_unchecked' }, { sirQ1: 'roll_present' }, 's-roll-present'],
-    ['S-2[1]', { sirQ1: 'roll_unchecked' }, { sirQ1: 'roll_absent' }, 's-roll-absent'],
-    ['S-3[0]', { sirQ1: 'roll_absent' }, { form6Filed: 'yes' }, 's-3-p'],
-    ['S-4[0]', { sirQ1: 'notice' }, { sirDocsFiled: 'yes' }, 's-4-p'],
-    ['S-9[0]', { sirQ1: 'final_unchecked' }, { sirQ1: 'final_present' }, 's-final-present'],
-    ['S-9[1]', { sirQ1: 'final_unchecked' }, { sirQ1: 'final_absent' }, 's-final-absent'],
-  ])('%s reads %s after the patch', (_at, answers, patch, expected) => {
-    expect(diagnose(sirEngine, applyEvent(answers, patch)).ruleId).toBe(expected)
-  })
+    ['S-1', 0, 'patch', 's-notice', { sirQ1: 'roll_present' }],
+    ['S-2', 0, 'patch', 's-roll-present', { sirQ1: 'roll_unchecked' }],
+    ['S-2', 1, 'patch', 's-roll-absent', { sirQ1: 'roll_unchecked' }],
+    ['S-3', 0, 'patch', 's-3-p', { sirQ1: 'roll_absent' }],
+    ['S-4', 0, 'patch', 's-4-p', { sirQ1: 'notice' }],
+    ['S-9', 0, 'patch', 's-final-present', { sirQ1: 'final_unchecked' }],
+    ['S-9', 1, 'patch', 's-final-absent', { sirQ1: 'final_unchecked' }],
+  ] as [string, number, PatchField, string, Record<string, string>][])(
+    '%s[%i].%s reads %s after the SHIPPED patch',
+    (key, index, field, expected, answers) => {
+      const patch = shippedPatch(key, index, field)
+      expect(diagnose(sirEngine, applyEvent(answers, patch)).ruleId).toBe(expected)
+    },
+  )
 
   it('a filed action lands on a WAIT rung, never re-issues the action just taken', () => {
     expect(diagnose(sirEngine, applyEvent({ sirQ1: 'roll_absent' }, { form6Filed: 'yes' })).rec).toBe('WAIT')

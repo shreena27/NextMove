@@ -1,5 +1,5 @@
 {
-  "_readme": "Citation manifest for NextMove playbook rules. Every PlaybookRule.source.title must resolve to a rule entry here; every entry's quote must appear (verbatim or as the stated paraphrase) in the committed source file. Statuses: verified | verified_discrepancy (source checks out but prototype copy misstates it — see note) | honest_generic (rule self-declares no specific source) | dormant (rule retired from reachable set). Created 2026-09-05 during the grill-synthesis sources chunk.",
+  "_readme": "Citation manifest for NextMove playbook rules. Every PlaybookRule.source.docId must resolve to a rule entry here; every entry's quote must appear (verbatim or as the stated paraphrase) in the committed source file. Statuses: verified | verified_discrepancy (source checks out but prototype copy misstates it — see note) | honest_generic (rule self-declares no specific source) | dormant (rule retired from reachable set). Created 2026-09-05 during the grill-synthesis sources chunk.",
   "documents": {
     "FAQ_SIR2026.pdf": {
       "title": "CEO Delhi — Official SIR 2026 FAQ",

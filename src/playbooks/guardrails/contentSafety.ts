@@ -15,7 +15,7 @@ export interface CopyString {
 
 export type BannedPatternId =
   | 'interval' | 'deadline' | 'guarantee' | 'we-submitted' | 'we-filed'
-  | 'affiliation' | 'causal' | 'interval-hyphenated'
+  | 'affiliation' | 'causal' | 'interval-hyphenated' | 'deadline-plural'
 
 /** LIFTED VERBATIM from commit 91ff7a1, src/playbooks/contentSafety.test.ts —
  *  the hand-authored table. Every `pattern` and `reason` in rows 1-7 is
@@ -46,6 +46,12 @@ export const BANNED_PATTERNS: {
   },
   // C2 extension (2026-09-05): hyphenated interval form.
   { id: 'interval-hyphenated', pattern: /\b\d+-(day|days|week|weeks|month|months)\b/i, reason: 'invented day/week/month threshold (hyphenated form)', interval: true },
+  // C2 extension (2026-09-06): plural form. The original `deadline` row
+  // matches singular "deadline" but not "deadlines" (\b requires a word
+  // boundary immediately after the word, and "deadlines" has no boundary
+  // there) — this extension row closes that gap with the SAME reason text,
+  // added the same way the hyphenated-interval row was added above.
+  { id: 'deadline-plural', pattern: /\bdeadlines\b/i, reason: 'invented deadline' },
 ]
 
 /** Reviewed, per-location, PER-PATTERN exemptions. Each is a real match of one
@@ -59,7 +65,7 @@ export const SAFETY_EXEMPTIONS: { at: string; pattern: BannedPatternId; reason: 
   {
     at: 'passport:state-5b.howLong',
     pattern: 'deadline',
-    reason: 'States a verified ABSENCE ("no numeric deadline is published"), the opposite of asserting one. Backed by the grievance page\'s "within a reasonable period of time" (manifest state-dpg-p).',
+    reason: 'States a verified ABSENCE ("no numeric deadline is published"), the opposite of asserting one. Backed by the grievance page\'s "within a reasonable period of time" (manifest state-5b, repointed 2026-09-05 (C2 Task 1) to the grievance page\'s own DPG-paragraph quote).',
   },
   {
     at: 'passport:state-5b-p.howLong',
@@ -80,6 +86,11 @@ export const SAFETY_EXEMPTIONS: { at: string; pattern: BannedPatternId; reason: 
     at: 'sir:s-notice.whatToDo',
     pattern: 'causal',
     reason: 'The causal row over-fires on "as your notice directs" — that defers to the citizen\'s own notice, it does not assert a cause. Pattern kept byte-faithful to the lifted table; the exemption is the recorded deviation.',
+  },
+  {
+    at: 'sir:s-final-absent.howLong',
+    pattern: 'deadline-plural',
+    reason: 'Refers to its OWN verified, sourced 15-day appeal window as "one of the few sourced numeric deadlines in this playbook" — the opposite of an invented deadline. The 15-day interval itself is separately validated by numericFindings against sourced_intervals; "deadlines" here is meta-commentary on how few of this playbook\'s claims are numeric deadlines at all, not an additional unsourced claim (manifest s-final-absent, CEO Delhi FAQ Q32).',
   },
 ]
 
@@ -189,8 +200,50 @@ export function staleExemptionFindings(strings: CopyString[]): string[] {
 }
 
 const MONTHS = 'Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec'
+
+/** Canonical accepted forms for a sourced date or day-count — the ONLY shapes
+ *  `INTERVAL_RE` / `DATE_RE` recognize:
+ *    - dates: "d Mon" or "d Mon yyyy" (e.g. "4 Nov", "4 November 2026")
+ *    - intervals: "N unit" or "N-unit" (e.g. "15 days", "15-day")
+ *  Everything else — "September 30, 2026", "30/09/2026", "30.09.2026",
+ *  "30th September", "two weeks", "a fortnight", "48 hours" — used to slip
+ *  past both this scanner and `bannedFindings` entirely, undetected, which
+ *  contradicts §7's "any date or day-count outside the allowlist fails the
+ *  build" (it was only true for the one canonical spelling). `CATCH_ALL_PATTERNS`
+ *  below is a plan-review-recommended hardening (2026-09-06), not a plan
+ *  violation: it fails closed on any alternate shape instead of silently
+ *  passing it through. */
 const INTERVAL_RE = /\b\d+[-\s]*(?:day|days|week|weeks|month|months|year|years)\b/gi
 const DATE_RE = new RegExp(String.raw`\b\d{1,2}\s+(?:${MONTHS})[a-z]*\.?(?:\s+(\d{4}))?\b`, 'gi')
+
+/** Fail-closed catch-all for numeric/date claims outside INTERVAL_RE/DATE_RE's
+ *  canonical forms. Each pattern is scoped to a shape the two canonical
+ *  regexes provably cannot match (digit forms only for the two date patterns,
+ *  word-numbers only for the interval pattern), so a match here can never be
+ *  a duplicate of a canonical-form match by construction. The per-string
+ *  overlap check in `numericFindings` is a second, defensive layer only. */
+const CATCH_ALL_PATTERNS: RegExp[] = [
+  // "30/09/2026", "30.09.2026"
+  /\b\d{1,2}[./]\d{1,2}[./]\d{2,4}\b/g,
+  // "30th September", "4th Nov"
+  /\b\d{1,2}(?:st|nd|rd|th)\s+[A-Za-z]+\b/gi,
+  // "two weeks", "a fortnight", "ten days" — word-number + unit. Cannot ever
+  // match a digit form like "15 days", which INTERVAL_RE already handles.
+  /\b(?:a|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:day|days|week|weeks|month|months|fortnight|year|years|hour|hours)\b/gi,
+  // "fortnight" on its own (no preceding counted word)
+  /\bfortnight\b/gi,
+  // "48 hours", "1 hour" — INTERVAL_RE's unit list has no "hour"/"hours"
+  /\b\d+\s*hours?\b/gi,
+]
+
+function matchRanges(re: RegExp, text: string): [number, number][] {
+  return [...text.matchAll(re)].map(m => [m.index!, m.index! + m[0].length])
+}
+
+function overlapsAny(range: [number, number], ranges: [number, number][]): boolean {
+  const [start, end] = range
+  return ranges.some(([s, e]) => start < e && s < end)
+}
 
 /** §7's allowlist check: every numeric interval and calendar date in shipped
  *  copy must be a manifest-backed sourced value, allow-listed for exactly the
@@ -201,6 +254,11 @@ export function numericFindings(strings: CopyString[]): string[] {
   const findings: string[] = []
 
   for (const { at, text } of strings) {
+    const claimed: [number, number][] = [
+      ...matchRanges(INTERVAL_RE, text),
+      ...matchRanges(DATE_RE, text),
+    ]
+
     for (const m of text.matchAll(INTERVAL_RE)) {
       const key = canonicalInterval(m[0])
       const entry = manifest.sourced_intervals[key]
@@ -223,6 +281,22 @@ export function numericFindings(strings: CopyString[]): string[] {
       const year = m[1] ? Number(m[1]) : undefined
       if (year !== undefined && entry.year !== undefined && year !== entry.year) {
         findings.push(`${at}: "${m[0]}" states year ${year}; the sourced date is ${entry.year} (${entry.source_form}).`)
+      }
+    }
+
+    // Fail-closed catch-all: anything matching one of these alternate shapes
+    // that was NOT already reported by the canonical INTERVAL_RE/DATE_RE pass
+    // above is an unrecognised numeric/date claim, full stop — there is no
+    // manifest lookup for it because these shapes are never how a sourced
+    // value is allow-listed.
+    for (const pattern of CATCH_ALL_PATTERNS) {
+      for (const m of text.matchAll(pattern)) {
+        const range: [number, number] = [m.index!, m.index! + m[0].length]
+        if (overlapsAny(range, claimed)) continue
+        findings.push(
+          `${at}: "${m[0]}" is an unrecognised numeric/date claim — rewrite in "d Mon yyyy" or "N day(s)" form, or extend numericFindings to recognize this shape.`,
+        )
+        claimed.push(range)
       }
     }
   }

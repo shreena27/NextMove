@@ -6,6 +6,9 @@ import {
 } from './contentSafety'
 import type { Playbook, PlaybookRule } from '../../domain/types'
 import { SAFETY_NET_TITLE } from './citations'
+import { passportPlaybook, PASSPORT_STAGE_SHORT } from '../passportPlaybook'
+import { voterPlaybook } from '../voterPlaybook'
+import { sirPlaybook, sirCopyExtras } from '../sirPlaybook'
 
 const rule = (id: string, over: Partial<PlaybookRule> = {}): PlaybookRule => ({
   id,
@@ -42,8 +45,8 @@ const book = (rules: PlaybookRule[]): Playbook => ({
 })
 
 describe('the lifted BANNED_PATTERNS table', () => {
-  it('carries the seven hand-authored rows plus the documented hyphen extension', () => {
-    expect(BANNED_PATTERNS).toHaveLength(8)
+  it('carries the seven hand-authored rows plus the documented hyphen and plural-deadline extensions', () => {
+    expect(BANNED_PATTERNS).toHaveLength(9)
     for (const row of BANNED_PATTERNS) expect(row.reason.length).toBeGreaterThan(0)
   })
 
@@ -51,6 +54,12 @@ describe('the lifted BANNED_PATTERNS table', () => {
     const original = BANNED_PATTERNS[0].pattern
     expect(original.test('15-day')).toBe(false)
     expect(BANNED_PATTERNS.some(r => r.pattern.test('15-day'))).toBe(true)
+  })
+
+  it('catches plural "deadlines" the original deadline row misses (word boundary requires it right after "deadline")', () => {
+    const original = BANNED_PATTERNS.find(r => r.id === 'deadline')!.pattern
+    expect(original.test('sourced numeric deadlines')).toBe(false)
+    expect(BANNED_PATTERNS.some(r => r.pattern.test('sourced numeric deadlines'))).toBe(true)
   })
 })
 
@@ -159,6 +168,23 @@ describe('staleExemptionFindings', () => {
     expect(findings.length).toBe(SAFETY_EXEMPTIONS.length)
     expect(findings.join('\n')).toMatch(/no longer matches/i)
   })
+
+  it("the sir:s-final-absent.howLong deadline-plural exemption still matches the real shipped copy (not stale)", () => {
+    const sirStrings = copyStrings(sirPlaybook)
+    const real = sirStrings.find(s => s.at === 'sir:s-final-absent.howLong')!
+    expect(real).toBeDefined()
+    expect(real.text).toMatch(/\bdeadlines\b/i)
+
+    const stale = staleExemptionFindings(sirStrings).filter(f => f.includes('"sir:s-final-absent.howLong"'))
+    expect(stale).toEqual([])
+
+    // And with that one string's text swapped for something that doesn't say
+    // "deadlines" at all, the exemption WOULD be flagged — proving the check
+    // actually bites, not just that it's vacuously satisfied.
+    const withoutDeadlines = sirStrings.map(s => (s.at === real.at ? { ...s, text: 'Clean copy with no banned words.' } : s))
+    const nowStale = staleExemptionFindings(withoutDeadlines).filter(f => f.includes('"sir:s-final-absent.howLong"'))
+    expect(nowStale.join('\n')).toMatch(/deadline-plural.*no longer matches/i)
+  })
 })
 
 describe('numericFindings (manifest-backed allowlists)', () => {
@@ -193,6 +219,36 @@ describe('numericFindings (manifest-backed allowlists)', () => {
   it('flags a date with no sourced_dates entry', () => {
     const f = numericFindings([{ at: 'sir:s-roll-absent.howLong', text: 'Filing opens 12 Feb 2027.' }])
     expect(f.join('\n')).toMatch(/12 Feb.*no sourced_dates entry/i)
+  })
+
+  // Fail-closed catch-all (2026-09-06 hardening): forms outside the two
+  // canonical shapes used to slip past this scanner (and bannedFindings)
+  // entirely, undetected — §7 says "any date or day-count outside the
+  // allowlist fails the build", which was only true for the one canonical
+  // spelling of each before this pass.
+  it.each([
+    ['30/09/2026'],
+    ['30.09.2026'],
+    ['30th September'],
+    ['two weeks'],
+    ['a fortnight'],
+    ['48 hours'],
+  ])('flags the non-canonical form "%s" as an unrecognised numeric/date claim', (form) => {
+    const f = numericFindings([{ at: 'toy:toy-1.howLong', text: `Wait until ${form}.` }])
+    expect(f.join('\n')).toMatch(/unrecognised numeric\/date claim/i)
+    expect(f.join('\n')).toContain(form)
+  })
+
+  it('the full real corpus (all three playbooks + their extras) still produces zero findings', () => {
+    const stageShortExtras = Object.entries(PASSPORT_STAGE_SHORT).map(
+      ([key, text]) => extraCopy(`passport:PASSPORT_STAGE_SHORT.${key}`, text),
+    )
+    const all = [
+      ...copyStrings(passportPlaybook), ...stageShortExtras,
+      ...copyStrings(voterPlaybook),
+      ...copyStrings(sirPlaybook), ...sirCopyExtras(),
+    ]
+    expect(numericFindings(all)).toEqual([])
   })
 })
 

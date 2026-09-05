@@ -3076,7 +3076,7 @@ export const DEPS_FOR: Record<string, DependentKeys> = {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/playbooks/engines.test.ts` — Expected: PASS (25 tests).
-Run: `npx vitest run` — Expected: the whole suite green (C1's 50, plus Tasks 1-7's 177; Task 8 adds the last 45).
+Run: `npx vitest run` — Expected: the whole suite green (C1's 50, plus Tasks 1-7's 179; Task 8 adds the last 45 — 274 total). (Corrected 2026-09-06, final-review hardening: originally recorded as 177/272 total; the Task 3 rungLabel fix round added 2 tests not in the original count.)
 Run: `npm run build` — Expected: success.
 
 - [ ] **Step 5: Commit**
@@ -3424,7 +3424,7 @@ export const CHECKIN_PATCHES: Record<string, CheckinPatchOption[]> = {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/domain/checkinPatches.test.ts` — Expected: PASS (45 tests).
-Run: `npx vitest run` — Expected: the whole suite green: C1's 50 plus C2's 222, 272 total.
+Run: `npx vitest run` — Expected: the whole suite green: C1's 50 plus C2's 224, 274 total. (Corrected 2026-09-06, final-review hardening: originally recorded as 222/272 total; the Task 3 rungLabel fix round added 2 tests not in the original count.)
 Run: `npm run build` — Expected: success.
 
 - [ ] **Step 5: Commit**
@@ -3495,6 +3495,10 @@ Listed the way C1 listed its own, so a reviewer can find them without reading th
 - **`PASTE_MATCH_EXAMPLES`** (prototype ~3297) is the authority for the recovery flow's paste matching — exact normalized matching, never the retired bare-substring `'verif'` match.
 - **C3 extends the guardrail input, it does not fork the harness**: `runGuardrailSuite(playbook, { extra })` takes any `CopyString[]`, so screen copy joins the same scan. Screen copy locations must carry a `serviceId:` (or an equally unambiguous) prefix, like every other `CopyString.at`.
 - **C3 owns the §7 token perceptual-distance floor**, which C2 could not write against tokens that did not exist. See "Out of Scope".
+- **SIR's answer key for which state the citizen is in is `sirState`** (values are `SIR_STATES`'s own keys: `delhi`, `bihar`, `maharashtra`, `up`, `other`). Not previously listed among the other answer-key handoff notes above (added 2026-09-06, final-review hardening).
+- **`sirEngine` has NO coverage gate of its own.** Calling `diagnose(sirEngine, { sirState: 'bihar', sirQ1: 'roll_absent' })` will happily return a real diagnosis (`s-roll-absent`) even though Bihar is unsupported — `diagnose()`/the SIR playbook's rule conditions only ever inspect `sirQ1`, never `sirState`. **C3's router MUST call C1's `sirCoverage()` on the citizen's selected state BEFORE calling `diagnose()` for SIR**, and route unsupported states to the coverage-boundary screen instead of the playbook. Previously only implied by "Out of Scope for C2" (the spy test); stated here as an explicit MUST for C3's router logic (added 2026-09-06, final-review hardening).
+- **`optionsForPhase` (from C1) throws for unsupported states.** C3 must never call it before checking `sirCoverage()` first (added 2026-09-06, final-review hardening — the same coverage-gating requirement as the point above, restated for this specific call site since it is a throw, not a quiet wrong answer).
+- **When C3 builds its own guardrail-suite test for screen copy, it must feed `SIR_STATES[].name` (the state-picker labels) and `PASSPORT_STAGE_SHORT`'s values through the `extra` option too**, the same way `sirCopyExtras()` already does for SIR's phase notes/Q1 option labels. Neither is fully covered by anything C2 shipped on its own beyond Passport's own single-playbook test (added 2026-09-06, final-review hardening).
 
 ## Handoff notes for C4
 
