@@ -975,6 +975,42 @@ function evaluate(playbook, answers){
 
 const passportPlaybook = {
   rules:[
+    // "Moving again" states (2026-09-05, grill chunk 3 — retire, don't
+    // reset): when a rung's response gets things moving but the passport
+    // hasn't arrived, the rung is CONSUMED, not erased. Action answers
+    // stay intact; a resolved outcome maps here. If it stalls again, the
+    // check-in clears the resolved outcome and the case lands on the
+    // NEXT rung's recommendation — the ladder never descends itself.
+    {id:'state-5a-r', condition:a=>a.fOutcome==='resolved',
+      state:'5a·R', label:'They responded, case moving again', dependency:'Passport Office (processing)', rec:'WAIT',
+      explanation:"You've reported that their response got things moving. NextMove can't verify progress beyond your own report, so this rests on what you saw. The next milestone is the passport itself.",
+      whatShort:"Nothing to do; it's moving",
+      whatToDo:'Nothing right now. Add an update if it stalls again, or when the passport arrives.',
+      where:{label:'Passport Office (PO) concerned', url:'https://www.passportindia.gov.in'},
+      need:'Nothing. Keep the response you received safe with your case papers.',
+      howLong:"The Citizen's Charter's service standards apply to processing overall, but no verified timeline exists for a resumed case, so there's no countdown to show.",
+      source:{title:"Citizen's Charter (MEA)"},
+      mustNot:'Any promise that movement continues, or a date the passport "should" arrive.'},
+    {id:'state-5b-r', condition:a=>a.gOutcome==='resolved',
+      state:'5b·R', label:'Grievance answered, case moving again', dependency:'Passport Office (processing)', rec:'WAIT',
+      explanation:"Your grievance got a response and you've reported that things are moving. The grievance rung did its job; the next milestone is the passport itself.",
+      whatShort:"Nothing to do; it's moving",
+      whatToDo:'Nothing right now. Add an update if it stalls again, or when the passport arrives.',
+      where:{label:'Passport Office (PO) concerned', url:'https://www.passportindia.gov.in'},
+      need:'Nothing. Keep the grievance response with your case papers.',
+      howLong:"No verified timeline exists for a case resumed after a grievance, so there's no countdown to show.",
+      source:{title:"Citizen's Charter — Grievance Redressal section (MEA)"},
+      mustNot:'Any promise that movement continues, or a predicted arrival date.'},
+    {id:'state-dpg-r', condition:a=>a.dpgOutcome==='resolved',
+      state:'DPG·R', label:'DPG responded, case moving again', dependency:'Passport Office (processing)', rec:'WAIT',
+      explanation:"The Directorate of Public Grievances responded and you've reported that things are moving. That's the top of the ladder doing its job; the next milestone is the passport itself.",
+      whatShort:"Nothing to do; it's moving",
+      whatToDo:'Nothing right now. Add an update if it stalls again, or when the passport arrives.',
+      where:{label:'Passport Office (PO) concerned', url:'https://www.passportindia.gov.in'},
+      need:'Nothing. Keep the DPG response with your case papers.',
+      howLong:"No verified timeline exists for a case resumed after a DPG response, so there's no countdown to show.",
+      source:{title:'Grievance page — passportindia.gov.in'},
+      mustNot:'Any promise that movement continues, or a predicted arrival date.'},
     // Check-in pending states (2026-09-05 model surgery, spec:
     // 2026-09-05-checkin-tracking-loop-design.md): action-state answers
     // (q2, dpgFiled) are only ever written by the user attesting "I did
@@ -1095,6 +1131,20 @@ const passportPlaybook = {
 // the two real distinct situations an already-appealed user can be in.
 const voterPlaybook = {
   rules:[
+    // Favourable-decision-pending (2026-09-05, grill chunk 3): reporting
+    // "the decision went my way, but nothing has arrived" used to change
+    // NOTHING — the case kept reading "awaiting decision" against the
+    // user's own report. This state is what they actually told us.
+    {id:'v-acc', condition:a=>a.voterOutcome==='accepted_pending',
+      state:'V·A', label:'Decision in your favour, delivery pending', dependency:'Roll update / card delivery', rec:'WAIT',
+      explanation:"You've reported the decision went in your favour and the result hasn't shown up yet. Decisions are communicated by post and SMS, and updated rolls are published on your state CEO's website, so both are worth watching. No official delivery interval is published.",
+      whatShort:'Nothing to do; watch for it to arrive',
+      whatToDo:"Nothing is required from you. Check the roll listing on your state CEO's website now and then, and watch the post and SMS.",
+      where:{label:'State CEO website (roll / decision lookup)', url:'https://voters.eci.gov.in'},
+      need:'Your application reference number, for the roll lookup.',
+      howLong:'No official interval for roll updates or card delivery is published, so there is no countdown to show.',
+      source:{title:'ECI Electoral Roll FAQ — Final-ER-FAQ.pdf, Q25'},
+      mustNot:'Any delivery timeframe, or a promise the entry has actually been made.'},
     // Check-in pending state — see the tracking-loop spec. ceoAppeal is
     // only written by the user attesting they filed the second appeal.
     {id:'v-5-p', condition:a=>a.ceoAppeal==='filed',
@@ -1259,6 +1309,39 @@ const sirPlaybook = {
       howLong:"Delhi's claims filing window closes 30 Sep 2026, so checking now leaves time to file if you're not listed.",
       source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q15, Q25, Q26, Q27'},
       mustNot:'A guess at whether you\'ll be listed — NextMove doesn\'t know until you check.'},
+    // Final-phase rules (2026-09-05, grill chunk 3): reachable only once
+    // a state's phase is final_roll, because only that phase's Q1 offers
+    // these answer values — structural gating, not runtime checks. S-5
+    // (previously dormant-forever) is now live-by-construction here.
+    {id:'s-final-absent', condition:a=>a.sirQ1==='final_absent',
+      state:'S-5', label:'Name still missing after the Final Roll', dependency:'Appellate authority', rec:'ESCALATE',
+      explanation:"You did everything asked and your name still isn't on the Final Roll. There's a real, time-bound official appeal for exactly this, and it needs to move quickly.",
+      whatShort:'File an appeal within 15 days',
+      whatToDo:'File an appeal before the District Election Officer / District Magistrate of your district, within 15 days of the Final Roll\'s publication.',
+      where:{label:'District Election Officer / District Magistrate'},
+      need:'Proof of your earlier submission (Enumeration Form acknowledgment or Form 6 filing) and any documents you already submitted.',
+      howLong:'The appeal window is 15 days from Final Roll publication (CEO Delhi FAQ Q32), one of the few sourced numeric deadlines in this playbook.',
+      source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q32', quote:'15-day appeal window — one of the few sourced numeric deadlines in this playbook.'},
+      mustNot:'Anything about the appeal\'s likely outcome.'},
+    {id:'s-final-present', condition:a=>a.sirQ1==='final_present',
+      state:'S-8', label:'On the Final Roll. Complete.', dependency:'Nothing. This is the outcome.', rec:'WAIT',
+      explanation:"Your name is on the Final Roll. That's the outcome this whole process was about; nothing further is pending.",
+      whatShort:'Nothing to do. This is done.',
+      whatToDo:'Nothing. If you\'re tracking this case, record the good news and close it.',
+      where:{label:'Final Roll — your state CEO\'s website', url:'https://voters.eci.gov.in'},
+      need:'Nothing.',
+      source:{title:'CEO Delhi — Official SIR 2026 FAQ; Delhi SIR calendar'},
+      mustNot:'Nothing further to flag.'},
+    {id:'s-final-unchecked', condition:a=>a.sirQ1==='final_unchecked',
+      state:'S-9', label:"Haven't checked the Final Roll yet", dependency:'You — one check needed', rec:'FOLLOW_UP',
+      explanation:"The Final Roll is published, and the 15-day appeal window (if you need it) runs from publication, so checking promptly matters.",
+      whatShort:'Check the Final Roll now',
+      whatToDo:'Check the Final Electoral Roll now via the Voters\' Service Portal or your state CEO\'s website. If you\'re listed, you\'re done; if not, the 15-day appeal is the next step.',
+      where:{label:'Final Roll — voters.eci.gov.in or the state CEO website', url:'https://voters.eci.gov.in'},
+      need:'Nothing. Just your name and constituency to search.',
+      howLong:'The appeal window, if needed, is 15 days from Final Roll publication (CEO Delhi FAQ Q32), so checking early preserves your options.',
+      source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q32'},
+      mustNot:'A guess at whether you\'ll be listed.'},
     {id:'s-roll-present', condition:a=>a.sirQ1==='roll_present',
       state:'S-1', label:'On the Draft Roll, nothing pending', dependency:'Final Roll publication', rec:'WAIT',
       explanation:"You've checked the Draft Roll and your name is there. Nothing further is required from you unless a notice arrives. The next official milestone is the Final Roll itself.",
@@ -1282,21 +1365,11 @@ const sirPlaybook = {
   }
 };
 
-// Dormant, phase-gated content — real, sourced, but not reachable from any
-// current SIR Q1 option (see SIR_Q1_OPTIONS_FOR), since Delhi's Final Roll
-// has not yet been published. Kept here, not deleted, so that when Delhi's
-// verified phase advances, this becomes live by updating SIR_STATES.delhi's
-// phase + SIR_Q1_OPTIONS_FOR, not by rewriting rule content.
-const sirDormantRules_finalRoll = {
-  's-5': {state:'S-5', label:'Name still missing after the Final Roll', dependency:'Appellate authority', rec:'ESCALATE',
-    explanation:"You did everything asked and your name still isn't on the Final Roll. There's a real, time-bound official appeal for exactly this, and it needs to move quickly.",
-    whatShort:'File an appeal within 15 days',
-    whatToDo:'File an appeal before the District Election Officer / District Magistrate of your district, within 15 days of the Final Roll\'s publication.',
-    where:{label:'District Election Officer / District Magistrate'},
-    need:'Proof of your earlier submission (Enumeration Form acknowledgment or Form 6 filing) and any documents you already submitted.',
-    source:{title:'CEO Delhi — Official SIR 2026 FAQ, Q32', quote:'15-day appeal window — one of the few sourced numeric deadlines in this playbook.'},
-    mustNot:'Anything about the appeal\'s likely outcome.'},
-};
+// The former sirDormantRules_finalRoll ('s-5') moved INTO sirPlaybook as
+// s-final-absent (2026-09-05, grill chunk 3): with SIR_PHASES.final_roll
+// defined, the content is no longer dormant-forever — it's structurally
+// gated by phase-derived Q1 options, which was the architecture's claim
+// all along, now demonstrated with a real second phase.
 
 // Dormant, phase-RETIRED content (2026-09-05, grill A1 / AC-S-7): the old
 // S-6 duplicate-registration rule. Its remedy is verbatim from FAQ Q22 —
@@ -1341,13 +1414,26 @@ const sirDormantRules_enumeration = {
 // renderSirUnsupported). Adding a verified state later means adding one
 // config entry with `supported:true` and its own phase note — the Voter/SIR
 // UX itself does not change.
+// Phase definitions live apart from states so advancing a state's phase
+// is a one-line config change touching no engine code — the plan's
+// extensibility claim, now demonstrated at n=2 (grill chunk 3). When
+// Delhi's Final Roll publishes on 4 Nov 2026, delhi.phase switches to
+// SIR_PHASES.final_roll and the final-phase rules below become the
+// reachable set, by construction.
+const SIR_PHASES = {
+  claims_notice:{
+    id:'claims_notice',
+    label:'Claims & Objections / Notice window',
+    note:'Delhi\'s enumeration ran 30 Jun–17 Aug 2026 and the Draft Roll published on 31 Aug. Claims and objections can be filed through 30 Sep 2026; the notice/disposal phase runs through 29 Oct, ahead of the Final Roll on 4 Nov 2026.',
+  },
+  final_roll:{
+    id:'final_roll',
+    label:'Final Roll published',
+    note:'Delhi\'s Final Roll published on 4 Nov 2026. If your name is on it, the process is complete. If it isn\'t, a 15-day appeal window applies from publication (CEO Delhi FAQ Q32).',
+  },
+};
 const SIR_STATES = {
-  delhi:{name:'Delhi', supported:true,
-    phase:{
-      id:'claims_notice',
-      label:'Claims & Objections / Notice window',
-      note:'Delhi\'s enumeration ran 30 Jun–17 Aug 2026 and the Draft Roll published on 31 Aug. Claims and objections can be filed through 30 Sep 2026; the notice/disposal phase runs through 29 Oct, ahead of the Final Roll on 4 Nov 2026.',
-    }},
+  delhi:{name:'Delhi', supported:true, phase:SIR_PHASES.claims_notice},
   bihar:{name:'Bihar', supported:false},
   maharashtra:{name:'Maharashtra', supported:false},
   up:{name:'Uttar Pradesh', supported:false},
@@ -1374,6 +1460,11 @@ const SIR_Q1_OPTIONS_FOR = {
     // option is gone and duplicate-suspicion falls through to "I'm not
     // sure" → UNCLASSIFIED ("check directly"), which is the honest answer.
     // Content preserved in sirDormantRules_enumeration below.
+  },
+  final_roll: {
+    final_present:"I checked the Final Roll and my name is there",
+    final_absent:"I checked the Final Roll and my name isn't there",
+    final_unchecked:"I haven't checked the Final Roll yet",
   },
 };
 
@@ -1763,7 +1854,7 @@ function simulateInterpretation(ctx, text){
 
 /* ================= STATE MACHINE ================= */
 const S = { screen:'home', history:[], answers:{}, restartConfirm:false, trustOpen:false, recoveryText:'', recoveryResult:null, prepChecks:{}, prepDraft:null, copied:false,
-  user:null, savedCases:[], activeCaseId:null, pendingSave:null, authMethod:'phone', authId:'', otp:'', authErr:null, otpResent:false, signOutConfirm:false, removeConfirm:null, restoring:false,
+  user:null, savedCases:[], activeCaseId:null, workingCase:null, pendingSave:null, authMethod:'phone', authId:'', otp:'', authErr:null, otpResent:false, signOutConfirm:false, removeConfirm:null, restoring:false,
   describeOpen:false, describeText:'', describeErr:null, reading:false, interp:null, interpChangeOpen:{}, caseFacts:[], appliedText:null, factEditIdx:null, factEditVal:'', fillsReviewed:false,
   ciPending:null, ciStage:null, ciReassure:false, ciSnapshot:null, ciJustUpdated:false, logOpen:{}, phaseDrift:false,
   acctOpen:false, pendingName:'' };
@@ -1800,7 +1891,29 @@ S.savedCases = S.user ? (store.get('nm_cases') || []) : [];
   }
 })();
 function persistCases(){ store.set('nm_cases', S.savedCases); }
-function activeCase(){ return S.savedCases.find(c=>c.id===S.activeCaseId) || null; }
+// The working case (grill chunk 3): tracking never requires an account.
+// "Add an update" on an unsaved diagnosis creates an in-memory case that
+// behaves exactly like a saved one — check-ins, journey log, undo — but
+// lives only in this tab. Saving ADOPTS its log wholesale, which is what
+// makes "save this case and keep this history" a true sentence.
+function activeCase(){
+  if(S.activeCaseId==='working') return S.workingCase;
+  return S.savedCases.find(c=>c.id===S.activeCaseId) || null;
+}
+function beginWorkingCheckin(engineKey, serviceLabel, returnScreen){
+  const saved = S.savedCases.find(c=>c.outcome==='still_open' && c.engineKey===engineKey
+    && JSON.stringify(c.answers)===JSON.stringify(S.answers));
+  if(saved){ openCheckin(saved.id); return; }
+  if(!S.workingCase || S.workingCase.engineKey!==engineKey
+      || JSON.stringify(S.workingCase.answers)!==JSON.stringify(S.answers)){
+    S.workingCase = {...caseSnapshot(engineKey, serviceLabel, returnScreen),
+      id:'working', unsaved:true, outcome:'still_open', lastCheck:null, remindAt:null,
+      log:[{t:Date.now(), kind:'diagnosed', text:currentDiagnosis(engineKey).label}]};
+  }
+  S.activeCaseId='working';
+  S.ciStage=null; S.ciPending=null; S.ciReassure=false; S.ciJustUpdated=false;
+  nav('checkin');
+}
 
 /* ---- source freshness: detect → degrade → human re-verify ----
    (user-approved model, 2026-09-05). In production, check_freshness.py's
@@ -1825,12 +1938,20 @@ function nav(screen, opts){
   S.screen = screen; S.trustOpen=false; S.restartConfirm=false; S.removeConfirm=false; S.authErr=null; S.acctOpen=false; render();
   const el=document.getElementById('app'); if(el) el.scrollIntoView({block:'start'});
 }
-function back(){ if(S.history.length){ S.screen=S.history.pop(); S.trustOpen=false; S.authErr=null; render(); } }
+// Arriving at Home via Back clears the working case (grill chunk 3):
+// leaked answers used to pre-select a "new" flow and let a save merge
+// one case over another. Home is a clean slate, always.
+function back(){
+  if(!S.history.length) return;
+  const prev = S.history.pop();
+  if(prev==='home'){ restart(); return; }
+  S.screen=prev; S.trustOpen=false; S.authErr=null; render();
+}
 // Restart clears the working case only — sign-in and the saved casefile
 // survive (they're removed via Sign out / Remove, never as a side effect).
 function restart(){ S.screen='home'; S.history=[]; S.answers={}; S.restartConfirm=false; S.recoveryText=''; S.recoveryResult=null; S.prepChecks={}; S.prepDraft=null; S.copied=false; S.pendingSave=null; S.otp=''; S.authErr=null; S.signOutConfirm=false; S.removeConfirm=null;
   S.describeOpen=false; S.describeText=''; S.describeErr=null; S.reading=false; S.interp=null; S.interpChangeOpen={}; S.caseFacts=[]; S.appliedText=null; S.factEditIdx=null; S.fillsReviewed=false;
-  S.activeCaseId=null; S.ciPending=null; S.ciStage=null; S.ciReassure=false; S.ciJustUpdated=false; S.phaseDrift=false; S.acctOpen=false; S.pendingName=''; render(); }
+  S.activeCaseId=null; S.workingCase=null; S.ciPending=null; S.ciStage=null; S.ciReassure=false; S.ciJustUpdated=false; S.phaseDrift=false; S.acctOpen=false; S.pendingName=''; render(); }
 
 /* ---- save / auth flow (multi-case) ---- */
 function beginSave(engineKey, serviceLabel, returnScreen){
@@ -1853,17 +1974,28 @@ function caseSnapshot(engineKey, serviceLabel, returnScreen){
     sirPhaseId: engineKey==='sir' && S.answers.sirState && SIR_STATES[S.answers.sirState].supported ? SIR_STATES[S.answers.sirState].phase.id : null,
   };
 }
+// One active case per service, formalized (user decision, 2026-09-05):
+// saving matches the open case for the SERVICE, updates it in place, and
+// memorializes a changed diagnosis in the log. A working (unsaved) case
+// for the service hands its whole journey log to the save.
 function completeSave(){
   const p = S.pendingSave; if(!p) return;
   const snap = caseSnapshot(p.engineKey, p.serviceLabel, p.returnScreen);
-  const existing = activeCase();
-  if(existing && existing.engineKey===p.engineKey && existing.outcome==='still_open'){
+  const working = (S.workingCase && S.workingCase.engineKey===p.engineKey) ? S.workingCase : null;
+  const existing = S.savedCases.find(c=>c.outcome==='still_open' && c.engineKey===p.engineKey);
+  if(existing){
+    const prevLabel = existing.stateLabel;
     Object.assign(existing, snap);
+    if(working) existing.log.push(...working.log.filter(e=>e.kind!=='diagnosed'));
+    if(prevLabel!==snap.stateLabel) existing.log.push({t:Date.now(), kind:'diagnosed', text:snap.stateLabel});
+    S.activeCaseId = existing.id;
   } else {
-    const c = {...snap, id:'c'+Date.now(), outcome:'still_open', lastCheck:null, remindAt:null,
-      log:[{t:Date.now(), kind:'diagnosed', text:snap.stateLabel}]};
+    const c = {...snap, id:'c'+Date.now(), outcome:'still_open',
+      lastCheck: working ? working.lastCheck : null, remindAt: working ? working.remindAt : null,
+      log: working ? working.log : [{t:Date.now(), kind:'diagnosed', text:snap.stateLabel}]};
     S.savedCases.unshift(c); S.activeCaseId = c.id;
   }
+  S.workingCase=null;
   persistCases();
 }
 function caseIsSaved(engineKey){
@@ -2053,6 +2185,15 @@ function topbar(showBack, showRestart){
       ${showRestart ? restartControl(hasAnswers) : ''}
     </div>
   </div>`;
+}
+// Tracking entry, shared by Diagnosis and Next Move: free for the
+// in-memory case (Principle #4 — no login gates value), routing to the
+// saved casefile when one matches.
+function updateEntry(engineKey, serviceLabel, returnScreen){
+  const saved = S.savedCases.find(c=>c.outcome==='still_open' && c.engineKey===engineKey
+    && JSON.stringify(c.answers)===JSON.stringify(S.answers));
+  const go = saved ? `openCheckin('${saved.id}')` : `beginWorkingCheckin('${engineKey}','${serviceLabel}','${returnScreen}')`;
+  return `<button class="btn-ghost" onclick="${go}">${ICONS.pen} Add an update: what's happened since?</button>`;
 }
 // The one save entry point, shared by Next Move and Prepare. Quiet by
 // design — it must never compete with the case's actual next action.
@@ -2266,7 +2407,12 @@ function unplaceablePick(qid, value){
    and "Something else happened" (escape hatch → re-diagnosis). */
 const DELIVERABLE_LABEL = { passport:'I got my passport!', voter:'My name is on the roll / my card arrived!', sir:'My name is on the roll. Sorted!' };
 const DELIVERABLE_Q = { passport:'Did you get your passport?', voter:'Is your name / card actually in place now?', sir:'Is your name on the roll now?' };
-const RUNG_RESET = { passport:{q2:'no_followup', fOutcome:null, gOutcome:null, dpgFiled:null} };
+// Retire, don't reset (grill chunk 3): a resolved rung is CONSUMED, never
+// erased. `pendingPatch` is applied when the rung resolved but the
+// deliverable is still pending; `acceptPendingPatch` when a decision's
+// valence was "in my favour" but the deliverable hasn't arrived. The old
+// RUNG_RESET (which restored earlier answers and let the ladder descend
+// itself) is gone.
 const CHECKIN = {
   'state-1':{opts:[
     {k:'event', label:'Police contacted or visited me', patch:{q1:'contacted_incomplete'}},
@@ -2286,15 +2432,24 @@ const CHECKIN = {
     {k:'action', label:'I contacted the office and asked for clarification', patch:{q2:'informal', fOutcome:'pending'}},
   ]},
   'state-5a-p':{opts:[
-    {k:'resolved-rung', label:'They responded and things are moving again', reset:'passport'},
+    {k:'resolved-rung', label:'They responded and things are moving again', pendingPatch:{fOutcome:'resolved'}},
     {k:'event', label:"They responded, but it did not help", patch:{fOutcome:'unhelpful'}},
     {k:'event', label:'No response at all so far', patch:{fOutcome:'no_response'}},
+  ]},
+  'state-5a-r':{opts:[
+    {k:'event', label:'It stalled again; nothing has moved since', patch:{fOutcome:null}},
+  ]},
+  'state-5b-r':{opts:[
+    {k:'event', label:'It stalled again; nothing has moved since', patch:{gOutcome:null}},
+  ]},
+  'state-dpg-r':{opts:[
+    {k:'deadend', label:"It stalled again after the DPG's response"},
   ]},
   'state-5a':{prepAware:true, opts:[
     {k:'action', label:'I filed the formal grievance on CPGRAMS and have a number', patch:{q2:'formal_grievance', gOutcome:'pending'}},
   ]},
   'state-5b-p':{opts:[
-    {k:'resolved-rung', label:'They responded and things are moving again', reset:'passport'},
+    {k:'resolved-rung', label:'They responded and things are moving again', pendingPatch:{gOutcome:'resolved'}},
     {k:'event', label:"They responded, but it did not help", patch:{gOutcome:'unhelpful'}},
     {k:'event', label:'No response at all so far', patch:{gOutcome:'no_response'}},
   ]},
@@ -2302,28 +2457,31 @@ const CHECKIN = {
     {k:'action', label:'I escalated to the DPG and have a reference number', patch:{dpgFiled:'yes'}},
   ]},
   'state-dpg-p':{opts:[
-    {k:'resolved-rung', label:'The DPG responded and things are moving again', reset:'passport'},
+    {k:'resolved-rung', label:'The DPG responded and things are moving again', pendingPatch:{dpgOutcome:'resolved'}},
     {k:'deadend', label:'The DPG responded, but it did not resolve anything'},
   ]},
   'v-1':{opts:[
     {k:'event', label:'A BLO visited or contacted me', patch:{voterQ1:'blo_visited'}},
-    {k:'valence', label:'A decision arrived', rejectPatch:{voterQ1:'decision', voterAppealedRaw:'none', voterAppealed:'none'}},
+    {k:'valence', label:'A decision arrived', rejectPatch:{voterQ1:'decision', voterAppealedRaw:'none', voterAppealed:'none'}, acceptPendingPatch:{voterQ1:'decision', voterOutcome:'accepted_pending'}},
   ]},
   'v-2':{opts:[
-    {k:'valence', label:'A decision arrived', rejectPatch:{voterQ1:'decision', voterAppealedRaw:'none', voterAppealed:'none'}},
+    {k:'valence', label:'A decision arrived', rejectPatch:{voterQ1:'decision', voterAppealedRaw:'none', voterAppealed:'none'}, acceptPendingPatch:{voterQ1:'decision', voterOutcome:'accepted_pending'}},
   ]},
   'v-3':{prepAware:true, opts:[
     {k:'action', label:'I filed the first appeal with the DEO/DM', patch:{voterAppealedRaw:'pending', voterAppealed:'pending'}},
-    {k:'closureq', label:'I checked, and the decision was actually in my favour'},
+    {k:'closureq', label:'I checked, and the decision was actually in my favour', pendingPatch:{voterOutcome:'accepted_pending'}},
   ]},
   'v-4':{opts:[
-    {k:'valence', label:'The appeal was decided', rejectPatch:{voterAppealedRaw:'decided', voterAppealed:'decided'}},
+    {k:'valence', label:'The appeal was decided', rejectPatch:{voterAppealedRaw:'decided', voterAppealed:'decided'}, acceptPendingPatch:{voterOutcome:'accepted_pending'}},
   ]},
   'v-5':{prepAware:true, opts:[
     {k:'action', label:'I filed the second appeal with the state CEO', patch:{ceoAppeal:'filed'}},
   ]},
   'v-5-p':{opts:[
-    {k:'valence', label:'The second appeal was decided', rejectDeadend:true},
+    {k:'valence', label:'The second appeal was decided', rejectDeadend:true, acceptPendingPatch:{voterOutcome:'accepted_pending'}},
+  ]},
+  'v-acc':{opts:[
+    {k:'event', label:"It's been a long time with no sign of it", patch:{voterOutcome:null}},
   ]},
   'S-1':{opts:[
     {k:'event', label:'I got a notice asking for documents', patch:{sirQ1:'notice'}},
@@ -2339,6 +2497,10 @@ const CHECKIN = {
     {k:'action', label:'I submitted the requested document to the BLO/ERO', patch:{sirDocsFiled:'yes'}},
   ]},
   // 'S-6' check-in moved to sirDormantRules_enumeration (phase-retired).
+  'S-9':{opts:[
+    {k:'event', label:'I checked, and my name IS on the Final Roll', patch:{sirQ1:'final_present'}},
+    {k:'event', label:'I checked, and my name is NOT on the Final Roll', patch:{sirQ1:'final_absent'}},
+  ]},
 };
 function checkinOptions(c){
   const d = currentDiagnosis(c.engineKey);
@@ -2360,9 +2522,14 @@ function checkinOptions(c){
   list.push({k:'else', label:'Something else happened'});
   return {d, list};
 }
-function ciLog(kind, text){
+// Every log write snapshots first, structurally — ciLog cannot run
+// un-snapshotted, so every check-in (including nothing-yet, previously
+// the one un-undoable kind) carries an Undo. Entry semantics are TYPED
+// (flags like noChange), never recovered by parsing the prose.
+function ciLog(kind, text, flags){
   const c=activeCase(); if(!c) return;
-  c.log.push({t:Date.now(), kind, text});
+  ciSnapshotNow();
+  c.log.push({t:Date.now(), kind, text, ...(flags||{})});
   c.lastCheck=Date.now();
   persistCases();
 }
@@ -2383,7 +2550,7 @@ function ciChoose(i){
     // first-class: log, restate the verified answer, never imply lateness
     const prev=c.log[c.log.length-1];
     S.ciConsecutive = prev && prev.kind==='checked';
-    ciLog('checked','Checked in — no change reported');
+    ciLog('checked','Checked in — no change reported', {noChange:true});
     S.ciReassure=true; S.ciPending=null; render(); return;
   }
   if(opt.k==='notdone'){ nav(c.engineKey+'-prepare'); return; }
@@ -2401,7 +2568,6 @@ function ciSnapshotNow(){
     caseJson: JSON.stringify(activeCase())};
 }
 function ciApplyPatch(opt, reportLabel){
-  ciSnapshotNow();
   const c=activeCase();
   const before = currentDiagnosis(c.engineKey);
   ciLog('reported', reportLabel);
@@ -2418,16 +2584,17 @@ function ciApplyPatch(opt, reportLabel){
 function ciConfirm(){
   const opt=S.ciPending; if(!opt) return;
   if(opt.k==='deadend'){
-    ciSnapshotNow(); ciLog('reported', opt.label);
+    ciLog('reported', opt.label);
     S.ciStage=null; S.ciPending=null; nav('dead-end'); return;
   }
   ciApplyPatch(opt, opt.label);
 }
 function ciValence(accepted){
   const opt=S.ciPending;
-  if(accepted){ S.ciStage='closureq'; render(); return; }
+  if(accepted){ S.ciAccepted=true; S.ciStage='closureq'; render(); return; }
+  S.ciAccepted=false;
   if(opt.rejectDeadend){
-    ciSnapshotNow(); ciLog('reported', opt.label+' — rejected');
+    ciLog('reported', opt.label+' — rejected');
     S.ciStage=null; S.ciPending=null; nav('dead-end'); return;
   }
   ciApplyPatch({...opt, patch:opt.rejectPatch}, opt.label+' — rejected');
@@ -2435,18 +2602,19 @@ function ciValence(accepted){
 function ciClosureAnswer(gotIt){
   const opt=S.ciPending; const c=activeCase();
   if(gotIt){
-    ciSnapshotNow();
     ciLog('reported', opt.k==='deliverable' ? opt.label : opt.label+' — and the deliverable is in hand');
     c.outcome='deliverable_received'; c.closedAt=Date.now();
     c.log.push({t:Date.now(), kind:'closed', text:'Case closed — deliverable received'});
     persistCases();
     S.ciStage=null; S.ciPending=null; nav('case-closed'); return;
   }
-  // rung resolved but deliverable still pending → rung consumed, back to
-  // waiting on the world; or a favourable decision still awaiting the card
-  if(opt.k==='resolved-rung' && RUNG_RESET[c.engineKey]){
-    ciApplyPatch({...opt, patch:RUNG_RESET[c.engineKey]}, opt.label+' — deliverable still pending'); return;
-  }
+  // Deliverable still pending: a resolved rung is consumed (its pending
+  // patch maps to a "moving again" state); a favourable decision maps to
+  // the accepted-pending state. The universal "I got it!" option has no
+  // patch: reporting maybe-then-not changes nothing, honestly.
+  const pp = (S.ciAccepted && opt.acceptPendingPatch) || opt.pendingPatch;
+  S.ciAccepted=false;
+  if(pp){ ciApplyPatch({...opt, patch:pp}, opt.label+' — deliverable still pending'); return; }
   ciLog('reported', opt.label+' — deliverable still pending');
   S.ciReassure=true; S.ciStage=null; S.ciPending=null; render();
 }
@@ -2455,7 +2623,7 @@ function ciUndo(){
   S.answers={...snap.answers}; S.prepChecks={...snap.prepChecks};
   const c=activeCase();
   if(c){ const restored=JSON.parse(snap.caseJson); Object.assign(c, restored); c.log=restored.log; persistCases(); }
-  S.ciSnapshot=null; S.ciJustUpdated=false;
+  S.ciSnapshot=null; S.ciJustUpdated=false; S.ciReassure=false;
   render();
 }
 function setRemind(id, val){
@@ -2475,7 +2643,9 @@ function daysAgo(t){ const d=Math.floor((Date.now()-t)/86400000); return d<=0?'t
 function renderLog(c){
   const entries=[]; let run=null;
   for(const e of c.log){
-    if(e.kind==='checked' && /no change/.test(e.text)){
+    // typed flag decides the collapse; the prose test is only a legacy
+    // fallback for entries written before the flag existed
+    if(e.kind==='checked' && (e.noChange===true || (e.noChange===undefined && /no change/.test(e.text)))){
       if(run){ run.n++; run.to=e.t; } else { run={collapse:true, n:1, from:e.t, to:e.t}; }
     } else {
       if(run){ entries.push(run); run=null; }
@@ -2530,6 +2700,7 @@ function renderCheckin(){
       ${d.howLong ? `<p class="small" style="margin:0 0 8px;">${d.howLong}</p>` : ''}
       ${d.expectNext ? `<p class="small" style="margin:0;">${d.expectNext}</p>` : ''}
       ${S.ciConsecutive ? `<p class="small" style="margin:10px 0 0; color:var(--ink-faint);">This stage doesn't change day to day, so checking more often won't move it.</p>` : ''}
+      ${S.ciSnapshot ? `<button class="read-change" style="margin-top:8px;" onclick="ciUndo()">Undo this check-in</button>` : ''}
     </div>`;
   }
   // The casefile screen — the case's home, opened from its Home card.
@@ -2569,7 +2740,7 @@ function renderCheckin(){
     ${crumbs([c.serviceLabel, 'Your casefile'], SERVICE_SQ[c.serviceLabel]||null)}
     <h1 class="case-h1">${d.label}</h1>
     <div class="stamp-row"><span class="stamp ${stampClass(d.rec)}">${stampIcon(d.rec)}${stampLabel(d.rec)}</span></div>
-    <div class="case-meta-line">Saved ${fmtDay(c.savedAt)}${c.remindAt ? ' · check back '+c.remindAt : ''}</div>
+    <div class="case-meta-line">${c.unsaved?'Started':'Saved'} ${fmtDay(c.savedAt)}${c.remindAt ? ' · check back '+c.remindAt : ''}</div>
     ${trail ? renderTimeline(trail) : ''}
     ${prep ? `<div class="case-progress">
       <div class="cp-head"><span class="nm-k" style="margin:0;">Prepare steps</span><span class="cp-count">${prepDone} of ${prep.steps.length} done</span></div>
@@ -2579,7 +2750,14 @@ function renderCheckin(){
     ${renderLog(c)}
     `, `
     ${freshBanner(c.engineKey)}
-    <div class="update-mod">
+    ${S.phaseDrift ? `<div class="update-mod" style="border-color:var(--line-strong);">
+      <div class="um-head">
+        <span class="dr-icon">${ICONS.pen}</span>
+        <span><span class="um-kicker">Before any update</span><h2 class="um-title">The SIR phase changed while this case was saved.</h2></span>
+      </div>
+      <p class="small" style="margin:0 0 14px;">The options and recommendations from when you saved may no longer apply. Answer one question against today's phase and NextMove re-diagnoses your case; your journey record keeps everything you've already done.</p>
+      <button class="btn btn-primary btn-block" style="margin-top:0;" onclick="S.phaseDrift=false; nav('sir-q1')">Re-check my case against today's phase <span class="btn-arrow">${ICONS.arrow}</span></button>
+    </div>` : `<div class="update-mod">
       <div class="um-head">
         <span class="dr-icon">${ICONS.pen}</span>
         <span><span class="um-kicker">Add an update</span><h2 class="um-title">What's happened since?</h2></span>
@@ -2598,12 +2776,15 @@ function renderCheckin(){
         <input type="date" class="remind-input" value="${c.remindAt||''}" onchange="setRemind('${c.id}', this.value)" aria-label="Check-back date">
       </div>
       ${c.remindAt ? `<p class="small" style="margin-top:6px;">Your own reminder (copy it to your phone): <b>Check NextMove case: ${c.remindAt}</b></p>` : ''}
-    </div>
+    </div>`}
     <div class="case-links">
       <button class="case-link" onclick="nav('${c.engineKey}-diagnosis')">See my diagnosis<span class="arow-chevron" style="margin-left:auto;">${ICONS.chevron}</span></button>
       ${prep ? `<button class="case-link" onclick="nav('${c.engineKey}-prepare')">Continue preparing<span class="arow-chevron" style="margin-left:auto;">${ICONS.chevron}</span></button>` : ''}
     </div>
-    ${removeCtl}
+    ${c.unsaved
+      ? `<div class="small" style="margin-top:18px; color:var(--ink-soft);">This casefile lives only in this tab until you save it.</div>
+         ${saveControl(c.engineKey, c.serviceLabel, c.returnScreen, 0)}`
+      : removeCtl}
     `)}
   </div>`;
 }
@@ -3199,6 +3380,7 @@ function renderDiagnosis(serviceLabel, d, timeline, answerLabels, engineKey, pre
     </div>` : ''}
     ${timeline ? renderTimeline(timeline) : ''}
     <button class="btn btn-primary btn-block" onclick="nav('${engineKey}-nextmove')">See my next move <span class="btn-arrow">${ICONS.arrow}</span></button>
+    ${updateEntry(engineKey, serviceLabel==='Voter Services'?'Voter Services':serviceLabel, engineKey+'-nextmove')}
     ${trustDisclosure(d, answerLabels, extraToldUs)}
     `)}
   </div>`;
@@ -3251,6 +3433,7 @@ function renderNextMove(serviceLabel, engineKey){
       ${d.expectNext ? `<div class="nm-field"><div class="nm-k">What to expect</div><div class="nm-v">${d.expectNext}</div></div>` : ''}
     </div>
     ${cta}
+    ${updateEntry(engineKey, serviceLabel, engineKey+'-nextmove')}
     ${saveControl(engineKey, serviceLabel, engineKey+'-nextmove')}
     `)}
   </div>`;
