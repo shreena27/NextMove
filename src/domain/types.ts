@@ -17,6 +17,15 @@ export interface OfficialChannel {
 }
 
 export interface SourceReference {
+  /** The `sources/manifest.json` `documents` key backing this citation —
+   *  the ERD's PLAYBOOK_RULE.source_id FK into SOURCE_REFERENCE.id.
+   *  `null` means "NextMove's own safety net": the three UNCLASSIFIED
+   *  fallbacks, which the ERD models with a null source_id. Required and
+   *  explicitly nullable so the manifest-resolution test branches on a
+   *  discriminator, never on string-matching the safety-net title.
+   *  C6's freshness job attaches sha256/degraded to the manifest document
+   *  this id points at — no rule data changes when it lands. */
+  docId: string | null
   title: string
   url?: string
   quote?: string
