@@ -1716,6 +1716,14 @@ const store = {
   del(k){ try{ localStorage.removeItem(k); }catch(e){} },
 };
 S.user = store.get('nm_user');
+// Backfill for sessions that signed in before the name feature existed:
+// a Google session always carries a profile name in production (OAuth
+// supplies it every load), so the sim mirrors that here. Phone/email
+// legacy sessions can't have a name invented — the popover offers an
+// "Add your name" row instead.
+if(S.user && S.user.method==='google' && !S.user.name){
+  S.user.name='Ananya'; store.set('nm_user', S.user);
+}
 // Multi-case store, with one-time migration of the old single-case slot.
 // Cases are account-scoped (grill A8 semantics): they load only when a
 // user is present — signed out, stored cases stay in storage but never
@@ -1837,7 +1845,10 @@ function authVerifyOtp(){
 function saveNameFinish(withName){
   const n=(S.pendingName||'').trim();
   if(withName && n){ S.user.name=n; store.set('nm_user', S.user); }
-  completeSave(); nav('save-done');
+  // Reached either mid-save (pendingSave set → finish the save) or from
+  // the popover's "Add your name" row (no pending save → just go back).
+  if(S.pendingSave){ completeSave(); nav('save-done'); }
+  else { nav('home'); }
 }
 function authGoogle(){
   // Simulated in the prototype — the real build uses Google OAuth, and the
@@ -1956,6 +1967,7 @@ function acctPopover(){
       ${S.user.name ? `<div class="acct-pop-sub">${maskId(S.user)}</div>` : ''}
     </div>
     <button class="acct-pop-row" onclick="S.acctOpen=false; restart();">Your casefile${openN===1?'':'s'} — ${openN} open<span class="row-sub">On the Home screen, where they live</span></button>
+    ${S.user.name ? '' : `<button class="acct-pop-row" onclick="S.acctOpen=false; S.pendingName=''; nav('save-name');">Add your name<span class="row-sub">Optional — it's how your casefile greets you</span></button>`}
     ${S.signOutConfirm
       ? `<div class="acct-pop-confirm">Sign out? Your cases stay on your account — sign back in any time.
           <div><button class="yes" onclick="signOut()">Sign out</button><button class="no" onclick="S.signOutConfirm=false; render();">Cancel</button></div></div>`
@@ -3314,18 +3326,19 @@ function renderSaveOtp(){
 // and never blocks the save (spec: 2026-09-05-account-chip-profile-
 // popover-design.md).
 function renderSaveName(){
+  const midSave = !!S.pendingSave; // false when entered via the popover's "Add your name"
   return `${topbar(false,false)}
   <div class="stage screen">
     <div class="narrow">
-      ${crumbs(['Save your case','One last thing — optional'], 'sq-butter')}
+      ${crumbs(midSave ? ['Save your case','One last thing — optional'] : ['Your name — optional'], 'sq-butter')}
       <h2 class="headline">What should we call you?</h2>
-      <p class="lede">Just a first name is fine — it's how your casefile greets you when you come back. Skip it and nothing changes about your case.</p>
+      <p class="lede">Just a first name is fine — it's how your casefile greets you when you come back. ${midSave ? 'Skip it and nothing changes about your case.' : 'It changes nothing about your cases.'}</p>
       <div class="auth-field">
         <div class="auth-label">Your name</div>
         <input class="auth-input" type="text" placeholder="First name" value="${S.pendingName||''}" oninput="S.pendingName=this.value" onkeydown="if(event.key==='Enter')saveNameFinish(true)">
       </div>
-      <button class="btn btn-primary btn-block" style="margin-top:0;" onclick="saveNameFinish(true)">Save my case <span class="btn-arrow">${ICONS.arrow}</span></button>
-      <button class="auth-switch" onclick="saveNameFinish(false)">Skip — save without a name</button>
+      <button class="btn btn-primary btn-block" style="margin-top:0;" onclick="saveNameFinish(true)">${midSave ? 'Save my case' : 'Save name'} <span class="btn-arrow">${ICONS.arrow}</span></button>
+      <button class="auth-switch" onclick="saveNameFinish(false)">${midSave ? 'Skip — save without a name' : 'Never mind'}</button>
     </div>
   </div>`;
 }
