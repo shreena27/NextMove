@@ -781,6 +781,31 @@ h2.headline{
    butter against the line track measured 1.12:1, an invisible bar */
 .cp-bar{height:11px; border-radius:999px; background:var(--line); border:1px solid var(--line-strong); overflow:hidden;}
 .cp-fill{display:block; height:100%; background:var(--butter); border-right:1.5px solid var(--ink); border-radius:999px 3px 3px 999px; transition:width 300ms var(--ease); box-shadow:inset 0 -1px 0 rgba(61,36,28,0.25);}
+/* the escalation ladder: the case's rung position on the REAL official
+   ladder — vertical, so it can never be confused with the horizontal
+   stage trail above it */
+.ladder{margin:22px 0 4px;}
+.lrung{display:flex; align-items:center; gap:11px; padding:7px 0; position:relative;}
+.lrung:not(:last-child)::after{
+  content:''; position:absolute; left:9px; top:29px; bottom:-8px; width:1.5px; background:var(--line-strong);
+}
+.lrung.done:not(:last-child)::after{background:var(--ink);}
+.lr-dot{
+  flex:0 0 auto; width:20px; height:20px; border-radius:50%; border:1.5px solid var(--line-strong);
+  background:var(--card); display:flex; align-items:center; justify-content:center; z-index:1;
+}
+.lrung.done .lr-dot{background:var(--butter); border-color:var(--ink);}
+.lrung.now .lr-dot{border:2px solid var(--ink); background:var(--butter); box-shadow:0 0 0 3px var(--butter-soft);}
+.lrung.next .lr-dot{border:1.5px dashed var(--ink);}
+.lr-label{font-size:13.5px; font-weight:500; flex:1;}
+.lrung.up .lr-label{color:var(--ink-faint); font-weight:400;}
+.lr-tag{
+  font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.07em; text-transform:uppercase;
+  border:1px solid var(--line-strong); border-radius:4px; padding:2.5px 7px; color:var(--ink-soft); flex:0 0 auto;
+}
+.lrung.now .lr-tag{border-color:var(--ink); color:var(--ink); font-weight:600;}
+.lrung.next .lr-tag{background:var(--butter); border-color:var(--ink); color:var(--ink); font-weight:600;}
+.ladder-note{font-size:11.5px; color:var(--ink-faint); line-height:1.5; margin-top:8px;}
 .update-mod{
   background:var(--card); border:1.5px solid var(--butter); border-radius:16px;
   padding:20px 22px;
@@ -2638,6 +2663,71 @@ function closeUnresolved(){
 }
 function fmtDay(t){ return new Date(t).toLocaleDateString('en-IN',{day:'numeric',month:'short'}); }
 function daysAgo(t){ const d=Math.floor((Date.now()-t)/86400000); return d<=0?'today':d===1?'yesterday':d+' days ago'; }
+/* ---- escalation ladder (2026-09-05, user request: "make a progress
+   ladder") ---- Only REAL official ladders are drawn: the passport
+   grievance ladder (Citizen's Charter / grievance page) and the voter
+   two-tier appeal (Final-ER-FAQ Q34). SIR has no verified ladder, so it
+   gets none. Shown only once the ladder is in play — a calm WAIT case
+   is not nudged toward escalation by a roadmap it doesn't need. */
+const LADDER_DEFS = {
+  passport:{
+    title:'Escalation ladder',
+    caption:'The official grievance ladder for a stuck passport case. Used only as far as your case needs; the recommendation above always comes first.',
+    rungs:['Informal follow-up','Formal grievance (CPGRAMS)','DPG escalation'],
+  },
+  voter:{
+    title:'Appeal ladder',
+    caption:'The official two-tier appeal structure (ECI FAQ Q34). Used only as far as your case needs.',
+    rungs:['First appeal — DEO / DM','Second appeal — state CEO'],
+  },
+};
+// Statuses per rung: 'done' (consumed), 'now' (filed, response pending),
+// 'next' (the current recommendation points here), 'up' (not in play).
+function ladderFor(engineKey, a, d){
+  const def=LADDER_DEFS[engineKey]; if(!def || d.rec==='UNCLASSIFIED') return null;
+  let s;
+  if(engineKey==='passport'){
+    s=['up','up','up'];
+    if(a.dpgFiled==='yes'){ s[0]='done'; s[1]='done'; s[2]= a.dpgOutcome==='resolved' ? 'done' : 'now'; }
+    else if(a.q2==='formal_grievance'){
+      s[0]='done';
+      if(a.gOutcome==='resolved'){ s[1]='done'; }
+      else if(a.gOutcome==='pending'){ s[1]='now'; }
+      else { s[1]='done'; s[2]='next'; }        // 5b recommends the DPG
+    }
+    else if(a.q2==='informal'){
+      if(a.fOutcome==='resolved'){ s[0]='done'; }
+      else if(a.fOutcome==='pending'){ s[0]='now'; }
+      else { s[0]='done'; s[1]='next'; }        // 5a recommends going formal
+    }
+    else if(['2','3','4'].includes(d.state)){ s[0]='next'; }  // contact the office
+    else return null;                            // state-1 etc: ladder not in play
+  } else if(engineKey==='voter'){
+    if(a.voterOutcome==='accepted_pending') return null;
+    if(a.voterQ1!=='decision' && a.ceoAppeal!=='filed') return null;
+    s=['up','up'];
+    if(a.ceoAppeal==='filed'){ s[0]='done'; s[1]='now'; }
+    else if(a.voterAppealed==='decided'){ s[0]='done'; s[1]='next'; }
+    else if(a.voterAppealed==='pending'){ s[0]='now'; }
+    else { s[0]='next'; }                        // v-3: appeal is the entry point
+  } else return null;
+  if(!s.some(x=>x!=='up')) return null;
+  return {def, s};
+}
+const LADDER_TAG = {done:'Done', now:'In progress', next:'Recommended now', up:''};
+function renderLadder(engineKey, d){
+  const l = ladderFor(engineKey, S.answers, d); if(!l) return '';
+  return `<div class="ladder">
+    <div class="nm-k" style="margin:0 0 8px;">${l.def.title}</div>
+    ${l.def.rungs.map((r,i)=>{const st=l.s[i]; return `<div class="lrung ${st}">
+      <span class="lr-dot">${st==='done'?ICONS.stepCheck:''}</span>
+      <span class="lr-label">${r}</span>
+      ${LADDER_TAG[st] ? `<span class="lr-tag">${LADDER_TAG[st]}</span>` : ''}
+    </div>`;}).join('')}
+    <div class="ladder-note">${l.def.caption}</div>
+  </div>`;
+}
+
 // Journey log: milestones apart from checks; consecutive no-change
 // checks collapse; entries labeled by author; never an official record.
 function renderLog(c){
@@ -2746,6 +2836,7 @@ function renderCheckin(){
       <div class="cp-head"><span class="nm-k" style="margin:0;">Prepare steps</span><span class="cp-count">${prepDone} of ${prep.steps.length} done</span></div>
       <div class="cp-bar"><span class="cp-fill" style="width:${prep.steps.length ? Math.round(prepDone/prep.steps.length*100) : 0}%"></span></div>
     </div>` : ''}
+    ${renderLadder(c.engineKey, d)}
     <div class="nm-k" style="margin:24px 0 4px;">Journey · ${(c.log||[]).length} entr${(c.log||[]).length===1?'y':'ies'}</div>
     ${renderLog(c)}
     `, `
