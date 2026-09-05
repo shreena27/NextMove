@@ -121,6 +121,12 @@ Detector defenses (deliberate, do not "fix"):
      every non-status token and all four status fills. */
   --butter-soft:#FDF8E3;
   --sq-green:#2FA866;
+  /* completion green (user request: done = green). Deliberately the
+     marker-green family, NOT the reserved WAIT status pair — status
+     colors stay structurally reserved for classification. */
+  --done:#2FA866;
+  --done-bg:#DFF3E6;
+  --done-deep:#20714A;
   --sq-pink:#F0679E;
   --sq-blue:#5FA8E8;
   --wait:#1F6B3D;
@@ -789,12 +795,12 @@ h2.headline{
 .lrung:not(:last-child)::after{
   content:''; position:absolute; left:9px; top:29px; bottom:-8px; width:1.5px; background:var(--line-strong);
 }
-.lrung.done:not(:last-child)::after{background:var(--ink);}
+.lrung.done:not(:last-child)::after{background:var(--done);}
 .lr-dot{
   flex:0 0 auto; width:20px; height:20px; border-radius:50%; border:1.5px solid var(--line-strong);
   background:var(--card); display:flex; align-items:center; justify-content:center; z-index:1;
 }
-.lrung.done .lr-dot{background:var(--butter); border-color:var(--ink);}
+.lrung.done .lr-dot{background:var(--done); border-color:var(--done-deep);}
 .lrung.now .lr-dot{border:2px solid var(--ink); background:var(--butter); box-shadow:0 0 0 3px var(--butter-soft);}
 .lrung.next .lr-dot{border:1.5px dashed var(--ink);}
 .lr-label{font-size:13.5px; font-weight:500; flex:1;}
@@ -805,6 +811,7 @@ h2.headline{
 }
 .lrung.now .lr-tag{border-color:var(--ink); color:var(--ink); font-weight:600;}
 .lrung.next .lr-tag{background:var(--butter); border-color:var(--ink); color:var(--ink); font-weight:600;}
+.lrung.done .lr-tag{background:var(--done-bg); border-color:var(--done-deep); color:var(--done-deep); font-weight:600;}
 .ladder-note{font-size:11.5px; color:var(--ink-faint); line-height:1.5; margin-top:8px;}
 .update-mod{
   background:var(--card); border:1.5px solid var(--butter); border-radius:16px;
@@ -1007,7 +1014,7 @@ const passportPlaybook = {
     // check-in clears the resolved outcome and the case lands on the
     // NEXT rung's recommendation — the ladder never descends itself.
     {id:'state-5a-r', condition:a=>a.fOutcome==='resolved',
-      state:'5a·R', label:'They responded, case moving again', dependency:'Passport Office (processing)', rec:'WAIT',
+      state:'5a·R', label:'They responded, case moving again', rungLabel:'follow-up worked, case moving', dependency:'Passport Office (processing)', rec:'WAIT',
       explanation:"You've reported that their response got things moving. NextMove can't verify progress beyond your own report, so this rests on what you saw. The next milestone is the passport itself.",
       whatShort:"Nothing to do; it's moving",
       whatToDo:'Nothing right now. Add an update if it stalls again, or when the passport arrives.',
@@ -1017,7 +1024,7 @@ const passportPlaybook = {
       source:{title:"Citizen's Charter (MEA)"},
       mustNot:'Any promise that movement continues, or a date the passport "should" arrive.'},
     {id:'state-5b-r', condition:a=>a.gOutcome==='resolved',
-      state:'5b·R', label:'Grievance answered, case moving again', dependency:'Passport Office (processing)', rec:'WAIT',
+      state:'5b·R', label:'Grievance answered, case moving again', rungLabel:'grievance answered, case moving', dependency:'Passport Office (processing)', rec:'WAIT',
       explanation:"Your grievance got a response and you've reported that things are moving. The grievance rung did its job; the next milestone is the passport itself.",
       whatShort:"Nothing to do; it's moving",
       whatToDo:'Nothing right now. Add an update if it stalls again, or when the passport arrives.',
@@ -1027,7 +1034,7 @@ const passportPlaybook = {
       source:{title:"Citizen's Charter — Grievance Redressal section (MEA)"},
       mustNot:'Any promise that movement continues, or a predicted arrival date.'},
     {id:'state-dpg-r', condition:a=>a.dpgOutcome==='resolved',
-      state:'DPG·R', label:'DPG responded, case moving again', dependency:'Passport Office (processing)', rec:'WAIT',
+      state:'DPG·R', label:'DPG responded, case moving again', rungLabel:'DPG responded, case moving', dependency:'Passport Office (processing)', rec:'WAIT',
       explanation:"The Directorate of Public Grievances responded and you've reported that things are moving. That's the top of the ladder doing its job; the next milestone is the passport itself.",
       whatShort:"Nothing to do; it's moving",
       whatToDo:'Nothing right now. Add an update if it stalls again, or when the passport arrives.',
@@ -1043,7 +1050,7 @@ const passportPlaybook = {
     // "Filed and waiting" is its own honest WAIT state — not "unresolved."
     // Most-specific-first: these run before their parent rungs.
     {id:'state-dpg-p', condition:a=>a.dpgFiled==='yes',
-      state:'DPG·W', label:'Escalated to the DPG, response pending', dependency:'Directorate of Public Grievances', rec:'WAIT',
+      state:'DPG·W', label:'Escalated to the DPG, response pending', rungLabel:'escalated to the DPG, response pending', dependency:'Directorate of Public Grievances', rec:'WAIT',
       explanation:"Your escalation is with the Directorate of Public Grievances, the top of the verified ladder for passport grievances. Nothing further is needed from you while they review.",
       whatShort:'Nothing to do while the DPG reviews',
       whatToDo:'Nothing right now. Add an update to your casefile when the DPG responds.',
@@ -1053,7 +1060,7 @@ const passportPlaybook = {
       source:{title:'Grievance page — passportindia.gov.in'},
       mustNot:'Any prediction of the outcome or its timing.'},
     {id:'state-5b-p', condition:a=>a.q2==='formal_grievance' && a.gOutcome==='pending',
-      state:'5b·W', label:'Grievance filed, response pending', dependency:'Grievance cell (CPGRAMS)', rec:'WAIT',
+      state:'5b·W', label:'Grievance filed, response pending', rungLabel:'grievance filed, response pending', dependency:'Grievance cell (CPGRAMS)', rec:'WAIT',
       explanation:"Your formal grievance is registered. It's with the grievance cell now. Your grievance number is the anchor for everything from here.",
       whatShort:'Your grievance is in. Nothing to do yet.',
       whatToDo:'Nothing further right now. Keep the grievance number safe and add an update when a response arrives.',
@@ -1063,7 +1070,7 @@ const passportPlaybook = {
       source:{title:'Grievance page — passportindia.gov.in'},
       mustNot:'Any number of days defining "reasonable."'},
     {id:'state-5a-p', condition:a=>a.q2==='informal' && a.fOutcome==='pending',
-      state:'5a·W', label:'Follow-up sent, awaiting their response', dependency:'Passport Office', rec:'WAIT',
+      state:'5a·W', label:'Follow-up sent, awaiting their response', rungLabel:'follow-up sent, response pending', dependency:'Passport Office', rec:'WAIT',
       explanation:"You've sent your follow-up. The ball is with the Passport Office now, and nothing further is needed from you until they respond.",
       whatShort:'Nothing to do until they respond',
       whatToDo:"Nothing is required from you right now. When a response arrives (or clearly doesn't), add an update to your casefile.",
@@ -1073,7 +1080,7 @@ const passportPlaybook = {
       source:{title:"Citizen's Charter — Grievance Redressal section (MEA)"},
       mustNot:'Any claim about when the response "should" arrive.'},
     {id:'state-5b', condition:a=>a.q2==='formal_grievance',
-      state:'5b', label:'Formal grievance raised, unresolved', dependency:'Passport-issuing Authority / MEA', rec:'ESCALATE',
+      state:'5b', label:'Formal grievance raised, unresolved', rungLabel:'formal grievance unresolved', dependency:'Passport-issuing Authority / MEA', rec:'ESCALATE',
       explanation:"You've already raised a formal grievance and it isn't resolved. The right move now is to escalate beyond the Passport Office itself, to the body that oversees grievance redressal.",
       whatShort:'Escalate to the Directorate of Public Grievances',
       whatToDo:'Escalate to the Directorate of Public Grievances (DPG), Cabinet Secretariat, referencing your existing grievance number.',
@@ -1083,7 +1090,7 @@ const passportPlaybook = {
       source:{title:"Grievance page — passportindia.gov.in", quote:'"...within a reasonable period of time" — no numeric deadline is stated.'},
       mustNot:'Any specific number of days defining "reasonable."'},
     {id:'state-5a', condition:a=>a.q2==='informal',
-      state:'5a', label:'Followed up informally, unresolved', dependency:'Passport Office', rec:'FOLLOW_UP',
+      state:'5a', label:'Followed up informally, unresolved', rungLabel:'informal follow-up unresolved', dependency:'Passport Office', rec:'FOLLOW_UP',
       explanation:"You've already tried following up informally and it hasn't moved things forward. The next verified step is to make it formal, so there's a record and a defined channel.",
       whatShort:'Move to a formal Grievance / CPGRAMS filing',
       whatToDo:'Move to the formal Grievance / CPGRAMS channel, referencing your earlier informal attempt.',
@@ -3229,7 +3236,7 @@ function renderPassportQ2(){
 function passportQ2Answer(v){ setAns('q2',v); nav('passport-diagnosis'); }
 
 function renderPassportDiagnosis(){
-  const d = evaluate(passportPlaybook, S.answers);
+  const d = decoratePassport(evaluate(passportPlaybook, S.answers));
   const labels = {...labelMap('q1', {...PASSPORT_Q1_LABELS, not_sure:"I'm not sure"}), ...labelMap('q2', PASSPORT_Q2_LABELS)};
   let extra = null;
   if(S.answers.recoveryPastedText){ extra = `Pasted status text: "${S.answers.recoveryPastedText}"`; }
@@ -3238,7 +3245,13 @@ function renderPassportDiagnosis(){
 }
 function PASSPORT_STEPS_FOR(d){
   if(d.state==='6') return null;
-  const idx = {'1':2,'2':2,'4':2,'3':3}[d.state] ?? null;
+  // Base states place directly; ladder-rung states place via the stage
+  // answer (q1), so the trail keeps showing WHERE the case is stuck
+  // even after follow-ups begin — the stage dimension, kept visible.
+  let idx = {'1':2,'2':2,'4':2,'3':3}[d.state] ?? null;
+  if(idx===null && d.matchedAnswers){
+    idx = {no_contact:2, contacted_incomplete:2, adverse:2, verified_no_progress:3}[d.matchedAnswers.q1] ?? null;
+  }
   if(idx===null) return null;
   return {steps:['Application','Appointment','Police verification','Processing'], current:idx};
 }
@@ -3485,9 +3498,29 @@ function renderTimeline(t){
     }).join('')}
   </div>`;
 }
+/* Stage · rung composite (2026-09-05, chunk 4 — user-locked decision).
+   The approved snapshot model let a follow-up answer override the stage
+   entirely, so every tracked passport case converged onto one identical
+   ladder and the stage went invisible. Now both dimensions carry: the
+   label reads "{stage} · {rung}", the recommendation comes from the
+   rung, and the stage stays visible through the case trail (extended
+   to ladder states below). */
+const PASSPORT_STAGE_SHORT = {
+  no_contact:'Awaiting verification',
+  contacted_incomplete:'Verification in progress',
+  verified_no_progress:'Verified, processing quiet',
+  adverse:'Adverse outcome',
+};
+function decoratePassport(d){
+  const q1 = d.matchedAnswers && d.matchedAnswers.q1;
+  if(d.rungLabel && PASSPORT_STAGE_SHORT[q1]){
+    return {...d, label: PASSPORT_STAGE_SHORT[q1] + ' · ' + d.rungLabel};
+  }
+  return d;
+}
 function currentDiagnosis(engineKey){
   if(engineKey==='passport'){
-    return evaluate(passportPlaybook, S.answers);
+    return decoratePassport(evaluate(passportPlaybook, S.answers));
   }
   if(engineKey==='voter'){
     if(S.answers.voterQ1==='unclassified') return {...voterPlaybook.fallback, matchedAnswers:S.answers};
