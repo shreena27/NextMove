@@ -1655,6 +1655,7 @@ S.savedCases = store.get('nm_cases') || [];
   const old = store.get('nm_case');
   if(old && !S.savedCases.length){
     S.savedCases = [{...old, id:'c'+(old.savedAt||Date.now()), outcome:'still_open',
+      returnScreen: old.returnScreen || (old.engineKey+'-nextmove'),
       log:[{t:old.savedAt||Date.now(), kind:'diagnosed', text:old.stateLabel||'Case saved'}]}];
     store.set('nm_cases', S.savedCases); store.del('nm_case');
   }
@@ -1770,7 +1771,9 @@ function loadCase(id){
 }
 function continueSaved(id){
   const c=loadCase(id); if(!c) return;
-  nav(c.returnScreen);
+  // Older saved-case shapes can lack returnScreen; Next Move is always a
+  // valid landing for an open case, so the button can never dead-end.
+  nav(c.returnScreen || (c.engineKey+'-nextmove'));
 }
 function removeSaved(id){
   S.savedCases = S.savedCases.filter(c=>c.id!==id);
