@@ -66,6 +66,7 @@ export const UI = {
     diagnosis: 'Diagnosis',
     yourNextMove: 'Your next move',
     justOneQuestion: 'Just one question',
+    prepare: 'Prepare',
   },
   topbar: {
     brand: 'NextMove',
@@ -139,6 +140,28 @@ export const UI = {
      *  here would need a `sourced_dates` allowlist entry that corrodes an
      *  allowlist meant to stay unambiguously government-sourced. */
     verifiedOn: "Checked against NextMove's archived copy of this source on {date}.",
+  },
+  /** "Prepare this for me" screen chrome (C4). Transcribed from the
+   *  prototype's `renderPrepare` (design/nextmove-v1-prototype.html,
+   *  3746-3800-ish, tag v1-design-lock-2) — none of it authored. Task 3
+   *  supplies the shell's seven entries (through `channelOpen`); Task 4
+   *  adds the draft-card entries (`draftK` through `copiedMany`), and
+   *  Task 5 adds the checklist/visit-card entries (`stepsCount` through
+   *  `doneBackHome`). `channelPhone` is a TEMPLATE like `ui:trust.verifiedOn`
+   *  above — registered with its `{phone}` placeholder, interpolated at
+   *  render, carved out of screenCopy.test.tsx's literal-string scan the
+   *  same way. */
+  prepare: {
+    headlineFallback: "Here's how to get this done.",
+    ledeDraft:
+      'Review the draft, make it yours, then walk the steps. You send it yourself, from your own hands, on the official channel.',
+    ledeSteps:
+      'Walk the steps below, ticking them off as you go. Every one of them happens on the official channel, by you.',
+    trust:
+      "NextMove drafts and organizes; it never submits anything on your behalf. The final step is always yours. That's by design.",
+    channelK: 'Official channel',
+    channelPhone: 'Helpline: {phone}', // TEMPLATE — see the header note above.
+    channelOpen: 'Open in new tab ↗',
   },
 } as const
 
