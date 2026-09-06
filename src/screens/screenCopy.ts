@@ -66,6 +66,7 @@ export const UI = {
     diagnosis: 'Diagnosis',
     yourNextMove: 'Your next move',
     justOneQuestion: 'Just one question',
+    prepare: 'Prepare',
   },
   topbar: {
     brand: 'NextMove',
@@ -139,6 +140,47 @@ export const UI = {
      *  here would need a `sourced_dates` allowlist entry that corrodes an
      *  allowlist meant to stay unambiguously government-sourced. */
     verifiedOn: "Checked against NextMove's archived copy of this source on {date}.",
+  },
+  /** "Prepare this for me" screen chrome (C4). Transcribed from the
+   *  prototype's `renderPrepare` (design/nextmove-v1-prototype.html,
+   *  3746-3800-ish, tag v1-design-lock-2) — none of it authored. Task 3
+   *  supplies the shell's seven entries (through `channelOpen`); Task 4
+   *  adds the draft-card entries (`draftK` through `copiedMany`), and
+   *  Task 5 adds the checklist/visit-card entries (`stepsCount` through
+   *  `doneBackHome`). `channelPhone` is a TEMPLATE like `ui:trust.verifiedOn`
+   *  above — registered with its `{phone}` placeholder, interpolated at
+   *  render, carved out of screenCopy.test.tsx's literal-string scan the
+   *  same way. */
+  prepare: {
+    headlineFallback: "Here's how to get this done.",
+    ledeDraft:
+      'Review the draft, make it yours, then walk the steps. You send it yourself, from your own hands, on the official channel.',
+    ledeSteps:
+      'Walk the steps below, ticking them off as you go. Every one of them happens on the official channel, by you.',
+    trust:
+      "NextMove drafts and organizes; it never submits anything on your behalf. The final step is always yours. That's by design.",
+    channelK: 'Official channel',
+    channelPhone: 'Helpline: {phone}', // TEMPLATE — see the header note above.
+    channelOpen: 'Open in new tab ↗',
+    draftK: 'Your draft',
+    draftAria: 'Editable draft',
+    hintOne: '{n} blank in [brackets] left to fill; everything else is ready.', // TEMPLATE
+    hintMany: '{n} blanks in [brackets] left to fill; everything else is ready.', // TEMPLATE
+    hintReady: 'All blanks filled. Ready to copy and send.',
+    copy: 'Copy draft',
+    copied: 'Copied ✓',
+    copiedOne: 'Copied, {n} blank left', // TEMPLATE
+    copiedMany: 'Copied, {n} blanks left', // TEMPLATE
+    stepsCount: '{done} of {total} done', // TEMPLATE
+    stepOpen: 'Open ↗',
+    doneNoteFallback: "All steps done. You've completed everything this stage needs from you.",
+    visitTitle: "If you're going in person",
+    visitCarry: 'Carry',
+    visitExpect: 'What to expect',
+    visitThen: 'Then what?',
+    visitNote:
+      "The carry list combines this case's verified requirements with common-sense basics. The tips are general practical guidance for any government office, not official rules.",
+    doneBackHome: 'Done, back to Home',
   },
 } as const
 

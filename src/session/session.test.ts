@@ -123,3 +123,11 @@ describe('restart — AC-9 + PRD §15 inline confirmation', () => {
     expect(s).toEqual(initialSession)
   })
 })
+
+describe('C4 scope exclusion 2', () => {
+  it('C4 added no prep* field to SessionState — step ticks and drafts stay component-local', () => {
+    expect(Object.keys(initialSession).sort()).toEqual([
+      'answers', 'history', 'recoveryText', 'restartConfirm', 'screen', 'trustOpen', 'voterEntryExplain',
+    ])
+  })
+})

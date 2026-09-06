@@ -133,4 +133,59 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
     expect(css).toContain('#app.settled')
     expect(css).toContain('@media (prefers-reduced-motion:reduce)')
   })
+
+  it('carries the prepare/channel/visit component CSS (prototype 533-561, 569-646)', () => {
+    for (const cls of [
+      '.prep-card', '.prep-draft', '.prep-card-foot', '.prep-hint', '.prep-trust',
+      // Braces matter here: `.copy-btn.copied` is a SUBSTRING of
+      // `.copy-btn.copied-warn`, so asserting the bare selector would pass
+      // even if only the -warn rule shipped. Assert the opening brace.
+      '.copy-btn{', '.copy-btn.copied{', '.copy-btn.copied-warn{',
+      '.psteps', '.psteps-count', '.psteps-done',
+      '.pstep', '.pstep-tick', '.pstep-box', '.pstep-text', '.pstep-link',
+      '.channel-card', '.channel-body', '.channel-k', '.channel-v', '.channel-phone', '.channel-open',
+      '.visit-card', '.visit-title', '.visit-cols', '.visit-k', '.visit-list', '.visit-note',
+    ]) expect(css, cls).toContain(cls)
+  })
+
+  it('does NOT ship C5 casefile styles that sit inside the same prototype range', () => {
+    // Prototype 562-568 (.saved-next/.saved-steps/.saved-meta) is C5's, and
+    // it is physically interleaved into C4's block — appending 533-646 in one
+    // go is the exact mistake this pins. Issue #7 / C3 handoff.
+    // Scoped to the CSS body (past the header) — the header's own
+    // provenance prose legitimately names these classes as "deliberately
+    // NOT lifted"; this test exists to catch the class shipping as a live
+    // rule in the body, not to forbid mentioning it in the disclaimer.
+    const body = css.slice(css.indexOf(':root{'))
+    for (const cls of ['.saved-next', '.saved-steps', '.saved-meta']) {
+      expect(body, cls).not.toContain(cls)
+    }
+  })
+
+  it('does NOT ship the C8 describe-it fills-review styles', () => {
+    // Scoped to the body — see the C5 test above for why.
+    const body = css.slice(css.indexOf(':root{'))
+    for (const cls of ['.fill-list', '.fill-review']) expect(body, cls).not.toContain(cls)
+  })
+
+  it('keeps the prototype ordering: prepare CSS precedes the settled/reduced-motion tail', () => {
+    // Scoped to the body — the header's own prose mentions "996-1008
+    // (#app.settled animation suppression...)", which would otherwise
+    // trip this check without any real CSS ever having been reordered.
+    const body = css.slice(css.indexOf(':root{'))
+    expect(body.indexOf('.prep-card')).toBeGreaterThan(-1)
+    expect(body.indexOf('.prep-card')).toBeLessThan(body.indexOf('#app.settled'))
+    expect(body.indexOf('.visit-note')).toBeLessThan(body.indexOf('@media (prefers-reduced-motion:reduce)'))
+  })
+
+  it("the file's own provenance header no longer disclaims what it now ships", () => {
+    // index.css:13-14 said "Deliberately NOT lifted ... 532-650 (.prep-*,
+    // .channel-*, .visit-* -> C4)". After this task that sentence is false.
+    // A provenance header that lies is worse than none. Design note 6.
+    const header = css.slice(0, css.indexOf(':root{'))
+    expect(header).not.toContain('532-650')
+    expect(header).toContain('533-561')
+    expect(header).toContain('569-646')
+    expect(header).toContain('562-568')   // the C5 carve-out, still disclaimed
+  })
 })

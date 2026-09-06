@@ -34,7 +34,7 @@
  *  render is safe here: both passes read the same ref (no effect has run
  *  between them yet), so both compute the same `settled`. */
 import { useReducer, useRef, useEffect, type ReactNode } from 'react'
-import { sessionReducer, initialSession, type ScreenId } from './session/session'
+import { sessionReducer, initialSession, type ScreenId, type SessionAction } from './session/session'
 import { hasAnswers } from './screens/screenProps'
 import { Topbar } from './ui/Topbar'
 import { Banner } from './ui/Banner'
@@ -46,11 +46,32 @@ import { VoterEntry, VoterQ1, VoterQ2 } from './screens/voter/VoterScreens'
 import { SirState, SirUnsupported, SirQ1 } from './screens/sir/SirScreens'
 import { DiagnosisScreen } from './templates/DiagnosisScreen'
 import { NextMoveScreen } from './templates/NextMoveScreen'
+import { PrepareScreen } from './templates/PrepareScreen'
 import { diagnose } from './domain/engine'
 import { passportEngine, voterEngine, sirEngine } from './playbooks/engines'
+import { prepPlanFor } from './playbooks/prep'
 import { SIR_STATES, SIR_Q1_OPTIONS_FOR } from './playbooks/sirPlaybook'
 import { labelMap, PASSPORT_Q1_LABELS, PASSPORT_Q2_LABELS, VOTER_Q1_LABELS, VOTER_APPEAL_LABELS } from './screens/labels'
 import { UI, PASSPORT_COPY, VOTER_COPY, SIR_COPY } from './screens/screenCopy'
+
+/** DESIGN NOTE (Task 6 brief, design note 3): the honest port of the
+ *  prototype's `if(!prep){ restart(); return renderHome(); }` guard
+ *  (3749). `PrepareScreen`'s `prep` prop is required and non-nullable
+ *  (Task 3), so a `*-prepare` screen id reached with a diagnosis that has
+ *  no prep plan cannot be handed to it — unreachable through the UI (the
+ *  "Prepare this for me" CTA only renders behind `hasPrepPlan`), but
+ *  reachable via a direct NAVIGATE. This reproduces the prototype's
+ *  behaviour: clear the working case and land on Home. RESTART is
+ *  dispatched from an effect, never during render, and nothing is
+ *  rendered — never `<Home>` with the stale answers that got it here
+ *  (Home is a clean slate, always), and never a silent fall-through to
+ *  `NextMoveScreen`. */
+function RestartToHome({ dispatch }: { dispatch: (action: SessionAction) => void }) {
+  useEffect(() => {
+    dispatch({ type: 'RESTART' })
+  }, [dispatch])
+  return null
+}
 
 export default function App() {
   const [state, dispatch] = useReducer(sessionReducer, initialSession)
@@ -142,11 +163,34 @@ export default function App() {
     }
     case 'passport-nextmove': {
       const d = diagnose(passportEngine, state.answers)
+      const prep = prepPlanFor(d)
       body = (
         <NextMoveScreen
           serviceLabel={UI.serviceLabel.passport}
           engineKey="passport"
           d={d}
+          hasPrepPlan={Boolean(prep)}
+          onPrepare={() => dispatch({ type: 'NAVIGATE', screen: 'passport-prepare' })}
+          topbar={topbar(true, true)}
+          dispatch={dispatch}
+        />
+      )
+      break
+    }
+    case 'passport-prepare': {
+      const d = diagnose(passportEngine, state.answers)
+      const prep = prepPlanFor(d)
+      if (!prep) {
+        body = <RestartToHome dispatch={dispatch} />
+        break
+      }
+      body = (
+        <PrepareScreen
+          key={d.ruleId}
+          serviceLabel={UI.serviceLabel.passport}
+          engineKey="passport"
+          d={d}
+          prep={prep}
           topbar={topbar(true, true)}
           dispatch={dispatch}
         />
@@ -185,11 +229,34 @@ export default function App() {
     }
     case 'voter-nextmove': {
       const d = diagnose(voterEngine, state.answers)
+      const prep = prepPlanFor(d)
       body = (
         <NextMoveScreen
           serviceLabel={UI.serviceLabel.voterServices}
           engineKey="voter"
           d={d}
+          hasPrepPlan={Boolean(prep)}
+          onPrepare={() => dispatch({ type: 'NAVIGATE', screen: 'voter-prepare' })}
+          topbar={topbar(true, true)}
+          dispatch={dispatch}
+        />
+      )
+      break
+    }
+    case 'voter-prepare': {
+      const d = diagnose(voterEngine, state.answers)
+      const prep = prepPlanFor(d)
+      if (!prep) {
+        body = <RestartToHome dispatch={dispatch} />
+        break
+      }
+      body = (
+        <PrepareScreen
+          key={d.ruleId}
+          serviceLabel={UI.serviceLabel.voterServices}
+          engineKey="voter"
+          d={d}
+          prep={prep}
           topbar={topbar(true, true)}
           dispatch={dispatch}
         />
@@ -230,11 +297,34 @@ export default function App() {
     }
     case 'sir-nextmove': {
       const d = diagnose(sirEngine, state.answers)
+      const prep = prepPlanFor(d)
       body = (
         <NextMoveScreen
           serviceLabel={UI.serviceLabel.sir}
           engineKey="sir"
           d={d}
+          hasPrepPlan={Boolean(prep)}
+          onPrepare={() => dispatch({ type: 'NAVIGATE', screen: 'sir-prepare' })}
+          topbar={topbar(true, true)}
+          dispatch={dispatch}
+        />
+      )
+      break
+    }
+    case 'sir-prepare': {
+      const d = diagnose(sirEngine, state.answers)
+      const prep = prepPlanFor(d)
+      if (!prep) {
+        body = <RestartToHome dispatch={dispatch} />
+        break
+      }
+      body = (
+        <PrepareScreen
+          key={d.ruleId}
+          serviceLabel={UI.serviceLabel.sir}
+          engineKey="sir"
+          d={d}
+          prep={prep}
           topbar={topbar(true, true)}
           dispatch={dispatch}
         />

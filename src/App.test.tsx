@@ -6,9 +6,39 @@ import { diagnose } from './domain/engine'
 import { passportEngine, voterEngine, sirEngine } from './playbooks/engines'
 import { SIR_STATES } from './playbooks/sirPlaybook'
 import * as evaluateModule from './domain/evaluate'
+import { UI } from './screens/screenCopy'
+import { PREP } from './playbooks/prep'
+import type { ScreenId } from './session/session'
+
+// Design note 3's no-plan guard (design/nextmove-v1-prototype.html 3749,
+// ported as App.tsx's `RestartToHome`) is reachable only via a direct
+// NAVIGATE to a '*-prepare' screen id — never through the UI, since the
+// CTA only renders behind `hasPrepPlan`. `<App/>` exposes no dispatch or
+// initial-screen prop (by design — session.ts's own field list is pinned,
+// and App.tsx's shape is transcribed exactly per the brief), so the one
+// test below that exercises this seeds the FIRST render's screen id via a
+// scoped module mock instead of adding test-only surface to App itself.
+// `sessionReducer`'s own `RESTART` case is untouched by this: it closes
+// over session.ts's OWN internal `initialSession` binding (same module,
+// no import indirection), never the mocked export read here, so restarting
+// still lands on the real, unmutated clean-slate state — no infinite loop,
+// no stale screen id surviving the restart.
+const seededScreen = vi.hoisted(() => ({ current: undefined as string | undefined }))
+vi.mock('./session/session', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./session/session')>()
+  return {
+    ...actual,
+    get initialSession() {
+      return seededScreen.current
+        ? { ...actual.initialSession, screen: seededScreen.current as ScreenId }
+        : actual.initialSession
+    },
+  }
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
+  seededScreen.current = undefined
 })
 
 describe('Passport, end to end — the flow is real, not just unit-tested components', () => {
@@ -83,6 +113,61 @@ describe('Passport, end to end — the flow is real, not just unit-tested compon
     // Yes returns Home, empty: no Back/Restart, no stale answers.
     await userEvent.click(screen.getByRole('button', { name: 'Restart' }))
     await userEvent.click(screen.getByRole('button', { name: 'Yes' }))
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    expect(screen.queryByRole('button', { name: /← Back/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Restart' })).toBeNull()
+  })
+})
+
+describe('Prepare (C4), end to end', () => {
+  it('Passport ESCALATE -> Prepare -> tick every step -> Done, back to Home', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    await userEvent.click(screen.getByRole('button', { name: /looks negative or confusing/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Yes, I filed a formal grievance/ }))
+    expect(document.querySelector('.stamp')).toHaveTextContent('ESCALATE')
+
+    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+    await userEvent.click(screen.getByRole('button', { name: UI.nextMove.prepare }))
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(PREP['state-5b'].title!)
+
+    // (b) tick every step and see the done note.
+    const ticks = Array.from(document.querySelectorAll('.pstep-tick'))
+    expect(ticks).toHaveLength(PREP['state-5b'].steps.length)
+    for (const t of ticks) await userEvent.click(t)
+    expect(document.querySelector('.psteps-done')).toHaveTextContent(PREP['state-5b'].doneNote!)
+
+    // (c) "Done, back to Home" lands on Home with answers cleared: Home's
+    // hero is present, and returning into Passport Q1 shows no
+    // pre-selected answer (same check AC-8's own test uses).
+    await userEvent.click(screen.getByRole('button', { name: UI.prepare.doneBackHome }))
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    expect(screen.queryByRole('button', { name: /← Back/ })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    for (const row of document.querySelectorAll('.answers .arow')) {
+      expect(row).not.toHaveClass('selected')
+    }
+  })
+
+  it('a WAIT state shows "Back to Home" and no prepare CTA — the locked no-prep branch, unregressed by C4', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+    expect(document.querySelector('.stamp')).toHaveTextContent('WAIT')
+
+    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+    expect(screen.getByRole('button', { name: UI.common.backToHome })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: UI.nextMove.prepare })).toBeNull()
+  })
+
+  it('a direct NAVIGATE to a *-prepare screen with no plan lands back on Home — the design note 3 guard', () => {
+    seededScreen.current = 'sir-prepare'
+    render(<App />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
     expect(screen.queryByRole('button', { name: /← Back/ })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Restart' })).toBeNull()

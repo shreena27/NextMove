@@ -113,6 +113,34 @@ export const SAFETY_EXEMPTIONS: { at: string; pattern: BannedPatternId; reason: 
     pattern: 'causal',
     reason: 'Same false positive as passport:LADDER_DEFS.passport.caption and sir:s-notice.whatToDo: "...Used only as far as your case needs" describes how much of the ladder applies to this citizen, not a cause.',
   },
+  // C4 Task 1 (prep copy port): three more causal-pattern false positives in
+  // src/playbooks/prep.ts's PREP map, in two categories.
+  //   1. Possessive "as your" — same shape as sir:s-notice.whatToDo above.
+  //   2. Citizen-voiced draft letters where the clause after "because" is an
+  //      UNFILLED [bracket] the citizen fills in themselves. That unfilled
+  //      bracket is the load-bearing condition, NOT the first-person voice:
+  //      first-person alone is a real loophole ("I was refused because the
+  //      officer was biased" is first-person and still asserts a specific
+  //      cause NextMove has no source for). First-person voice only supports
+  //      the case — it establishes the finished sentence will be the
+  //      citizen's own claim, never NextMove's — it is not the test on its
+  //      own. Pinned executable by prep.test.ts's DRAFT_CAUSAL_EXEMPTIONS
+  //      check, which fails if either bracket is ever filled in.
+  {
+    at: 'passport:PREP.state-4.steps[2]',
+    pattern: 'causal',
+    reason: 'Possessive, not causal — same false positive as sir:s-notice.whatToDo\'s "as your notice directs": "as your message or call script" names whose script it is, it does not assert a cause.',
+  },
+  {
+    at: 'voter:PREP.v-3.draft',
+    pattern: 'causal',
+    reason: 'Citizen-voiced draft letter. The clause after `because` is an unfilled `[bracket]` the citizen supplies, so NextMove ships a sentence frame and asserts no cause. First-person voice supports this but is not the test — a first-person sentence naming a specific cause would still violate §7. Pinned by prep.test.ts\'s `DRAFT_CAUSAL_EXEMPTIONS` check, which fails if the bracket is ever filled in.',
+  },
+  {
+    at: 'voter:PREP.v-5.draft',
+    pattern: 'causal',
+    reason: 'Citizen-voiced draft letter. The clause after `because` is an unfilled `[bracket]` the citizen supplies, so NextMove ships a sentence frame and asserts no cause. First-person voice supports this but is not the test — a first-person sentence naming a specific cause would still violate §7. Pinned by prep.test.ts\'s `DRAFT_CAUSAL_EXEMPTIONS` check, which fails if the bracket is ever filled in.',
+  },
 ]
 
 /** Action nouns belonging to an SIR phase that has already ended. Scanned
@@ -324,8 +352,12 @@ export function numericFindings(strings: CopyString[]): string[] {
   return findings
 }
 
-/** §7's retired-action-noun scan, for the state's currently configured phase. */
-export function retiredActionFindings(playbook: Playbook, currentPhaseId: string): string[] {
+/** §7's retired-action-noun scan, for the state's currently configured phase.
+ *  `extra` carries non-rule citizen-facing copy (C4's prep steps, C5's
+ *  check-in labels) through the SAME scan — this scan's own RETIRED_ACTIONS
+ *  doc comment names both chunks as required to EXTEND it, not fork it. The
+ *  `= []` default keeps every pre-existing call site behaviour-identical. */
+export function retiredActionFindings(playbook: Playbook, currentPhaseId: string, extra: CopyString[] = []): string[] {
   const findings: string[] = []
   for (const entry of RETIRED_ACTIONS) {
     if (!entry.retiredForPhases.includes(currentPhaseId)) continue
@@ -338,6 +370,11 @@ export function retiredActionFindings(playbook: Playbook, currentPhaseId: string
       }
       if (entry.action.test(rule.where.label)) {
         findings.push(`${playbook.serviceId}:${rule.id}.where.label: routes to a retired action ("${entry.retiredNoun}"). ${entry.reason}`)
+      }
+    }
+    for (const c of extra) {
+      if (entry.action.test(c.text)) {
+        findings.push(`${c.at}: instructs a retired action ("${entry.retiredNoun}"). ${entry.reason}`)
       }
     }
   }

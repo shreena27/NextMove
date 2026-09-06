@@ -3,15 +3,19 @@
  *  including its closing brace at 144, one past the brief's stated 105-143 —
  *  the 105-143 range as literally stated omits the block's closing `}`,
  *  which would leave every subsequent rule nested inside :root; see Task 1
- *  report), 145-531 (reset through .inline-explain-actions button), and
- *  996-1008 (#app.settled animation suppression + reduced-motion collapse).
+ *  report), 145-531 (reset through .inline-explain-actions button), 533-561
+ *  (.prep-* + .copy-btn* + .psteps-done: prepare draft + guided submission),
+ *  569-646 (.psteps/.pstep-* + .channel-* + .prep-trust + .visit-*: step
+ *  checklist, official channel, in-person visit card), and 996-1008
+ *  (#app.settled animation suppression + reduced-motion collapse).
  *  Every value, comment, keyframe, nth-child stagger and ::after marker
  *  stroke below is transcribed, not re-authored — see src/ui/tokens.ts and
  *  tokens.test.ts for why (no Tailwind import, no apply-directives, no
  *  preflight reset).
  *
- *  Deliberately NOT lifted (later chunks own them): 532-650 (.prep-*,
- *  .channel-*, .visit-* -> C4), 651-800 (.btn-ghost, auth, .saved-*,
+ *  Deliberately NOT lifted (later chunks own them): 562-568 (.saved-next /
+ *  .saved-next::before / .saved-steps / .saved-meta -> C5, physically
+ *  interleaved into C4's prepare block), 651-800 (.btn-ghost, auth, .saved-*,
  *  .home-cases, .case-*, .cp-* -> C5/C7), 801-826 (the ladder -> C5),
  *  827-995 (.update-mod, .ci-*, .journey, .describe-*, .read-*,
  *  .fill-review -> C5/C8). */
@@ -443,6 +447,114 @@ h2.headline{
 }
 .inline-explain-actions{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
 .inline-explain-actions button{font-size:13px; padding:9px 16px;}
+
+/* ---------- prepare: draft + guided submission ----------
+   The user reviews, edits, copies, and submits the draft themselves —
+   NextMove never files anything. Steps are a tick-off checklist
+   (satisfying, visible progress; not persisted — it's a prototype). */
+.prep-card{
+  background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  box-shadow:var(--shadow-float); padding:20px 22px; margin-bottom:26px;
+}
+.prep-draft{
+  width:100%; border:1.5px solid var(--line); border-radius:10px; padding:14px 16px;
+  font-family:'Work Sans',sans-serif; font-size:14px; line-height:1.65; color:var(--ink);
+  background:var(--paper); resize:vertical; min-height:230px; caret-color:var(--ink);
+}
+.prep-draft:focus-visible{outline:2.5px solid var(--ink); outline-offset:2px;}
+.prep-card-foot{display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:12px; flex-wrap:wrap;}
+.prep-hint{font-size:12.5px; color:var(--ink-faint); line-height:1.5; flex:1; min-width:200px;}
+.copy-btn{
+  font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.04em; font-weight:600;
+  background:var(--card); color:var(--ink); border:1.5px solid var(--line-strong); border-radius:999px;
+  padding:9px 18px; cursor:pointer; transition:border-color 150ms ease, background 150ms ease;
+}
+.copy-btn:hover{border-color:var(--ink);}
+.copy-btn.copied{background:var(--wait-bg); color:var(--wait); border-color:var(--wait);}
+.copy-btn.copied-warn{background:var(--follow-bg); color:var(--follow); border-color:var(--follow);}
+.psteps-done{
+  font-size:14px; color:var(--wait); font-weight:600; line-height:1.55;
+  background:var(--wait-bg); border-radius:12px; padding:13px 18px; margin:16px 0 0;
+  animation:enter 260ms var(--ease);
+}
+.psteps{border-top:1px solid var(--line-strong);}
+.psteps-count{
+  font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
+  color:var(--ink-soft); margin:0 0 10px;
+}
+.pstep{
+  display:flex; align-items:center; gap:10px;
+  border-bottom:1px solid var(--line);
+  transition:background 160ms ease;
+}
+.pstep:hover{background:var(--butter-soft);}
+.pstep-tick{
+  flex:1; display:flex; align-items:flex-start; gap:14px; text-align:left;
+  padding:15px 4px; border:none; background:none; cursor:pointer;
+  font-family:'Work Sans',sans-serif; color:var(--ink);
+}
+.pstep-box{
+  flex:0 0 auto; width:20px; height:20px; border-radius:6px; border:1.5px solid var(--line-strong);
+  background:var(--card); display:flex; align-items:center; justify-content:center; margin-top:1px;
+  transition:background 150ms ease, border-color 150ms ease;
+}
+.pstep.done .pstep-box{background:var(--butter); border-color:var(--ink);}
+.pstep-box svg{opacity:0;}
+.pstep.done .pstep-box svg{opacity:1;}
+.pstep-text{flex:1; font-size:14.5px; line-height:1.55;}
+.pstep.done .pstep-text{color:var(--ink-soft); text-decoration:line-through; text-decoration-color:var(--line-strong);}
+.pstep-link{
+  flex:0 0 auto; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.04em;
+  color:var(--ink); text-decoration:none; border:1px solid var(--line-strong); border-radius:999px;
+  padding:6px 12px; margin-right:4px; background:var(--card);
+  transition:border-color 150ms ease;
+}
+.pstep-link:hover{border-color:var(--ink);}
+
+/* the official channel, one tap away, opening in a new tab so the
+   draft stays exactly where the user left it */
+.channel-card{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  padding:16px 20px; margin-bottom:22px;
+}
+.channel-body{flex:1; min-width:220px;}
+.channel-k{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--ink-faint); margin:0 0 4px;
+}
+.channel-v{font-size:14.5px; font-weight:600; line-height:1.45;}
+.channel-phone{font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--ink-soft); margin-top:3px;}
+.channel-open{
+  flex:0 0 auto; display:inline-flex; align-items:center; gap:7px;
+  font-family:'Work Sans',sans-serif; font-weight:600; font-size:13.5px;
+  color:var(--ink); text-decoration:none; background:var(--butter);
+  border:1.5px solid var(--butter); border-radius:999px; padding:10px 18px;
+  box-shadow:0 2px 0 rgba(61,36,28,0.14);
+  transition:background 150ms ease, transform 180ms var(--ease), box-shadow 180ms ease;
+}
+.channel-open:hover{background:var(--butter-deep); border-color:var(--butter-deep); transform:translateY(-1px);}
+.prep-trust{font-size:13px; color:var(--ink-soft); line-height:1.6; margin-top:18px; max-width:48ch;}
+/* the in-person visit card: verified carry items + general practical
+   tips, explicitly labeled apart so general advice never wears the
+   verified-source costume */
+.visit-card{
+  background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  padding:20px 22px; margin:22px 0 0;
+}
+.visit-title{font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:17px; margin:0 0 14px;}
+.visit-cols{display:block;}
+@media (min-width:760px){ .visit-cols{display:grid; grid-template-columns:1fr 1fr; gap:26px;} }
+.visit-k{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--ink-faint); margin:0 0 8px;
+}
+.visit-list{margin:0; padding:0 0 0 18px;}
+.visit-list li{font-size:13.5px; line-height:1.55; margin:0 0 7px; color:var(--ink);}
+.visit-note{
+  font-size:11.5px; color:var(--ink-faint); line-height:1.55; margin-top:12px;
+  border-top:1px dashed var(--line); padding-top:10px;
+}
 
 /* Same-screen re-renders (trust toggle, selection highlight, inline
    explainers) must not replay the entrance choreography — the stamp
