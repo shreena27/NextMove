@@ -26,3 +26,29 @@ export const PASSPORT_Q2_LABELS: Record<string, string> = {
   informal: 'Yes, informally',
   formal_grievance: 'Yes, I filed a formal grievance',
 }
+
+// Transcribed verbatim from design/nextmove-v1-prototype.html, lines 3408-
+// 3412. Same convention as PASSPORT_Q1_LABELS: no 'notsure' entry here — the
+// question screen appends it separately (raw pick 'notsure' normalizes to
+// 'unclassified' for voterQ1, so the diagnosis-label spread adds an
+// 'unclassified' key at the point of use, not a 'notsure' one).
+export const VOTER_Q1_LABELS: Record<string, string> = {
+  no_word: "I haven't heard anything yet",
+  blo_visited: "A BLO visited or contacted me, but I still don't have a result",
+  decision: "I got a decision but don't understand it, or it wasn't what I expected",
+}
+
+// Transcribed verbatim from design/nextmove-v1-prototype.html, lines 3446-
+// 3451. Deliberately DIFFERENT convention from VOTER_Q1_LABELS/
+// PASSPORT_Q1_LABELS: 'notsure' is baked in here, not appended at the point
+// of use. This map is keyed by voterAppealedRaw (the RAW pick, literal
+// 'notsure'), never by the normalized voterAppealed value, so its own
+// 'notsure' entry is already the right key — no append step is needed or
+// correct here. See voterPlaybook.ts's VOTER_DEPS note and the raw/
+// normalized answer split (C3's own addition).
+export const VOTER_APPEAL_LABELS: Record<string, string> = {
+  none: 'No, not yet',
+  pending: "Yes, and I'm still waiting to hear back",
+  decided: 'Yes, and I received a decision on that appeal too',
+  notsure: "I'm not sure",
+}

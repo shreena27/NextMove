@@ -15,16 +15,8 @@ import { AnswerRow } from '../../ui/AnswerRow'
 import { Split } from '../../ui/Split'
 import { PhaseEyebrow } from '../../ui/Crumbs'
 import { Button } from '../../ui/Button'
-import type { SessionState, SessionAction } from '../../session/session'
-
-interface ScreenProps {
-  state: SessionState
-  dispatch: (action: SessionAction) => void
-}
-
-function hasAnswers(state: SessionState): boolean {
-  return Object.keys(state.answers).length > 0
-}
+import type { ScreenProps } from '../screenProps'
+import { hasAnswers } from '../screenProps'
 
 // A very small, explicit, exact-match set of example status phrases —
 // deliberately not loose keyword matching. Fixed 2026-09-04: the previous

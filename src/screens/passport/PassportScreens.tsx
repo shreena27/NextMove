@@ -16,17 +16,9 @@ import { Split } from '../../ui/Split'
 import { PhaseEyebrow } from '../../ui/Crumbs'
 import { Banner } from '../../ui/Banner'
 import { Button } from '../../ui/Button'
-import type { SessionState, SessionAction } from '../../session/session'
 import { PASSPORT_Q1_LABELS, PASSPORT_Q2_LABELS } from '../labels'
-
-interface ScreenProps {
-  state: SessionState
-  dispatch: (action: SessionAction) => void
-}
-
-function hasAnswers(state: SessionState): boolean {
-  return Object.keys(state.answers).length > 0
-}
+import type { ScreenProps } from '../screenProps'
+import { hasAnswers } from '../screenProps'
 
 export function PassportGuardrail({ state, dispatch }: ScreenProps) {
   const onSelect = (v: string) => {
