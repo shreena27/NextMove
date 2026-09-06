@@ -19,12 +19,14 @@ import { sirPlaybook, SIR_STATES, sirCopyExtras } from '../playbooks/sirPlaybook
 import { diagnose } from '../domain/engine'
 import { passportEngine } from '../playbooks/engines'
 import { initialSession, type SessionState } from '../session/session'
-import { PASSPORT_Q1_LABELS, PASSPORT_Q2_LABELS, VOTER_Q1_LABELS, VOTER_APPEAL_LABELS } from './labels'
+import * as LABELS from './labels'
 import { SCREEN_COPY, UI, PASSPORT_COPY, type CopyLocation } from './screenCopy'
 import { Home } from './Home'
 import { OtherServices } from './OtherServices'
 import { PassportGuardrail, PassportOutOfScope, PassportQ1, PassportQ2 } from './passport/PassportScreens'
-import { PassportRecovery, PassportRecoveryPaste, PassportRecoveryShow } from './passport/PassportRecovery'
+import {
+  PassportRecovery, PassportRecoveryPaste, PassportRecoveryShow, PASTE_MATCH_EXAMPLES,
+} from './passport/PassportRecovery'
 import { VoterEntry, VoterQ1, VoterQ2 } from './voter/VoterScreens'
 import { SirState, SirUnsupported, SirQ1 } from './sir/SirScreens'
 import { Topbar } from '../ui/Topbar'
@@ -32,17 +34,75 @@ import { PhaseEyebrow } from '../ui/Crumbs'
 import { DiagnosisScreen } from '../templates/DiagnosisScreen'
 import { NextMoveScreen } from '../templates/NextMoveScreen'
 import { SOURCES_VERIFIED } from '../templates/TrustDisclosure'
+import { LADDER_DEFS, LADDER_TAG } from '../templates/ladder'
 
 const noop = () => {}
 
 // -----------------------------------------------------------------------
 // Every authored answer-option Record that predates C3 and stays a single
-// source of truth in its own file (labels.ts, PASSPORT_STAGE_SHORT) — NOT
-// duplicated into SCREEN_COPY, only flattened here for the scan, exactly
-// the way sirPlaybook.ts's own `sirCopyExtras()` is already flattened into
-// the sir guardrail test below (design note 6 / Step 3's header note).
+// source of truth in its own file (labels.ts, PASSPORT_STAGE_SHORT,
+// LADDER_DEFS/LADDER_TAG) — NOT duplicated into SCREEN_COPY, only flattened
+// here for the scan, exactly the way sirPlaybook.ts's own `sirCopyExtras()`
+// is already flattened into the sir guardrail test below (design note 6 /
+// Step 3's header note; design note 5's "unconditional" scan-input list).
 function recordCopy(bucket: string, at: string, record: Record<string, string>): CopyLocation[] {
   return Object.entries(record).map(([k, v]) => extraCopy(`${bucket}:${at}.${k}`, v))
+}
+
+/** True when every value on `v` is a string — the shape `recordCopy`
+ *  expects. Used to auto-discover every answer-label Record `labels.ts`
+ *  exports (review fix round 1, Minor): the sweep used to hand-list
+ *  `PASSPORT_Q1_LABELS`/`PASSPORT_Q2_LABELS`/`VOTER_Q1_LABELS`/
+ *  `VOTER_APPEAL_LABELS` by name, so a later `PASSPORT_Q3_LABELS` would
+ *  silently escape the scan unless someone remembered to add a line here.
+ *  Walking every export instead makes the guarantee hold by construction,
+ *  the same way `screenCopy.ts`'s own `flatten()` walks its tree. */
+function isStringRecord(v: unknown): v is Record<string, string> {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    !Array.isArray(v) &&
+    Object.values(v).every(x => typeof x === 'string')
+  )
+}
+
+/** Every `labels.ts` export whose name starts with `namePrefix` and whose
+ *  value is a string-keyed Record, flattened for the guardrail scan. */
+function labelRecordsCopy(bucket: string, namePrefix: string): CopyLocation[] {
+  const out: CopyLocation[] = []
+  for (const [name, value] of Object.entries(LABELS)) {
+    if (!name.startsWith(namePrefix) || !isStringRecord(value)) continue
+    out.push(...recordCopy(bucket, name, value))
+  }
+  return out
+}
+
+/** `LADDER_DEFS[bucket]`'s title/caption/rungs, flattened for the scan.
+ *  `EscalationLadder.tsx` doesn't exist yet (deferred to C5 — Open Question
+ *  1's ruling), but this citizen-facing copy shipped with Task 8's data and
+ *  design note 5 names it as an unconditional Task 9 scan input regardless
+ *  of when the component mounts. */
+function ladderDefCopy(bucket: 'passport' | 'voter'): CopyLocation[] {
+  const def = LADDER_DEFS[bucket]
+  return [
+    extraCopy(`${bucket}:LADDER_DEFS.${bucket}.title`, def.title),
+    extraCopy(`${bucket}:LADDER_DEFS.${bucket}.caption`, def.caption),
+    ...def.rungs.map((r, i) => extraCopy(`${bucket}:LADDER_DEFS.${bucket}.rungs[${i}]`, r)),
+  ]
+}
+
+/** `LADDER_TAG`'s rung-status labels — used by both services' ladders, so
+ *  swept under whichever bucket the caller is currently scanning. */
+function ladderTagCopy(bucket: string): CopyLocation[] {
+  return Object.entries(LADDER_TAG).map(([k, v]) => extraCopy(`${bucket}:LADDER_TAG.${k}`, v))
+}
+
+/** `PASTE_MATCH_EXAMPLES`' example phrases render as visible button labels
+ *  on the recovery-paste screen (review fix round 1, Minor) — derived from
+ *  the array itself, not hand-copied, so a fourth example is swept
+ *  automatically. */
+function pasteMatchExamplesCopy(): CopyLocation[] {
+  return PASTE_MATCH_EXAMPLES.map((e, i) => extraCopy(`passport:PASTE_MATCH_EXAMPLES[${i}].text`, e.text))
 }
 
 describe('C3 screen copy passes the same content-safety scan as rule copy (§7)', () => {
@@ -51,8 +111,10 @@ describe('C3 screen copy passes the same content-safety scan as rule copy (§7)'
       extra: [
         ...SCREEN_COPY.passport,
         ...recordCopy('passport', 'PASSPORT_STAGE_SHORT', PASSPORT_STAGE_SHORT),
-        ...recordCopy('passport', 'PASSPORT_Q1_LABELS', PASSPORT_Q1_LABELS),
-        ...recordCopy('passport', 'PASSPORT_Q2_LABELS', PASSPORT_Q2_LABELS),
+        ...labelRecordsCopy('passport', 'PASSPORT_'),
+        ...ladderDefCopy('passport'),
+        ...ladderTagCopy('passport'),
+        ...pasteMatchExamplesCopy(),
       ],
     })).toEqual([])
   })
@@ -61,8 +123,9 @@ describe('C3 screen copy passes the same content-safety scan as rule copy (§7)'
     expect(guardrailFindings(voterPlaybook, {
       extra: [
         ...SCREEN_COPY.voter,
-        ...recordCopy('voter', 'VOTER_Q1_LABELS', VOTER_Q1_LABELS),
-        ...recordCopy('voter', 'VOTER_APPEAL_LABELS', VOTER_APPEAL_LABELS),
+        ...labelRecordsCopy('voter', 'VOTER_'),
+        ...ladderDefCopy('voter'),
+        ...ladderTagCopy('voter'),
       ],
     })).toEqual([])
   })
@@ -92,6 +155,20 @@ describe('C3 screen copy passes the same content-safety scan as rule copy (§7)'
     for (const key of ['passport', 'voter', 'sir', 'ui'] as const) {
       expect(SCREEN_COPY[key].length, key).toBeGreaterThan(0)
     }
+  })
+
+  it('the auto-discovered extras are not vacuous (a naming mismatch would silently scan nothing)', () => {
+    // Guards the "holds by construction" claim for labelRecordsCopy/
+    // ladderDefCopy/pasteMatchExamplesCopy themselves: if any of these
+    // returned [] because of a typo'd prefix or an import that resolved to
+    // nothing, guardrailFindings would still pass vacuously and the
+    // guardrail-sweep tests above would give false confidence.
+    expect(labelRecordsCopy('passport', 'PASSPORT_').length).toBeGreaterThan(0)
+    expect(labelRecordsCopy('voter', 'VOTER_').length).toBeGreaterThan(0)
+    expect(ladderDefCopy('passport').length).toBeGreaterThan(0)
+    expect(ladderDefCopy('voter').length).toBeGreaterThan(0)
+    expect(ladderTagCopy('passport').length).toBe(Object.keys(LADDER_TAG).length)
+    expect(pasteMatchExamplesCopy().length).toBe(PASTE_MATCH_EXAMPLES.length)
   })
 
   it('every SCREEN_COPY location carries a service or ui prefix matching its bucket', () => {
