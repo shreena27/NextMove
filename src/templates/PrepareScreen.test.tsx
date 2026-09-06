@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PrepareScreen } from './PrepareScreen'
-import { PREP } from '../playbooks/prep'
+import { PREP, VISIT_EXPECT } from '../playbooks/prep'
 import { diagnose } from '../domain/engine'
 import { passportEngine, sirEngine } from '../playbooks/engines'
 import { UI } from '../screens/screenCopy'
@@ -23,6 +23,10 @@ const escalate = diagnose(passportEngine, { q1: 'adverse', q2: 'formal_grievance
 const noticeD = diagnose(sirEngine, { sirState: 'delhi', sirQ1: 'notice' })           // s-notice
 // state-5a: the ONE reachable rule whose where carries a phone (1800-258-1800).
 const helplineD = diagnose(passportEngine, { q1: 'adverse', q2: 'informal' })         // state-5a
+
+// state-4: q1 'adverse' + q2 'no_followup'. Carries a title, a draft AND a
+// visit block, so it is the one fixture that exercises the whole screen.
+const clarifyD = diagnose(passportEngine, { q1: 'adverse', q2: 'no_followup' })
 
 describe('the prepare shell', () => {
   it('crumbs read "<service> · <matched state>" then "Prepare"', () => {
@@ -293,5 +297,166 @@ describe('the draft card', () => {
     await waitFor(() => expect(selectSpy).toHaveBeenCalledTimes(1))
     expect(screen.getByRole('button', { name: UI.prepare.copy })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: UI.prepare.copied })).toBeNull()
+  })
+})
+
+// Small helper: tick every step on the currently rendered screen.
+const tickAll = async (n: number) => {
+  const ticks = screen.getAllByRole('button', { pressed: false })
+    .filter(b => b.classList.contains('pstep-tick'))
+  expect(ticks).toHaveLength(n)
+  for (const t of ticks) await userEvent.click(t)
+}
+
+describe('the step checklist', () => {
+  it('renders one tickable row per step, with the counter starting at 0 of N', () => {
+    const plan = PREP['state-5b']
+    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan} />)
+    expect(document.querySelectorAll('.pstep-tick')).toHaveLength(plan.steps.length)
+    for (const b of document.querySelectorAll('.pstep-tick')) {
+      expect(b.tagName).toBe('BUTTON')
+      expect(b).toHaveAttribute('aria-pressed', 'false')
+    }
+    expect(document.querySelector('.psteps-count')).toHaveTextContent(
+      UI.prepare.stepsCount.replace('{done}', '0').replace('{total}', String(plan.steps.length)),
+    )
+  })
+
+  it('ticking a step flips aria-pressed and the .done class, and advances the counter', async () => {
+    const plan = PREP['state-5b']
+    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan} />)
+    const first = document.querySelectorAll('.pstep-tick')[0] as HTMLButtonElement
+    await userEvent.click(first)
+    expect(first).toHaveAttribute('aria-pressed', 'true')
+    expect(first.closest('.pstep')).toHaveClass('done')
+    // Interpolated from the registered template, never a hand-built string.
+    expect(document.querySelector('.psteps-count')).toHaveTextContent(
+      UI.prepare.stepsCount.replace('{done}', '1').replace('{total}', String(plan.steps.length)),
+    )
+    await userEvent.click(first)                       // and it un-ticks
+    expect(first).toHaveAttribute('aria-pressed', 'false')
+    expect(document.querySelector('.psteps-count')).toHaveTextContent(
+      UI.prepare.stepsCount.replace('{done}', '0').replace('{total}', String(plan.steps.length)),
+    )
+  })
+
+  it('a step with a url gets an "Open ↗" link that is a SIBLING of the tick button', () => {
+    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    const link = screen.getAllByRole('link', { name: UI.prepare.stepOpen })[0]
+    expect(link.closest('button')).toBeNull()          // never nested in the button
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener')
+    const urlStep = PREP['state-5b'].steps.find(s => typeof s !== 'string') as { url: string }
+    expect(link).toHaveAttribute('href', urlStep.url)
+  })
+
+  it('a bare-string step gets no link', () => {
+    // Measured: EVERY shipped plan has exactly one url-bearing step and the
+    // rest bare, so there is no all-bare plan to use as a negative fixture.
+    // Assert per-ROW instead of per-plan: the link count matches the url-step
+    // count, and each bare step's own row carries no anchor.
+    const plan = PREP['state-5b']
+    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan} />)
+    const withUrl = plan.steps.filter(s => typeof s !== 'string').length
+    expect(withUrl).toBe(1)
+    expect(withUrl).toBeLessThan(plan.steps.length)    // there ARE bare steps to check
+    expect(screen.getAllByRole('link', { name: UI.prepare.stepOpen })).toHaveLength(withUrl)
+    const rows = document.querySelectorAll('.pstep')
+    plan.steps.forEach((s, i) => {
+      expect(rows[i].querySelectorAll('a').length, String(i)).toBe(typeof s === 'string' ? 0 : 1)
+    })
+  })
+
+  it("the done note appears only when every step is ticked, and uses the plan's own text", async () => {
+    const plan = PREP['state-5b']                      // carries its own doneNote
+    const { unmount } = render(
+      <PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan} />,
+    )
+    expect(document.querySelector('.psteps-done')).toBeNull()
+    await tickAll(plan.steps.length)
+    expect(document.querySelector('.psteps-done')).toHaveTextContent(plan.doneNote!)
+    unmount()
+
+    const noNote = PREP['state-4']                     // carries none -> fallback
+    expect(noNote.doneNote).toBeUndefined()
+    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={noNote} />)
+    await tickAll(noNote.steps.length)
+    expect(document.querySelector('.psteps-done')).toHaveTextContent(UI.prepare.doneNoteFallback)
+  })
+
+  it('the check icon is always in the DOM — the lifted CSS does the showing', () => {
+    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    expect(document.querySelectorAll('.pstep-box svg').length).toBe(PREP['state-5b'].steps.length)
+  })
+})
+
+describe('the in-person visit card', () => {
+  it('is absent for a plan with no visit block', () => {
+    expect(PREP['state-5b'].visit).toBeUndefined()     // guards the fixture
+    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    expect(document.querySelector('.visit-card')).toBeNull()
+    expect(screen.queryByText(UI.prepare.visitTitle)).toBeNull()
+  })
+
+  it("keeps the rule's verified Carry list and the shared general tips in SEPARATE columns", () => {
+    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={PREP['state-4']} />)
+    const cols = document.querySelectorAll('.visit-cols > div')
+    expect(cols).toHaveLength(2)
+    expect(cols[0]).toHaveTextContent(UI.prepare.visitCarry)
+    expect(cols[1]).toHaveTextContent(UI.prepare.visitExpect)
+    for (const c of PREP['state-4'].visit!.carry) expect(cols[0]).toHaveTextContent(c)
+    for (const e of VISIT_EXPECT) expect(cols[1]).toHaveTextContent(e)
+    // The point of the separation: no verified carry item leaks into the
+    // general-tips column and vice versa.
+    for (const e of VISIT_EXPECT) expect(cols[0]).not.toHaveTextContent(e)
+  })
+
+  it('always shows the general-advice disclaimer under the card', () => {
+    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={PREP['state-4']} />)
+    expect(document.querySelector('.visit-note')).toHaveTextContent(UI.prepare.visitNote)
+  })
+
+  it('shows "Then what?" only when the visit block carries an `after` line', () => {
+    // All six shipped visit blocks carry `after`, so the positive case is
+    // real data and the negative case must be synthetic — the branch is
+    // locked markup and an `after`-less visit is a legal PrepVisit shape.
+    const plan = PREP['state-4']
+    const { unmount } = render(
+      <PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={plan} />,
+    )
+    expect(screen.getByText(UI.prepare.visitThen)).toBeInTheDocument()
+    expect(document.querySelector('.visit-card')).toHaveTextContent(plan.visit!.after!)
+    unmount()
+
+    const noAfter = { ...plan, visit: { carry: plan.visit!.carry } }
+    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={noAfter} />)
+    expect(document.querySelector('.visit-card')).toBeInTheDocument()   // card still shows
+    expect(screen.queryByText(UI.prepare.visitThen)).toBeNull()         // heading does not
+  })
+})
+
+describe('the closing control', () => {
+  it('"Done, back to Home" dispatches RESTART — never a navigation (scope exclusion 6)', async () => {
+    const dispatch = vi.fn()
+    render(
+      <PrepareScreen
+        serviceLabel="Passport" engineKey="passport" d={escalate}
+        prep={PREP['state-5b']} dispatch={dispatch}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: UI.prepare.doneBackHome }))
+    expect(dispatch).toHaveBeenCalledWith({ type: 'RESTART' })
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'NAVIGATE' }))
+  })
+
+  it('is the last control on the screen — no save control follows it (C5)', () => {
+    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={PREP['state-4']} />)
+    const done = screen.getByRole('button', { name: UI.prepare.doneBackHome })
+    const controls = Array.from(document.querySelectorAll('button, a[href]'))
+    expect(controls[controls.length - 1]).toBe(done)
+    // And the C5 markers specifically, by name rather than by position.
+    expect(document.querySelector('.btn-ghost')).toBeNull()
+    expect(document.querySelector('.saved-note')).toBeNull()
+    expect(document.querySelector('.saved-next')).toBeNull()
   })
 })

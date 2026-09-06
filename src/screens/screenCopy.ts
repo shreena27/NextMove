@@ -171,6 +171,16 @@ export const UI = {
     copied: 'Copied ✓',
     copiedOne: 'Copied, {n} blank left', // TEMPLATE
     copiedMany: 'Copied, {n} blanks left', // TEMPLATE
+    stepsCount: '{done} of {total} done', // TEMPLATE
+    stepOpen: 'Open ↗',
+    doneNoteFallback: "All steps done. You've completed everything this stage needs from you.",
+    visitTitle: "If you're going in person",
+    visitCarry: 'Carry',
+    visitExpect: 'What to expect',
+    visitThen: 'Then what?',
+    visitNote:
+      "The carry list combines this case's verified requirements with common-sense basics. The tips are general practical guidance for any government office, not official rules.",
+    doneBackHome: 'Done, back to Home',
   },
 } as const
 

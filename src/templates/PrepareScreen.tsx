@@ -1,8 +1,8 @@
 /** The "Prepare this for me" shell — port of the prototype's `renderPrepare`
  *  (design/nextmove-v1-prototype.html, lines 3746-3771ish, tag
  *  v1-design-lock-2): the crumb, headline, lede, trust line, and the
- *  official-channel card. The draft card, checklist and visit card are
- *  Task 4 and Task 5's — this file is the shell they compose into.
+ *  official-channel card, plus (Task 4) the draft card and (Task 5) the
+ *  step checklist, done note, in-person visit card, and closing control.
  *
  *  Props deliberately mirror `NextMoveScreen`'s shape (`{ serviceLabel,
  *  engineKey, d, ..., topbar?, dispatch? }`), with one difference: `prep:
@@ -49,9 +49,9 @@
  *
  *  DESIGN NOTE 3 (the C5 saveControl tail is deliberately absent): the
  *  prototype's full `renderPrepare` ends with a "Save this case" control
- *  (C5 scope). This screen, once Task 5 lands the checklist and visit
- *  card, ends at "Done, back to Home" — there is no save/casefile element
- *  anywhere in this file, now or later in this chunk.
+ *  (C5 scope). This screen ends at "Done, back to Home" (dispatches
+ *  `RESTART`, prototype 3816) — there is no save/casefile element anywhere
+ *  in this file, now or later in this chunk.
  *
  *  DESIGN NOTE 4 (`.channel-phone` is optional-by-data, not dead): the
  *  helpline row is conditional on `d.where.phone`, an optional field —
@@ -64,9 +64,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Diagnosis } from '../domain/types'
 import type { ServiceKey, SessionAction } from '../session/session'
-import type { PrepPlan } from '../playbooks/prep'
+import { VISIT_EXPECT, type PrepPlan } from '../playbooks/prep'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { Split } from '../ui/Split'
+import { Button } from '../ui/Button'
+import { ICONS } from '../ui/icons'
 import { UI } from '../screens/screenCopy'
 
 /** [Bracketed] blanks are real sub-tasks ("find your ARN"), so they get
@@ -107,7 +109,7 @@ export function PrepareScreen({
   d,
   prep,
   topbar,
-  dispatch: _dispatch,
+  dispatch,
 }: PrepareScreenProps) {
   // Local state only (this task's scope exclusion 2 — see the plan). Nothing
   // here goes into SessionState: the prototype uses S.prepDraft/S.copied
@@ -117,6 +119,11 @@ export function PrepareScreen({
   // null = idle. Any number (0 included) = "just copied, this many blanks
   // were left AT THE MOMENT OF COPYING" — frozen, not live (design note 2c).
   const [copied, setCopied] = useState<number | null>(null)
+  // Step ticks: local only, same reasoning as `draft`/`copied` above. The
+  // prototype's `togglePrepStep` (3685-3695) also syncs an active casefile
+  // and re-renders — that part is C5's (activeCase()/caseSnapshot()/
+  // persistCases()) and must not appear here in any form (design note 1).
+  const [checks, setChecks] = useState<boolean[]>(() => prep.steps.map(() => false))
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -149,6 +156,11 @@ export function PrepareScreen({
       fallback()
     }
   }
+
+  const toggleStep = (i: number) => {
+    setChecks(prev => prev.map((c, idx) => (idx === i ? !c : c)))
+  }
+  const done = checks.filter(Boolean).length
 
   const liveBlanks = bracketCount(draft)
   const hint =
@@ -222,7 +234,87 @@ export function PrepareScreen({
                   </div>
                 </div>
               ) : null}
-              {/* The checklist and visit card (Task 5) slot in after it. */}
+              <div className="psteps-count">
+                {UI.prepare.stepsCount
+                  .replace('{done}', String(done))
+                  .replace('{total}', String(prep.steps.length))}
+              </div>
+              <div className="psteps">
+                {prep.steps.map((s, i) => {
+                  const step = typeof s === 'string' ? { text: s } : s
+                  const checked = checks[i]
+                  return (
+                    <div key={i} className={`pstep${checked ? ' done' : ''}`}>
+                      <button
+                        className="pstep-tick"
+                        aria-pressed={checked}
+                        onClick={() => toggleStep(i)}
+                      >
+                        {/* DESIGN NOTE (icon always in the DOM): the CSS
+                            (.pstep-box svg{opacity:0} / .pstep.done
+                            .pstep-box svg{opacity:1}) does the showing —
+                            never conditionally rendered. */}
+                        <span className="pstep-box">{ICONS.stepCheck}</span>
+                        <span className="pstep-text">{step.text}</span>
+                      </button>
+                      {/* DESIGN NOTE (link is a SIBLING, not nested): an <a>
+                          inside a <button> is invalid HTML and breaks
+                          keyboard reachability of the link. */}
+                      {'url' in step ? (
+                        <a className="pstep-link" href={step.url} target="_blank" rel="noopener">
+                          {UI.prepare.stepOpen}
+                        </a>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+              {done === prep.steps.length ? (
+                <p className="psteps-done">{prep.doneNote ?? UI.prepare.doneNoteFallback}</p>
+              ) : null}
+              {prep.visit ? (
+                <div className="visit-card">
+                  <div className="visit-title">{UI.prepare.visitTitle}</div>
+                  <div className="visit-cols">
+                    <div>
+                      <div className="visit-k">{UI.prepare.visitCarry}</div>
+                      <ul className="visit-list">
+                        {prep.visit.carry.map((c, i) => (
+                          <li key={i}>{c}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <div className="visit-k">{UI.prepare.visitExpect}</div>
+                      <ul className="visit-list">
+                        {VISIT_EXPECT.map((e, i) => (
+                          <li key={i}>{e}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                  {prep.visit.after ? (
+                    <>
+                      {/* DESIGN NOTE: reuses .visit-k with the prototype's
+                          own inline margin-top (3813) — not a new
+                          .visit-k-then class; that would be restyling a
+                          locked design. */}
+                      <div className="visit-k" style={{ marginTop: 14 }}>
+                        {UI.prepare.visitThen}
+                      </div>
+                      <ul className="visit-list">
+                        <li>{prep.visit.after}</li>
+                      </ul>
+                    </>
+                  ) : null}
+                  <div className="visit-note">{UI.prepare.visitNote}</div>
+                </div>
+              ) : null}
+              {/* DESIGN NOTE 3 (file header): no saveControl tail — this is
+                  the last control on the screen in C4. */}
+              <Button variant="secondary" block onClick={() => dispatch?.({ type: 'RESTART' })}>
+                {UI.prepare.doneBackHome}
+              </Button>
             </>
           }
         />
