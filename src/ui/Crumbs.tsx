@@ -11,7 +11,7 @@ export function Crumbs({ parts, sqClass }: CrumbsProps) {
   return (
     <div className="crumbs">
       {parts.map((p, i) => (
-        <span key={p} className={`crumb ${i > 0 ? 'soft' : ''}`}>
+        <span key={i} className={`crumb ${i > 0 ? 'soft' : ''}`}>
           {i === 0 && sqClass ? <span className={`crumb-sq ${sqClass}`} /> : null}
           {p}
         </span>
