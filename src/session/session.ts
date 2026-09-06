@@ -3,6 +3,7 @@ import type { Casefile } from '../domain/casefile'
 import type { CheckinOption } from '../domain/checkinOptions'
 import { applyCorrection } from '../domain/answers'
 import { DEPS_FOR } from '../playbooks/engines'
+import { beginWorkingCheckin, openCheckin, completeSave } from './cases'
 
 /** The three services C3 ships. Declared here rather than derived from
  *  DEPS_FOR, which is typed Record<string, DependentKeys> — `keyof` that is
@@ -143,6 +144,16 @@ export type SessionAction =
   | { type: 'TOGGLE_TRUST' }
   | { type: 'SET_RECOVERY_TEXT'; text: string }
   | { type: 'EXPLAIN_VOTER_ENTRY' }
+  // C5: tracking never requires an account (Product Principle #4) — the
+  // working case, opening an already-saved case, and the save/adopt flow
+  // (design notes 3, 5, 4, 9). Deliberately NO `CONTINUE_SAVED`: it is
+  // dead code in the locked prototype (zero call sites) — design note 7.
+  | { type: 'BEGIN_WORKING_CHECKIN'; engineKey: ServiceKey; serviceLabel: string; returnScreen: ScreenId; now: number }
+  // No `now`: unlike its two siblings, OPEN_CHECKIN never stamps a time
+  // anywhere in the prototype (loadCase/openCheckin, 2160-2171/2633-2637)
+  // — a field nothing reads is a field that rots.
+  | { type: 'OPEN_CHECKIN'; id: string }
+  | { type: 'BEGIN_SAVE'; engineKey: ServiceKey; serviceLabel: string; returnScreen: ScreenId; now: number }
 
 export function sessionReducer(s: SessionState, a: SessionAction): SessionState {
   switch (a.type) {
@@ -185,5 +196,45 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
     case 'TOGGLE_TRUST': return { ...s, trustOpen: !s.trustOpen }
     case 'SET_RECOVERY_TEXT': return { ...s, recoveryText: a.text }
     case 'EXPLAIN_VOTER_ENTRY': return { ...s, voterEntryExplain: true }
+    // C5: thin arms over cases.ts's pure functions (design note 1) — pull
+    // the relevant slice off `s`, call the matching helper, spread its
+    // fragment back on, then apply the SAME nav()-style clears every
+    // navigation applies (prototype nav(), line 2029; NAVIGATE arm above).
+    case 'BEGIN_WORKING_CHECKIN': {
+      const fragment = beginWorkingCheckin(
+        { savedCases: s.savedCases, workingCase: s.workingCase, answers: s.answers, prepChecks: s.prepChecks },
+        { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen, now: a.now },
+      )
+      return {
+        ...s, ...fragment,
+        history: [...s.history, s.screen], screen: 'checkin',
+        trustOpen: false, restartConfirm: false, removeConfirm: null,
+      }
+    }
+    case 'OPEN_CHECKIN': {
+      const fragment = openCheckin(s.savedCases, a.id)
+      if (!fragment) return s
+      return {
+        ...s, ...fragment,
+        history: [...s.history, s.screen], screen: 'checkin',
+        trustOpen: false, restartConfirm: false, removeConfirm: null,
+      }
+    }
+    case 'BEGIN_SAVE': {
+      const fragment = completeSave(
+        { savedCases: s.savedCases, workingCase: s.workingCase, answers: s.answers, prepChecks: s.prepChecks },
+        { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen, now: a.now },
+      )
+      return {
+        ...s, ...fragment,
+        // pendingSave is set even though the save completes immediately
+        // (no auth detour in C5, scope exclusion 1) — SaveDoneScreen's
+        // "Back to my case" button reads pendingSave.returnScreen
+        // (prototype 3895; design note 9).
+        pendingSave: { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen },
+        history: [...s.history, s.screen], screen: 'save-done',
+        trustOpen: false, restartConfirm: false, removeConfirm: null,
+      }
+    }
   }
 }

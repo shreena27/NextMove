@@ -261,3 +261,63 @@ describe('C5 ScreenId additions', () => {
     r(initialSession, { type: 'NAVIGATE', screen: 'interp-confirm' })
   })
 })
+
+describe('BEGIN_WORKING_CHECKIN / OPEN_CHECKIN reducer wiring (thin arms over cases.ts, design notes 3 and 8)', () => {
+  it('BEGIN_WORKING_CHECKIN navigates to checkin and sets activeCaseId to the working sentinel', () => {
+    const s = seq(
+      { type: 'ANSWER', service: 'passport', key: 'q1', value: 'adverse' },
+      { type: 'ANSWER', service: 'passport', key: 'q2', value: 'informal' },
+      {
+        type: 'BEGIN_WORKING_CHECKIN',
+        engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+        now: 1_725_000_000_000,
+      },
+    )
+    expect(s.screen).toBe('checkin')
+    expect(s.activeCaseId).toBe('working')
+    expect(s.workingCase).not.toBeNull()
+    expect(s.workingCase?.log).toHaveLength(1)
+    expect(s.ciSnapshot).toBeNull()
+  })
+
+  it('OPEN_CHECKIN loads the given saved case and navigates to checkin', () => {
+    const withSaved: SessionState = { ...initialSession, savedCases: [FIXTURE_CASE] }
+    const s = r(withSaved, { type: 'OPEN_CHECKIN', id: 'c1' })
+    expect(s.screen).toBe('checkin')
+    expect(s.activeCaseId).toBe('c1')
+    expect(s.answers).toEqual(FIXTURE_CASE.answers)
+  })
+
+  it('OPEN_CHECKIN for an unknown id is a no-op (mirrors the prototype\'s if(!loadCase(id)) return)', () => {
+    const s = r(initialSession, { type: 'OPEN_CHECKIN', id: 'nope' })
+    expect(s).toEqual(initialSession)
+  })
+})
+
+describe("BEGIN_SAVE (design notes 8-9: completes immediately, no auth detour in C5)", () => {
+  it("lands on 'save-done' with the case saved, activeCaseId set, and pendingSave.returnScreen populated for SaveDoneScreen to read", () => {
+    const s = seq(
+      { type: 'ANSWER', service: 'passport', key: 'q1', value: 'adverse' },
+      { type: 'ANSWER', service: 'passport', key: 'q2', value: 'informal' },
+      {
+        type: 'BEGIN_SAVE',
+        engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+        now: 1_725_000_000_000,
+      },
+    )
+    expect(s.screen).toBe('save-done')
+    expect(s.savedCases).toHaveLength(1)
+    expect(s.savedCases[0].engineKey).toBe('passport')
+    expect(s.savedCases[0].outcome).toBe('still_open')
+    expect(s.activeCaseId).toBe(s.savedCases[0].id)
+    expect(s.pendingSave).toEqual({ engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove' })
+    expect(s.workingCase).toBeNull()
+  })
+})
+
+describe('C5 action union excludes CONTINUE_SAVED (design note 7: dead code in the lock, zero call sites)', () => {
+  it('CONTINUE_SAVED does not type-check as a dispatchable action — a later reader adding it back has to argue with this test', () => {
+    // @ts-expect-error CONTINUE_SAVED is dead code in the locked prototype (zero call sites) — deliberately not ported
+    r(initialSession, { type: 'CONTINUE_SAVED', id: 'c1' })
+  })
+})
