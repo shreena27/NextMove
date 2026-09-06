@@ -23,6 +23,7 @@ import { passportEngine, sirEngine } from '../playbooks/engines'
 import { initialSession, type SessionState } from '../session/session'
 import * as LABELS from './labels'
 import { SCREEN_COPY, UI, PASSPORT_COPY, type CopyLocation } from './screenCopy'
+import { INTERACTION_GATED } from './interactionGated'
 import { Home } from './Home'
 import { OtherServices } from './OtherServices'
 import { PassportGuardrail, PassportOutOfScope, PassportQ1, PassportQ2 } from './passport/PassportScreens'
@@ -377,22 +378,20 @@ const CAPTION_TEMPLATES = new Set([
   'ui:prepare.stepsCount', // interpolates the tick count for {done} and the step total for {total}
 ])
 
-/** Entries no STATIC mount can produce (design note 4a): each needs a user
- *  interaction (a tick, a click) or a draft shape no shipped plan has —
- *  `screenCopy.test.tsx`'s coverage test is `render(mount())` with no
- *  interaction, and PrepareScreen's tick/draft state has no prop seam to
- *  pre-seed for a test (adding one purely for a test would be a production
- *  API existing for test convenience — the wrong trade). They are NOT
- *  caption templates and must not be folded into CAPTION_TEMPLATES — their
- *  coverage lives in PrepareScreen.test.tsx's interaction test, named below
- *  so the two can never drift apart silently. */
-const INTERACTION_GATED = new Set([
-  'ui:prepare.copied',
-  'ui:prepare.copiedOne',
-  'ui:prepare.copiedMany',
-  'ui:prepare.hintReady',
-  'ui:prepare.doneNoteFallback',
-])
+// `INTERACTION_GATED` itself (design note 4a: entries no STATIC mount can
+// produce — a tick, a click, or a draft shape no shipped plan has) now
+// lives in the shared `./interactionGated` module (imported above), NOT as
+// a local literal here. A fix-round review finding: two independently
+// hand-typed copies of the same five names (one here, one in
+// PrepareScreen.test.tsx) could drift — a 6th entry added to one and not
+// the other would silently delete coverage with nothing to catch it. A
+// single shared source makes that structurally impossible. This file uses
+// it only to skip these entries in the bucket sweep below; the coverage
+// guarantee itself — that every one of these five actually renders under a
+// real interaction — is mechanized in PrepareScreen.test.tsx via a
+// `Record` of per-entry assertions whose keys are asserted to equal
+// `[...INTERACTION_GATED]`, the same pattern `CAPTION_SUBSTITUTIONS` below
+// already uses for `CAPTION_TEMPLATES`.
 
 const SCREENS: [keyof typeof SCREEN_COPY, () => ReactElement][] = [
   ['passport', PassportBucketScreens],
@@ -496,21 +495,12 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     }
   })
 
-  // Same treatment for INTERACTION_GATED (design note 6): pin its exact
-  // membership so a future addition or removal cannot slip through
-  // unnoticed. Cross-importing PrepareScreen.test.tsx's own list here would
-  // re-run that whole file's suite as a side effect of module evaluation
-  // (Vitest registers describe/it at import time) — so the two lists are
-  // kept in sync BY HAND, each independently pinned to the same five names,
-  // with PrepareScreen.test.tsx's interaction test independently asserting
-  // that it actually renders all five.
-  it('INTERACTION_GATED names exactly the five entries PrepareScreen.test.tsx\'s interaction test independently covers', () => {
-    expect([...INTERACTION_GATED].sort()).toEqual([
-      'ui:prepare.copied',
-      'ui:prepare.copiedMany',
-      'ui:prepare.copiedOne',
-      'ui:prepare.doneNoteFallback',
-      'ui:prepare.hintReady',
-    ])
-  })
+  // `INTERACTION_GATED` needs no membership pin here (fix-round review
+  // finding): it is imported from the single shared `./interactionGated`
+  // module, so there is nothing left for this file to drift out of sync
+  // with. Its coverage guarantee — that every one of its five entries
+  // actually renders under a real interaction — is mechanized in
+  // PrepareScreen.test.tsx via a `Record` of per-entry assertions keyed
+  // identically, with an assertion that those keys equal
+  // `[...INTERACTION_GATED]`.
 })
