@@ -1,0 +1,186 @@
+import { describe, it, expect } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import App from './App'
+import { diagnose } from './domain/engine'
+import { passportEngine, voterEngine, sirEngine } from './playbooks/engines'
+import { SIR_STATES } from './playbooks/sirPlaybook'
+
+describe('Passport, end to end — the flow is real, not just unit-tested components', () => {
+  it('Home -> guardrail -> Q1 -> Q2 -> Diagnosis -> Next Move', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    await userEvent.click(screen.getByRole('button', { name: /looks negative or confusing/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Yes, I filed a formal grievance/ }))
+
+    const d = diagnose(passportEngine, { guardrail: 'no', q1: 'adverse', q2: 'formal_grievance' })
+    expect(document.querySelector('.stamp')).toHaveTextContent('ESCALATE')
+    expect(screen.getByText('Waiting on')).toBeInTheDocument()
+    expect(screen.getByText(d.dependency)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /Why am I seeing this\?/ }))
+    expect(screen.getByText(/looks negative or confusing/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(d.whatShort)
+  })
+
+  it('AC-8 end to end: Back, change Q1, and the diagnosis follows the NEW answer', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    // Reach State 1 (no_contact + no_followup -> WAIT).
+    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+    expect(document.querySelector('.stamp')).toHaveTextContent('WAIT')
+
+    // Back twice: diagnosis -> Q2 -> Q1.
+    await userEvent.click(screen.getByRole('button', { name: /← Back/ }))
+    await userEvent.click(screen.getByRole('button', { name: /← Back/ }))
+    expect(screen.getByRole('heading', { name: "What's happening with your application?" })).toBeInTheDocument()
+
+    // Change Q1 to a genuinely different answer (adverse).
+    await userEvent.click(screen.getByRole('button', { name: /looks negative or confusing/ }))
+    // Q2 shows with NOTHING preselected — the stale q2 answer from State 1
+    // must have been cleared by the changed Q1 (PASSPORT_DEPS).
+    expect(screen.getByRole('heading', { name: 'Have you already tried to follow up on this?' })).toBeInTheDocument()
+    for (const row of document.querySelectorAll('.answers .arow')) {
+      expect(row).not.toHaveClass('selected')
+    }
+
+    // Answer again -> State 4, never a stale State 1.
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+    const d4 = diagnose(passportEngine, { guardrail: 'no', q1: 'adverse', q2: 'no_followup' })
+    expect(d4.state).toBe('4')
+    expect(document.querySelector('.stamp')).toHaveTextContent('FOLLOW UP')
+    expect(screen.getByText(d4.dependency)).toBeInTheDocument()
+    // The stale State 1 dependency must never leak back in.
+    expect(screen.queryByText('Police verification process')).toBeNull()
+  })
+
+  it('AC-9 end to end: Restart asks first, Cancel keeps everything, Yes returns Home empty', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    expect(screen.getByRole('heading', { name: "What's happening with your application?" })).toBeInTheDocument()
+
+    // Restart asks first — it does not clear immediately.
+    await userEvent.click(screen.getByRole('button', { name: 'Restart' }))
+    expect(screen.getByText('Clear your answers?')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: "What's happening with your application?" })).toBeInTheDocument()
+
+    // Cancel keeps everything — same screen, confirm gone.
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByText('Clear your answers?')).toBeNull()
+    expect(screen.getByRole('heading', { name: "What's happening with your application?" })).toBeInTheDocument()
+
+    // Yes returns Home, empty: no Back/Restart, no stale answers.
+    await userEvent.click(screen.getByRole('button', { name: 'Restart' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Yes' }))
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    expect(screen.queryByRole('button', { name: /← Back/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Restart' })).toBeNull()
+  })
+})
+
+describe('Voter and SIR, end to end', () => {
+  it("Voter: entry -> not sure -> explainer -> \"It's a regular application\" -> Q1 -> diagnosis", async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Voter Services/ }))
+    await userEvent.click(screen.getByRole('button', { name: "I'm not sure" }))
+    expect(screen.getByRole('button', { name: "It's a regular application" })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: "It's a regular application" }))
+    expect(screen.getByRole('heading', { name: "What's the situation with your application?" })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything yet" }))
+    const d = diagnose(voterEngine, { voterQ1: 'no_word' })
+    expect(document.querySelector('.stamp')).toHaveTextContent(d.rec === 'FOLLOW_UP' ? 'FOLLOW UP' : d.rec)
+    expect(screen.getByText(d.explanation)).toBeInTheDocument()
+  })
+
+  it('SIR Delhi: entry -> SIR -> Delhi -> Q1 -> diagnosis carries the phase banner', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Voter Services/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^This is about SIR/ }))
+    expect(screen.getByRole('heading', { name: 'Which state is this for?' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delhi' }))
+    expect(screen.getByRole('heading', { name: "What's happening with your SIR situation?" })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'I got a notice asking for documents' }))
+    const d = diagnose(sirEngine, { sirState: 'delhi', sirQ1: 'notice' })
+    expect(document.querySelector('.stamp')).toHaveTextContent('FOLLOW UP')
+    expect(screen.getByText(d.explanation)).toBeInTheDocument()
+    // The phase banner (preNote) — Delhi's currently configured phase note.
+    expect(screen.getByText(SIR_STATES.delhi.phase!.note, { exact: false })).toBeInTheDocument()
+  })
+
+  it('AC-S-5: SIR Bihar -> the coverage screen, and no diagnosis screen is ever rendered', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Voter Services/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^This is about SIR/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Bihar' }))
+
+    expect(screen.getByText(/isn't available in NextMove yet/)).toBeInTheDocument()
+    expect(document.querySelector('.stamp')).toBeNull()
+    expect(screen.queryByRole('heading', { name: /SIR situation/ })).toBeNull()
+  })
+})
+
+describe('Home v2', () => {
+  it('shows exactly three service rows and no casefiles section (C5)', () => {
+    render(<App />)
+    expect(document.querySelectorAll('.services .svc').length).toBe(3)
+    expect(document.querySelector('.home-cases')).toBeNull()
+  })
+
+  it('hides Back and Restart', () => {
+    render(<App />)
+    expect(screen.queryByRole('button', { name: /← Back/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Restart' })).toBeNull()
+  })
+
+  it('Other services shows four inert Coming Soon rows, none of them a button', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Other services/ }))
+    const rows = document.querySelectorAll('.services .svc.disabled')
+    expect(rows.length).toBe(4)
+    for (const row of rows) expect(row.tagName).toBe('DIV')
+    expect(screen.getAllByText('Coming Soon').length).toBe(4)
+  })
+})
+
+describe('the settled class: choreography plays on arrival, not on interaction', () => {
+  it('is absent on a fresh navigation and present after a same-screen state change', async () => {
+    render(<App />)
+    const app = document.getElementById('app')!
+    expect(app).toHaveClass('app')
+    expect(app).not.toHaveClass('settled')
+
+    // Walk to a screen that has a trust toggle: Home -> guardrail -> Q1 ->
+    // Q2 -> Diagnosis. Every one of these is a genuine navigation, so the
+    // choreography must be allowed to run on each.
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    expect(app).not.toHaveClass('settled')
+
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    expect(app).not.toHaveClass('settled')
+
+    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+    expect(app).not.toHaveClass('settled')
+
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+    expect(app).not.toHaveClass('settled')
+
+    // Same screen, state changed (TOGGLE_TRUST). The choreography must NOT
+    // replay.
+    await userEvent.click(screen.getByRole('button', { name: /Why am I seeing this\?/ }))
+    expect(app).toHaveClass('settled')
+
+    // And moving on clears it again.
+    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+    expect(app).not.toHaveClass('settled')
+  })
+})

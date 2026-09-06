@@ -19,6 +19,7 @@ import { Button } from '../../ui/Button'
 import { PASSPORT_Q1_LABELS, PASSPORT_Q2_LABELS } from '../labels'
 import type { ScreenProps } from '../screenProps'
 import { hasAnswers } from '../screenProps'
+import { UI, PASSPORT_COPY } from '../screenCopy'
 
 export function PassportGuardrail({ state, dispatch }: ScreenProps) {
   const onSelect = (v: string) => {
@@ -31,14 +32,14 @@ export function PassportGuardrail({ state, dispatch }: ScreenProps) {
       <div className="stage screen">
         <Split
           left={<>
-            <PhaseEyebrow service="Passport" />
-            <h1 className="headline">Already received your passport?</h1>
-            <p className="lede">This version of NextMove is designed for applications where the passport hasn't been issued yet. Still waiting on yours? Two quick questions from here, or a few more if you're not sure. That's fine too.</p>
+            <PhaseEyebrow service={UI.serviceLabel.passport} />
+            <h1 className="headline">{PASSPORT_COPY.guardrail.headline}</h1>
+            <p className="lede">{PASSPORT_COPY.guardrail.lede}</p>
           </>}
           right={
             <div className="answers">
-              <AnswerRow value="no" label="No, still waiting on it" selected={state.answers.guardrail === 'no'} onSelect={onSelect} />
-              <AnswerRow value="yes" label="Yes, I already have it" selected={state.answers.guardrail === 'yes'} onSelect={onSelect} />
+              <AnswerRow value="no" label={PASSPORT_COPY.guardrail.no} selected={state.answers.guardrail === 'no'} onSelect={onSelect} />
+              <AnswerRow value="yes" label={PASSPORT_COPY.guardrail.yes} selected={state.answers.guardrail === 'yes'} onSelect={onSelect} />
             </div>
           }
         />
@@ -54,9 +55,9 @@ export function PassportOutOfScope({ state, dispatch }: ScreenProps) {
       <div className="stage screen">
         <div className="narrow">
           <Banner>
-            This version of NextMove is designed for applications where the passport hasn't been issued yet, and since yours has already arrived, there's nothing here for NextMove to diagnose.
+            {PASSPORT_COPY.outOfScope.banner}
           </Banner>
-          <Button variant="secondary" onClick={() => dispatch({ type: 'RESTART' })}>Back to Home</Button>
+          <Button variant="secondary" onClick={() => dispatch({ type: 'RESTART' })}>{UI.common.backToHome}</Button>
         </div>
       </div>
     </>
@@ -79,16 +80,16 @@ export function PassportQ1({ state, dispatch }: ScreenProps) {
       <div className="stage screen">
         <Split
           left={<>
-            <PhaseEyebrow service="Passport" phase="Understanding your case" />
-            <h1 className="headline">What's happening with your application?</h1>
-            <p className="lede">Don't worry if you're not sure. Pick the closest option.</p>
+            <PhaseEyebrow service={UI.serviceLabel.passport} phase={UI.phase.understandingYourCase} />
+            <h1 className="headline">{PASSPORT_COPY.q1.headline}</h1>
+            <p className="lede">{PASSPORT_COPY.q1.lede}</p>
           </>}
           right={
             <div className="answers">
               {Object.entries(PASSPORT_Q1_LABELS).map(([v, l]) => (
                 <AnswerRow key={v} value={v} label={l} selected={state.answers.q1 === v} onSelect={onSelect} />
               ))}
-              <AnswerRow value="not_sure" label="I'm not sure" sub="Show me how to find out" selected={state.answers.q1 === 'not_sure'} onSelect={onSelect} />
+              <AnswerRow value="not_sure" label={PASSPORT_COPY.q1.notSure} sub={PASSPORT_COPY.q1.notSureSub} selected={state.answers.q1 === 'not_sure'} onSelect={onSelect} />
             </div>
           }
         />
@@ -108,13 +109,13 @@ export function PassportQ2({ state, dispatch }: ScreenProps) {
       <div className="stage screen">
         <Split
           left={<>
-            <PhaseEyebrow service="Passport" phase="Last question" />
-            <h1 className="headline">Have you already tried to follow up on this?</h1>
+            <PhaseEyebrow service={UI.serviceLabel.passport} phase={UI.phase.lastQuestion} />
+            <h1 className="headline">{PASSPORT_COPY.q2.headline}</h1>
           </>}
           right={
             <div className="answers">
-              <AnswerRow value="no_followup" label={PASSPORT_Q2_LABELS.no_followup} sub="Most common answer" selected={state.answers.q2 === 'no_followup'} onSelect={onSelect} />
-              <AnswerRow value="informal" label={PASSPORT_Q2_LABELS.informal} sub="Call, visit, or portal message" selected={state.answers.q2 === 'informal'} onSelect={onSelect} />
+              <AnswerRow value="no_followup" label={PASSPORT_Q2_LABELS.no_followup} sub={PASSPORT_COPY.q2.noFollowupSub} selected={state.answers.q2 === 'no_followup'} onSelect={onSelect} />
+              <AnswerRow value="informal" label={PASSPORT_Q2_LABELS.informal} sub={PASSPORT_COPY.q2.informalSub} selected={state.answers.q2 === 'informal'} onSelect={onSelect} />
               <AnswerRow value="formal_grievance" label={PASSPORT_Q2_LABELS.formal_grievance} selected={state.answers.q2 === 'formal_grievance'} onSelect={onSelect} />
             </div>
           }

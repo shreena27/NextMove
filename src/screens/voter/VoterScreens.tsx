@@ -24,6 +24,7 @@ import { PhaseEyebrow } from '../../ui/Crumbs'
 import type { ScreenProps } from '../screenProps'
 import { hasAnswers } from '../screenProps'
 import { VOTER_Q1_LABELS, VOTER_APPEAL_LABELS } from '../labels'
+import { UI, VOTER_COPY } from '../screenCopy'
 
 export function VoterEntry({ state, dispatch }: ScreenProps) {
   const onSelect = (v: string) => {
@@ -41,24 +42,24 @@ export function VoterEntry({ state, dispatch }: ScreenProps) {
       <div className="stage screen">
         <Split
           left={<>
-            <PhaseEyebrow service="Voter Services" />
-            <h1 className="headline">What's going on with your voter registration?</h1>
+            <PhaseEyebrow service={UI.serviceLabel.voterServices} />
+            <h1 className="headline">{VOTER_COPY.entry.headline}</h1>
           </>}
           right={
             <div className="answers">
-              <AnswerRow value="applied" label="I applied for something and I'm waiting to hear back" sub="New registration, correction, or a replacement card" selected={false} onSelect={onSelect} />
-              <AnswerRow value="sir" label="This is about SIR" sub="The Special Intensive Revision" selected={false} onSelect={onSelect} />
-              <AnswerRow value="notsure" label="I'm not sure" selected={false} onSelect={onSelect} />
+              <AnswerRow value="applied" label={VOTER_COPY.entry.applied} sub={VOTER_COPY.entry.appliedSub} selected={false} onSelect={onSelect} />
+              <AnswerRow value="sir" label={VOTER_COPY.entry.sir} sub={VOTER_COPY.entry.sirSub} selected={false} onSelect={onSelect} />
+              <AnswerRow value="notsure" label={VOTER_COPY.entry.notSure} selected={false} onSelect={onSelect} />
             </div>
           }
         />
         {state.voterEntryExplain && (
           <div className="inline-explain">
-            <b>Regular application</b>: you filled a form (new registration, address change, name correction, replacement card) and are waiting on a decision.<br /><br />
-            <b>SIR</b>: a special, area-wide re-check of the entire electoral roll happening in batches by state, separate from any individual application you may have also filed.
+            <b>{VOTER_COPY.entry.explain.regularLabel}</b>{VOTER_COPY.entry.explain.regularText}<br /><br />
+            <b>{VOTER_COPY.entry.explain.sirLabel}</b>{VOTER_COPY.entry.explain.sirText}
             <div className="inline-explain-actions">
-              <button className="btn btn-secondary" onClick={() => onSelect('applied')}>It's a regular application</button>
-              <button className="btn btn-secondary" onClick={() => onSelect('sir')}>It's about SIR</button>
+              <button className="btn btn-secondary" onClick={() => onSelect('applied')}>{VOTER_COPY.entry.explain.regularCta}</button>
+              <button className="btn btn-secondary" onClick={() => onSelect('sir')}>{VOTER_COPY.entry.explain.sirCta}</button>
             </div>
           </div>
         )}
@@ -85,15 +86,15 @@ export function VoterQ1({ state, dispatch }: ScreenProps) {
       <div className="stage screen">
         <Split
           left={<>
-            <PhaseEyebrow service="Voter Services" phase="Understanding your case" />
-            <h1 className="headline">What's the situation with your application?</h1>
+            <PhaseEyebrow service={UI.serviceLabel.voterServices} phase={UI.phase.understandingYourCase} />
+            <h1 className="headline">{VOTER_COPY.q1.headline}</h1>
           </>}
           right={
             <div className="answers">
               {Object.entries(VOTER_Q1_LABELS).map(([v, l]) => (
                 <AnswerRow key={v} value={v} label={l} selected={state.answers.voterQ1 === v} onSelect={onSelect} />
               ))}
-              <AnswerRow value="notsure" label="I'm not sure" selected={state.answers.voterQ1 === 'unclassified'} onSelect={onSelect} />
+              <AnswerRow value="notsure" label={VOTER_COPY.q1.notSure} selected={state.answers.voterQ1 === 'unclassified'} onSelect={onSelect} />
             </div>
           }
         />
@@ -117,8 +118,8 @@ export function VoterQ2({ state, dispatch }: ScreenProps) {
       <div className="stage screen">
         <Split
           left={<>
-            <PhaseEyebrow service="Voter Services" phase="Last question" />
-            <h1 className="headline">Have you already appealed this decision?</h1>
+            <PhaseEyebrow service={UI.serviceLabel.voterServices} phase={UI.phase.lastQuestion} />
+            <h1 className="headline">{VOTER_COPY.q2.headline}</h1>
           </>}
           right={
             <div className="answers">

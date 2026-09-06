@@ -17,6 +17,7 @@ import { PhaseEyebrow } from '../../ui/Crumbs'
 import { Button } from '../../ui/Button'
 import type { ScreenProps } from '../screenProps'
 import { hasAnswers } from '../screenProps'
+import { UI, PASSPORT_COPY } from '../screenCopy'
 
 // A very small, explicit, exact-match set of example status phrases —
 // deliberately not loose keyword matching. Fixed 2026-09-04: the previous
@@ -71,14 +72,14 @@ export function PassportRecovery({ state, dispatch }: ScreenProps) {
       <div className="stage screen">
         <Split
           left={<>
-            <PhaseEyebrow service="Passport" />
-            <h2 className="headline">Let's find your status a different way.</h2>
+            <PhaseEyebrow service={UI.serviceLabel.passport} />
+            <h2 className="headline">{PASSPORT_COPY.recovery.headline}</h2>
           </>}
           right={
             <div className="answers">
-              <AnswerRow value="paste" label="Paste your status text" sub="I'll try to match it to a known stage" selected={state.answers.recovery === 'paste'} onSelect={choose} />
-              <AnswerRow value="show" label="Show me where to find my status" selected={state.answers.recovery === 'show'} onSelect={choose} />
-              <AnswerRow value="safest" label="Tell me the safest thing to do now" selected={state.answers.recovery === 'safest'} onSelect={choose} />
+              <AnswerRow value="paste" label={PASSPORT_COPY.recovery.paste} sub={PASSPORT_COPY.recovery.pasteSub} selected={state.answers.recovery === 'paste'} onSelect={choose} />
+              <AnswerRow value="show" label={PASSPORT_COPY.recovery.show} selected={state.answers.recovery === 'show'} onSelect={choose} />
+              <AnswerRow value="safest" label={PASSPORT_COPY.recovery.safest} selected={state.answers.recovery === 'safest'} onSelect={choose} />
             </div>
           }
         />
@@ -111,9 +112,9 @@ export function PassportRecoveryPaste({ state, dispatch }: ScreenProps) {
       <div className="stage screen">
         <Split
           left={<>
-            <PhaseEyebrow service="Passport" phase="Recovery" />
-            <h2 className="headline">Paste the status text you see.</h2>
-            <p className="lede">NextMove only matches a small set of known example phrases exactly; anything else is treated as unknown rather than guessed. Try one of these, or paste your own:</p>
+            <PhaseEyebrow service={UI.serviceLabel.passport} phase={UI.phase.recovery} />
+            <h2 className="headline">{PASSPORT_COPY.recoveryPaste.headline}</h2>
+            <p className="lede">{PASSPORT_COPY.recoveryPaste.lede}</p>
           </>}
           right={<>
             <div className="inline-explain-actions" style={{ margin: '0 0 16px' }}>
@@ -130,11 +131,11 @@ export function PassportRecoveryPaste({ state, dispatch }: ScreenProps) {
             </div>
             <textarea
               className="field-input"
-              placeholder="e.g. Police verification report has been received"
+              placeholder={PASSPORT_COPY.recoveryPaste.placeholder}
               value={state.recoveryText}
               onChange={(e) => dispatch({ type: 'SET_RECOVERY_TEXT', text: e.target.value })}
             />
-            <Button block arrow onClick={submit}>Continue</Button>
+            <Button block arrow onClick={submit}>{PASSPORT_COPY.recoveryPaste.continue}</Button>
           </>}
         />
       </div>
@@ -148,13 +149,13 @@ export function PassportRecoveryShow({ state, dispatch }: ScreenProps) {
       <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
       <div className="stage screen">
         <div className="narrow">
-          <PhaseEyebrow service="Passport" phase="Recovery" />
-          <h2 className="headline">Where to find your status</h2>
-          <p className="lede">Log in to the Passport Seva portal and open <b>Track Application Status</b> using your File Number or Application Reference Number (ARN).</p>
+          <PhaseEyebrow service={UI.serviceLabel.passport} phase={UI.phase.recovery} />
+          <h2 className="headline">{PASSPORT_COPY.recoveryShow.headline}</h2>
+          <p className="lede">{PASSPORT_COPY.recoveryShow.ledeLead} <b>{PASSPORT_COPY.recoveryShow.ledeBold}</b> {PASSPORT_COPY.recoveryShow.ledeTail}</p>
           {/* line 3336 (not 3339 — 3339 is renderPassportRecoveryShow's closing
              brace): the recovery detour must not stack in history. */}
           <Button block arrow onClick={() => dispatch({ type: 'NAVIGATE', screen: 'passport-q1', replace: true })}>
-            Okay, back to the question
+            {PASSPORT_COPY.recoveryShow.cta}
           </Button>
         </div>
       </div>

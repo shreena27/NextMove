@@ -85,6 +85,7 @@ import type { ServiceKey, SessionAction } from '../session/session'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { Split } from '../ui/Split'
 import { Button } from '../ui/Button'
+import { UI } from '../screens/screenCopy'
 
 export interface NextMoveScreenProps {
   serviceLabel: string
@@ -128,7 +129,7 @@ export function NextMoveScreen({
         <Split
           left={
             <>
-              <PhaseEyebrow service={`${serviceLabel} · ${d.label}`} phase="Your next move" />
+              <PhaseEyebrow service={`${serviceLabel} · ${d.label}`} phase={UI.phase.yourNextMove} />
               <h1 className="nm-lead">{d.whatShort || d.whatToDo}</h1>
               {d.whatShort ? <p className="nm-lead-detail">{d.whatToDo}</p> : null}
             </>
@@ -137,11 +138,11 @@ export function NextMoveScreen({
             <>
               <div className="nm-fields">
                 <div className="nm-field">
-                  <div className="nm-k">Why</div>
+                  <div className="nm-k">{UI.nextMove.why}</div>
                   <div className="nm-v">{d.explanation}</div>
                 </div>
                 <div className="nm-field">
-                  <div className="nm-k">Where</div>
+                  <div className="nm-k">{UI.nextMove.where}</div>
                   <div className="nm-v">
                     {d.where.url ? (
                       <a href={d.where.url} target="_blank" rel="noopener">
@@ -157,13 +158,12 @@ export function NextMoveScreen({
                       </>
                     ) : null}
                     <div className="handoff-note">
-                      An official government channel. NextMove helps you understand and prepare; it
-                      doesn't act on your behalf.
+                      {UI.nextMove.handoffNote}
                     </div>
                   </div>
                 </div>
                 <div className="nm-field">
-                  <div className="nm-k">What you'll need</div>
+                  <div className="nm-k">{UI.nextMove.needHeading}</div>
                   <div className="nm-v">
                     {/* Both render (design note 1): `need`'s lead-in text
                         stays plain text, `needList`'s items are a real
@@ -182,24 +182,24 @@ export function NextMoveScreen({
                 </div>
                 {d.howLong ? (
                   <div className="nm-field">
-                    <div className="nm-k">How long?</div>
+                    <div className="nm-k">{UI.nextMove.howLong}</div>
                     <div className="nm-v">{d.howLong}</div>
                   </div>
                 ) : null}
                 {d.expectNext ? (
                   <div className="nm-field">
-                    <div className="nm-k">What to expect</div>
+                    <div className="nm-k">{UI.nextMove.expectNext}</div>
                     <div className="nm-v">{d.expectNext}</div>
                   </div>
                 ) : null}
               </div>
               {hasPrepPlan ? (
                 <Button block arrow onClick={onPrepare}>
-                  Prepare this for me
+                  {UI.nextMove.prepare}
                 </Button>
               ) : (
                 <Button variant="secondary" block onClick={() => dispatch?.({ type: 'RESTART' })}>
-                  Back to Home
+                  {UI.common.backToHome}
                 </Button>
               )}
             </>

@@ -21,8 +21,13 @@
  *  out of this file's scope. The SOURCES_VERIFIED-vs-manifest comparison
  *  (Open Question 3) lives in this component's own *.test.tsx file, which
  *  the existing scan does exempt regardless.
- */
+ *
+ *  Task 9's copy sweep: the toggle label, row headings and the archived-copy
+ *  caption template all live in `SCREEN_COPY.ui` (`screenCopy.ts`), which
+ *  itself never imports the guardrail harness — so importing it here does
+ *  not violate this file's own MUST-NOT-import-guardrails rule above. */
 import type { Diagnosis } from '../domain/types'
+import { UI } from '../screens/screenCopy'
 
 /** Last human verification of `sources/manifest.json` (prototype line 2018).
  *  Project metadata, not a government-process claim — C6's freshness job is
@@ -52,28 +57,28 @@ export function TrustDisclosure({ d, answerLabels, extraToldUs, open, onToggle }
   return (
     <>
       <button className="trust-toggle" aria-expanded={open} onClick={onToggle}>
-        {open ? '▾' : '▸'} Why am I seeing this?
+        {open ? '▾' : '▸'} {UI.trust.toggle}
       </button>
       {open ? (
         <div className="trust-panel">
           <div className="trust-row">
-            <div className="nm-k">You told us</div>
+            <div className="nm-k">{UI.trust.youToldUs}</div>
             <div className="nm-v">
-              {answered.join(' · ') || 'Not enough to safely place your case; see below.'}
+              {answered.join(' · ') || UI.trust.notEnough}
             </div>
           </div>
           <div className="trust-row">
-            <div className="nm-k">What that means</div>
+            <div className="nm-k">{UI.trust.whatThatMeans}</div>
             <div className="nm-v">{d.explanation}</div>
           </div>
           <div className="trust-row">
-            <div className="nm-k">Based on</div>
+            <div className="nm-k">{UI.trust.basedOn}</div>
             <div className="nm-v">
               {d.source.title}
               {d.source.quote ? <div className="source-quote">"{d.source.quote}"</div> : null}
               {d.source.docId !== null ? (
                 <div className="small" style={{ marginTop: 5, color: 'var(--ink-faint)' }}>
-                  Checked against NextMove's archived copy of this source on {SOURCES_VERIFIED}.
+                  {UI.trust.verifiedOn.replace('{date}', SOURCES_VERIFIED)}
                 </div>
               ) : null}
             </div>

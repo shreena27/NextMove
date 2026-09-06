@@ -37,6 +37,7 @@ import { Split } from '../ui/Split'
 import { Button } from '../ui/Button'
 import { TrustDisclosure } from './TrustDisclosure'
 import { CaseTrail, passportTrailFor } from './CaseTrail'
+import { UI } from '../screens/screenCopy'
 
 export interface DiagnosisScreenProps {
   serviceLabel: string
@@ -86,9 +87,9 @@ export function DiagnosisScreen({
   // nothing was "found," and the design shouldn't celebrate that.
   const headline: ReactNode =
     d.rec === 'UNCLASSIFIED' ? (
-      "We don't have enough information to call this safely."
+      UI.diagnosis.headlineUnclassified
     ) : (
-      <>We found where this is <span className="mark">waiting</span>.</>
+      <>{UI.diagnosis.headlineFound} <span className="mark">{UI.diagnosis.headlineMark}</span>.</>
     )
   // Passport-only (FR-V-10) — gated on engineKey, not just on
   // passportTrailFor's own state-shape check, because d.matchedAnswers can
@@ -105,7 +106,7 @@ export function DiagnosisScreen({
           left={
             <>
               {d.rec !== 'UNCLASSIFIED' ? <Gems placement="reveal" /> : null}
-              <PhaseEyebrow service={serviceLabel} phase="Diagnosis" />
+              <PhaseEyebrow service={serviceLabel} phase={UI.phase.diagnosis} />
               <h2 className="reveal-headline">{headline}</h2>
               <div className="stamp-row">
                 <StatusStamp rec={d.rec} />
@@ -118,13 +119,13 @@ export function DiagnosisScreen({
               {preNote}
               {d.dependency && d.dependency !== 'Unknown' ? (
                 <div className="dep-block">
-                  <div className="dep-k">Waiting on</div>
+                  <div className="dep-k">{UI.diagnosis.waitingOn}</div>
                   <div className="dep-v">{d.dependency}</div>
                 </div>
               ) : null}
               {trail ? <CaseTrail trail={trail} /> : null}
               <Button block arrow onClick={() => onNavigate?.(`${engineKey}-nextmove`)}>
-                See my next move
+                {UI.diagnosis.cta}
               </Button>
               <TrustDisclosure
                 d={d}

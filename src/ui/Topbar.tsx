@@ -6,9 +6,14 @@
  *  infer from state.
  *
  *  The account chip's slot renders as nothing here (C7 owns sign-in/save,
- *  not in scope until then). */
+ *  not in scope until then).
+ *
+ *  Task 9's copy sweep: the brand wordmark, back/restart control labels and
+ *  the restart-confirm prompt are service-agnostic chrome, so they live in
+ *  `SCREEN_COPY.ui` (design note 6) rather than inline here. */
 import type { SessionAction } from '../session/session'
 import { ICONS } from './icons'
+import { UI } from '../screens/screenCopy'
 
 export interface TopbarProps {
   showBack: boolean
@@ -22,11 +27,11 @@ export function Topbar({ showBack, showRestart, hasAnswers, restartConfirm, disp
   return (
     <div className="topbar">
       <button className="brand" onClick={() => dispatch({ type: 'RESTART' })}>
-        <span className="brand-mark">{ICONS.brandMark}</span>NextMove
+        <span className="brand-mark">{ICONS.brandMark}</span>{UI.topbar.brand}
       </button>
       <div className="topctrls">
         {showBack && (
-          <button className="ctrl-link" onClick={() => dispatch({ type: 'BACK' })}>← Back</button>
+          <button className="ctrl-link" onClick={() => dispatch({ type: 'BACK' })}>{UI.topbar.back}</button>
         )}
         {showRestart && (
           <RestartControl hasAnswers={hasAnswers} restartConfirm={restartConfirm} dispatch={dispatch} />
@@ -48,9 +53,9 @@ function RestartControl({
   if (restartConfirm) {
     return (
       <span className="restart-confirm">
-        Clear your answers?
-        <button className="yes" onClick={() => dispatch({ type: 'RESTART' })}>Yes</button>
-        <button className="no" onClick={() => dispatch({ type: 'RESTART_CANCEL' })}>Cancel</button>
+        {UI.topbar.restartConfirm.prompt}
+        <button className="yes" onClick={() => dispatch({ type: 'RESTART' })}>{UI.topbar.restartConfirm.yes}</button>
+        <button className="no" onClick={() => dispatch({ type: 'RESTART_CANCEL' })}>{UI.topbar.restartConfirm.cancel}</button>
       </span>
     )
   }
@@ -62,7 +67,7 @@ function RestartControl({
       className="ctrl-link"
       onClick={() => dispatch(hasAnswers ? { type: 'RESTART_REQUEST' } : { type: 'RESTART' })}
     >
-      Restart
+      {UI.topbar.restart}
     </button>
   )
 }

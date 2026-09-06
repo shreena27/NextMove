@@ -26,6 +26,7 @@ import type { ScreenProps } from '../screenProps'
 import { hasAnswers } from '../screenProps'
 import { SIR_STATES, SIR_Q1_OPTIONS_FOR } from '../../playbooks/sirPlaybook'
 import { sirCoverage, optionsForPhase } from '../../domain/sirConfig'
+import { UI, SIR_COPY } from '../screenCopy'
 
 export function SirState({ state, dispatch }: ScreenProps) {
   const onSelect = (k: string) => {
@@ -42,9 +43,9 @@ export function SirState({ state, dispatch }: ScreenProps) {
       <div className="stage screen">
         <Split
           left={<>
-            <PhaseEyebrow service="Voter Services" phase="SIR" />
-            <h1 className="headline">Which state is this for?</h1>
-            <p className="lede">SIR's document list and appeal rules are the same nationally, but the current phase and dates differ by state, so NextMove checks yours before saying "wait" or "act now."</p>
+            <PhaseEyebrow service={UI.serviceLabel.voterServices} phase={UI.serviceLabel.sir} />
+            <h1 className="headline">{SIR_COPY.state.headline}</h1>
+            <p className="lede">{SIR_COPY.state.lede}</p>
           </>}
           right={
             <div className="answers">
@@ -66,17 +67,17 @@ export function SirUnsupported({ state, dispatch }: ScreenProps) {
       <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
       <div className="stage screen">
         <div className="narrow">
-          <PhaseEyebrow service="Voter Services" phase={`SIR · ${st.name}`} />
-          <h2 className="headline">SIR guidance for your state isn't available in NextMove yet.</h2>
-          <p className="lede">SIR processes can differ by state and revision stage. We only give case-specific guidance where we've verified the official workflow. Right now, that's Delhi only.</p>
+          <PhaseEyebrow service={UI.serviceLabel.voterServices} phase={`${UI.serviceLabel.sir} · ${st.name}`} />
+          <h2 className="headline">{SIR_COPY.unsupported.headline}</h2>
+          <p className="lede">{SIR_COPY.unsupported.lede}</p>
           <div className="nm-field" style={{ borderTop: 'none', paddingTop: 0 }}>
-            <div className="nm-k">Where to check instead</div>
+            <div className="nm-k">{SIR_COPY.unsupported.whereToCheck}</div>
             <div className="nm-v">
-              <a href="https://voters.eci.gov.in" target="_blank" rel="noopener">Voters' Service Portal — voters.eci.gov.in</a> · <span className="phone">Toll-free Voter Helpline: 1950</span>
-              <div className="handoff-note">An official ECI channel. NextMove hasn't verified state-specific SIR rules for {st.name} yet, so it can't safely tell you WAIT, FOLLOW UP, or ESCALATE here.</div>
+              <a href="https://voters.eci.gov.in" target="_blank" rel="noopener">{SIR_COPY.unsupported.portalLabel}</a> · <span className="phone">{SIR_COPY.unsupported.helpline}</span>
+              <div className="handoff-note">{SIR_COPY.unsupported.handoffNoteLead} {st.name} {SIR_COPY.unsupported.handoffNoteTail}</div>
             </div>
           </div>
-          <Button variant="secondary" block onClick={() => dispatch({ type: 'RESTART' })}>Back to Home</Button>
+          <Button variant="secondary" block onClick={() => dispatch({ type: 'RESTART' })}>{UI.common.backToHome}</Button>
         </div>
       </div>
     </>
@@ -99,9 +100,9 @@ export function SirQ1({ state, dispatch }: ScreenProps) {
       <div className="stage screen">
         <Split
           left={<>
-            <PhaseEyebrow service={`SIR · ${st.name}`} phase="Just one question" />
-            <h1 className="headline">What's happening with your SIR situation?</h1>
-            <p className="lede">{st.name} is currently in the {st.phase!.label}. Enumeration and the Draft Roll are both already behind us, so that's what these options reflect.</p>
+            <PhaseEyebrow service={`${UI.serviceLabel.sir} · ${st.name}`} phase={UI.phase.justOneQuestion} />
+            <h1 className="headline">{SIR_COPY.q1.headline}</h1>
+            <p className="lede">{st.name} {SIR_COPY.q1.ledeConnective} {st.phase!.label}. {SIR_COPY.q1.ledeTail}</p>
           </>}
           right={
             <div className="answers">
@@ -111,7 +112,7 @@ export function SirQ1({ state, dispatch }: ScreenProps) {
               {/* "I'm not sure" is appended OUTSIDE the phase option set, by
                  design (sirConfig.ts's own optionsForPhase docblock) — never
                  phase-gate the escape hatch. */}
-              <AnswerRow value="notsure" label="I'm not sure" selected={state.answers.sirQ1 === 'unclassified'} onSelect={onSelect} />
+              <AnswerRow value="notsure" label={SIR_COPY.q1.notSure} selected={state.answers.sirQ1 === 'unclassified'} onSelect={onSelect} />
             </div>
           }
         />

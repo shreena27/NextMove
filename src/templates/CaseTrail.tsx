@@ -18,15 +18,25 @@
  *  not a new exception. `passportTrailFor` itself is written defensively
  *  (the state-id check is self-sufficient; the stage fallback is not) but
  *  must not be relied on alone to keep the trail off a non-Passport screen.
+ *
+ *  Task 9's copy sweep: the step labels and the "You are here" marker are
+ *  authored, citizen-facing strings, so they live in
+ *  `PASSPORT_COPY.caseTrail` (screenCopy.ts) rather than inline here.
  */
 import type { Diagnosis } from '../domain/types'
+import { PASSPORT_COPY } from '../screens/screenCopy'
 
 export interface CaseTrailData {
   steps: string[]
   current: number
 }
 
-const STEPS = ['Application', 'Appointment', 'Police verification', 'Processing']
+const STEPS = [
+  PASSPORT_COPY.caseTrail.steps.application,
+  PASSPORT_COPY.caseTrail.steps.appointment,
+  PASSPORT_COPY.caseTrail.steps.policeVerification,
+  PASSPORT_COPY.caseTrail.steps.processing,
+]
 
 // Base states place directly; ladder-rung states (5a/5b and their
 // pending/resolved variants) place via the STAGE answer (q1) instead, so the
@@ -64,7 +74,7 @@ export function CaseTrail({ trail }: { trail: CaseTrailData }) {
           <div className={`ct-step ${cls}`} key={step}>
             <span className="ct-dot" />
             <span className="ct-label">{step}</span>
-            {isCurrent ? <span className="ct-here">You are here</span> : null}
+            {isCurrent ? <span className="ct-here">{PASSPORT_COPY.caseTrail.hereMarker}</span> : null}
           </div>
         )
       })}
