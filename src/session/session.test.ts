@@ -393,3 +393,136 @@ describe('C5 action union excludes CONTINUE_SAVED (design note 7: dead code in t
     r(initialSession, { type: 'CONTINUE_SAVED', id: 'c1' })
   })
 })
+
+describe('CLOSE_UNRESOLVED / REOPEN_CASE / REMOVE_SAVED / SET_REMIND / TOGGLE_LOG / SET_REMOVE_CONFIRM / SET_REMINDER_COPIED — reducer wiring (Task 7, design notes 1-9)', () => {
+  // The branch-by-branch logic is exhaustively pinned in cases.test.ts
+  // (closeUnresolved/reopenCase/removeSaved/setRemind/toggleLog/
+  // setRemoveConfirm/setReminderCopied, called directly). This block only
+  // proves the WIRING, plus the two facts that can only be observed at the
+  // full SessionState level: CLOSE_UNRESOLVED landing on Home with every
+  // other field reset (it ends in the same RESTART allowlist RESTART
+  // itself uses), and RESTART clearing reminderCopied (already pinned by
+  // the "RESTART preserves the persisted slice" test above — re-confirmed
+  // here against a differently-shaped, non-default fixture).
+  const NOW = 1_725_000_000_000
+  const CLOSABLE_CASE: Casefile = {
+    ...FIXTURE_CASE, id: 'c1', outcome: 'still_open',
+    log: [{ t: NOW - 1000, kind: 'diagnosed', text: 'Escalate' }],
+  }
+
+  it('CLOSE_UNRESOLVED on a SAVED active case lands on Home with the case closed in savedCases and every other field reset', () => {
+    const dirty: SessionState = {
+      ...initialSession, savedCases: [CLOSABLE_CASE], activeCaseId: 'c1',
+      screen: 'checkin', history: ['home'], answers: { q1: 'adverse' },
+    }
+
+    const s = r(dirty, { type: 'CLOSE_UNRESOLVED', now: NOW })
+
+    expect(s.screen).toBe('home')
+    expect(s.savedCases).toHaveLength(1)
+    expect(s.savedCases[0].outcome).toBe('closed_unresolved')
+    expect(s.savedCases[0].closedAt).toBe(NOW)
+    expect(s.savedCases[0].log.at(-1)?.kind).toBe('closed')
+    expect(s).toEqual({ ...initialSession, savedCases: s.savedCases }) // everything else reset
+  })
+
+  it('CLOSE_UNRESOLVED on the WORKING case leaves savedCases genuinely unchanged — DESIGN NOTE 9: a working case that was never saved leaves no record', () => {
+    const preexisting: Casefile[] = [{ ...FIXTURE_CASE, id: 'other' }]
+    const dirty: SessionState = {
+      ...initialSession, savedCases: preexisting,
+      workingCase: { ...FIXTURE_CASE, id: 'working', unsaved: true }, activeCaseId: 'working',
+      screen: 'checkin', history: ['home'],
+    }
+
+    const s = r(dirty, { type: 'CLOSE_UNRESOLVED', now: NOW })
+
+    expect(s.savedCases).toBe(preexisting) // the SAME reference — the working case's closure never touched it
+    expect(s.workingCase).toBeNull() // dropped by RESTART, closure and all
+  })
+
+  it('CLOSE_UNRESOLVED with no active case is a clean no-op', () => {
+    expect(r(initialSession, { type: 'CLOSE_UNRESOLVED', now: NOW })).toEqual(initialSession)
+  })
+
+  it("REOPEN_CASE flips a closed case back to still_open, navigates to the engine's diagnosis screen, and pushes history; closedAt is left standing (design note 3)", () => {
+    const dirty: SessionState = {
+      ...initialSession,
+      savedCases: [{ ...CLOSABLE_CASE, outcome: 'closed_unresolved', closedAt: NOW - 5000 }],
+      screen: 'home', history: [],
+    }
+
+    const s = r(dirty, { type: 'REOPEN_CASE', id: 'c1', now: NOW })
+
+    expect(s.screen).toBe('passport-diagnosis')
+    expect(s.history).toEqual(['home'])
+    expect(s.savedCases[0].outcome).toBe('still_open')
+    expect(s.savedCases[0].closedAt).toBe(NOW - 5000)
+    expect(s.activeCaseId).toBe('c1')
+  })
+
+  it('REOPEN_CASE for an unknown id is a clean no-op', () => {
+    expect(r(initialSession, { type: 'REOPEN_CASE', id: 'nope', now: NOW })).toEqual(initialSession)
+  })
+
+  it("REMOVE_SAVED deletes the case, sends the citizen to Home with cleared history (design note 4 — never left on a dead case's screen), and clears removeConfirm", () => {
+    const other: Casefile = { ...FIXTURE_CASE, id: 'other' }
+    const dirty: SessionState = {
+      ...initialSession, savedCases: [CLOSABLE_CASE, other], activeCaseId: 'c1',
+      screen: 'checkin', history: ['home'], removeConfirm: 'c1',
+    }
+
+    const s = r(dirty, { type: 'REMOVE_SAVED', id: 'c1' })
+
+    expect(s.savedCases).toEqual([other])
+    expect(s.activeCaseId).toBeNull()
+    expect(s.screen).toBe('home')
+    expect(s.history).toEqual([])
+    expect(s.removeConfirm).toBeNull()
+  })
+
+  it('SET_REMIND writes onto the WORKING case (D5) — a search-by-id over savedCases would have silently missed it', () => {
+    const dirty: SessionState = {
+      ...initialSession,
+      workingCase: { ...FIXTURE_CASE, id: 'working', unsaved: true, remindAt: null }, activeCaseId: 'working',
+    }
+
+    const s = r(dirty, { type: 'SET_REMIND', value: '2026-10-12' })
+
+    expect(s.workingCase!.remindAt).toBe('2026-10-12')
+  })
+
+  it('SET_REMIND with no active case is a clean no-op', () => {
+    expect(r(initialSession, { type: 'SET_REMIND', value: '2026-10-12' })).toEqual(initialSession)
+  })
+
+  it('TOGGLE_LOG opens exactly the given case id', () => {
+    const s = r(initialSession, { type: 'TOGGLE_LOG', caseId: 'c1' })
+    expect(s.logOpen).toEqual({ c1: true })
+  })
+
+  it('SET_REMOVE_CONFIRM arms and disarms', () => {
+    const armed = r(initialSession, { type: 'SET_REMOVE_CONFIRM', id: 'c1' })
+    expect(armed.removeConfirm).toBe('c1')
+    const disarmed = r(armed, { type: 'SET_REMOVE_CONFIRM', id: null })
+    expect(disarmed.removeConfirm).toBeNull()
+  })
+
+  it('SET_REMINDER_COPIED sets/clears the flag and touches savedCases/workingCase/answers not at all (by identity); RESTART clears it', () => {
+    const dirty: SessionState = {
+      ...initialSession, savedCases: [CLOSABLE_CASE],
+      workingCase: { ...FIXTURE_CASE, id: 'working' }, answers: { q1: 'adverse' },
+    }
+
+    const s1 = r(dirty, { type: 'SET_REMINDER_COPIED', value: true })
+    expect(s1.reminderCopied).toBe(true)
+    expect(s1.savedCases).toBe(dirty.savedCases)
+    expect(s1.workingCase).toBe(dirty.workingCase)
+    expect(s1.answers).toBe(dirty.answers)
+
+    const s2 = r(s1, { type: 'SET_REMINDER_COPIED', value: false })
+    expect(s2.reminderCopied).toBe(false)
+
+    const s3 = r(s1, { type: 'RESTART' })
+    expect(s3.reminderCopied).toBe(false)
+  })
+})

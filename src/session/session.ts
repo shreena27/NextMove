@@ -7,6 +7,7 @@ import type { CiFragment, CiSnapshot } from './cases'
 import {
   beginWorkingCheckin, openCheckin, completeSave,
   ciChoose, ciConfirm, ciValence, ciClosureAnswer, ciUndo, ciCancel,
+  closeUnresolved, reopenCase, removeSaved, setRemind, toggleLog, setRemoveConfirm, setReminderCopied,
 } from './cases'
 
 /** The three services C3 ships. Declared here rather than derived from
@@ -165,6 +166,22 @@ export type SessionAction =
   | { type: 'CI_CLOSURE'; gotIt: boolean; now: number }
   | { type: 'CI_UNDO' }
   | { type: 'CI_CANCEL' }
+  // Task 7: the remaining case-lifecycle actions — closing a case as
+  // unresolved, reopening a closed one, permanently removing a saved one,
+  // the check-back reminder date, the journey log's "Show all" toggle, and
+  // the reminder copy-flash flag. Each is a thin arm over its matching
+  // cases.ts pure function (design note 1), same shape as BEGIN_SAVE/
+  // OPEN_CHECKIN/CI_* above. Design note 2: the dead-end screen's "Keep the
+  // case open" button is deliberately NOT a new action here — it is a plain
+  // RESTART dispatch (nothing is written; the case stays exactly as the
+  // deadend option's own `reported` entry left it).
+  | { type: 'CLOSE_UNRESOLVED'; now: number }
+  | { type: 'REOPEN_CASE'; id: string; now: number }
+  | { type: 'REMOVE_SAVED'; id: string }
+  | { type: 'SET_REMIND'; value: string }
+  | { type: 'TOGGLE_LOG'; caseId: string }
+  | { type: 'SET_REMOVE_CONFIRM'; id: string | null }
+  | { type: 'SET_REMINDER_COPIED'; value: boolean }
 
 /** Applies a CiFragment (cases.ts) onto SessionState. `navigateTo` decides
  *  the shape: a non-null screen id gets the SAME nav()-style treatment
@@ -311,5 +328,56 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
     }
     case 'CI_CANCEL':
       return applyCiFragment(s, ciCancel())
+    case 'CLOSE_UNRESOLVED': {
+      const fragment = closeUnresolved(
+        { activeCaseId: s.activeCaseId, workingCase: s.workingCase, savedCases: s.savedCases },
+        a.now,
+      )
+      if (!fragment) return s
+      // Prototype closeUnresolved() ends in restart() (2729) — the SAME
+      // explicit allowlist RESTART's own arm uses (design note 3): only
+      // savedCases survives. Design note 9: for a working (unsaved) case,
+      // `fragment.workingCase` holds the just-closed case, but it was
+      // never a member of savedCases and is dropped here exactly like
+      // everywhere else RESTART drops workingCase — leaving genuinely no
+      // record, on purpose.
+      return { ...initialSession, savedCases: fragment.savedCases }
+    }
+    case 'REOPEN_CASE': {
+      const fragment = reopenCase(s.savedCases, a.id, a.now)
+      if (!fragment) return s
+      const { navigateTo, ...rest } = fragment
+      return {
+        ...s, ...rest,
+        history: [...s.history, s.screen], screen: navigateTo as ScreenId,
+        trustOpen: false, restartConfirm: false, removeConfirm: null,
+      }
+    }
+    case 'REMOVE_SAVED': {
+      const fragment = removeSaved({ savedCases: s.savedCases, activeCaseId: s.activeCaseId }, a.id)
+      return {
+        ...s, ...fragment,
+        // Design note 4: the casefile screen's inline confirm sets
+        // screen:'home', history:[] BEFORE removing (prototype 2881) —
+        // folded into this one action so the citizen can never be left on
+        // a screen for a case that no longer exists, regardless of what
+        // dispatches it.
+        screen: 'home', history: [],
+        trustOpen: false, restartConfirm: false, removeConfirm: null,
+      }
+    }
+    case 'SET_REMIND': {
+      const fragment = setRemind(
+        { activeCaseId: s.activeCaseId, workingCase: s.workingCase, savedCases: s.savedCases },
+        a.value,
+      )
+      return fragment ? { ...s, ...fragment } : s
+    }
+    case 'TOGGLE_LOG':
+      return { ...s, ...toggleLog(s.logOpen, a.caseId) }
+    case 'SET_REMOVE_CONFIRM':
+      return { ...s, ...setRemoveConfirm(a.id) }
+    case 'SET_REMINDER_COPIED':
+      return { ...s, ...setReminderCopied(a.value) }
   }
 }

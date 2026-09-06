@@ -688,3 +688,150 @@ export function ciUndo(state: {
 export function ciCancel(): CiFragment {
   return { ciStage: null, ciPending: null, ciPendingIdx: null, navigateTo: null }
 }
+
+// =============================================================================
+// Task 7 — closure, dead end, reopen, remove, check-back date, the journey
+// log's "Show all" toggle, and the reminder copy-flash flag. TRANSCRIBED, not
+// authored: design/nextmove-v1-prototype.html (git tag v1-design-lock-2) —
+// removeSaved (2178-2182), reopenCase (2183-2187), setRemind (2721-2724),
+// closeUnresolved (2725-2730), the journey log's "Show all N entries" button
+// (2825), copyReminder (3728-3730).
+//
+// Same pure-function-returns-a-fragment shape as every function above
+// (design note 1): session.ts's arms for these seven actions stay thin
+// spreads over what these functions return.
+// =============================================================================
+
+/** Prototype closeUnresolved() (2725-2730): outcome -> 'closed_unresolved',
+ *  closedAt stamped, a 'closed' entry appended via appendLog (design note
+ *  4's unification). The prototype's own body ends in `restart()` (2729) —
+ *  this fragment returns only the case placement; session.ts's
+ *  CLOSE_UNRESOLVED arm folds it into the SAME `{ ...initialSession,
+ *  savedCases }` expression RESTART's own arm uses. Returns null when there
+ *  is no active case, matching every other precondition failure in this
+ *  file.
+ *
+ *  DESIGN NOTE 9 — closing an UNSAVED (working) case leaves genuinely no
+ *  record. `workingCase` is never a member of `savedCases`, and the RESTART
+ *  this action ends in drops `workingCase` along with everything else
+ *  RESTART does not explicitly preserve. So a citizen who closes a case
+ *  they never saved gets exactly what the casefile screen's own copy warns
+ *  them of: "this casefile lives only in this tab until you save it." This
+ *  is the locked prototype's own behaviour and is NOT a bug to silently fix
+ *  here (e.g. by auto-saving on closure) — see this task's brief, Open
+ *  Question 3, for the auto-save alternative a future reviewer may want to
+ *  weigh. Pinned by a test in cases.test.ts so a future reader sees this
+ *  was a decision, not an oversight. */
+export function closeUnresolved(
+  state: { activeCaseId: string | null; workingCase: Casefile | null; savedCases: Casefile[] },
+  now: number,
+): { workingCase: Casefile | null; savedCases: Casefile[] } | null {
+  const c = activeCase(state)
+  if (!c) return null
+  let updated: Casefile = { ...c, outcome: 'closed_unresolved', closedAt: now }
+  updated = appendLog(updated, { kind: 'closed', text: LOG_COPY.closedUnresolved }, now)
+  return placeCase(state, updated)
+}
+
+/** Prototype reopenCase() (2183-2187): outcome -> 'still_open', append the
+ *  'reopened' entry via appendLog, then loadCase(id) against the
+ *  just-updated case (answers/prepChecks/prepDraft — loadCaseFragment,
+ *  reused verbatim), landing on `${engineKey}-diagnosis`. Returns null for
+ *  an unknown id, mirroring the prototype's own `if(!c) return`.
+ *
+ *  DESIGN NOTE 3 — `closedAt` is left standing. The prototype's own
+ *  reopenCase() never clears it, and this port does not "tidy" it either:
+ *  the journey log is the record of what happened either way, and a
+ *  reopened case that still shows when it was once closed is honest
+ *  history, not a stale field an incomplete fix left behind. Only reachable
+ *  against `savedCases` — a closed case is, by design note 9 above, always
+ *  a SAVED one (an unsaved closure leaves no case standing to reopen). */
+export interface ReopenCaseFragment extends LoadCaseFragment {
+  savedCases: Casefile[]
+  navigateTo: string
+}
+
+export function reopenCase(savedCases: Casefile[], id: string, now: number): ReopenCaseFragment | null {
+  const c = savedCases.find(x => x.id === id)
+  if (!c) return null
+  const updated = appendLog({ ...c, outcome: 'still_open' }, { kind: 'reopened', text: LOG_COPY.reopened }, now)
+  const nextSavedCases = savedCases.map(x => (x.id === id ? updated : x))
+  return {
+    ...loadCaseFragment(updated),
+    savedCases: nextSavedCases,
+    navigateTo: `${updated.engineKey}-diagnosis`,
+  }
+}
+
+/** Prototype removeSaved() (2178-2182): real deletion — filter the case out
+ *  of `savedCases`, clearing `activeCaseId` only when it pointed at the
+ *  removed case. Never mutates the input array. The spec: "Deleting the
+ *  case deletes the log (real deletion)."
+ *
+ *  The prototype's own onclick handler additionally sets `S.screen='home';
+ *  S.history=[]` BEFORE calling this function (2881), so the citizen is
+ *  never left on a screen for a case that no longer exists — session.ts's
+ *  REMOVE_SAVED arm folds that in, since screen/history are not part of
+ *  this file's state slice (the same layering reason CiFragment carries a
+ *  generic `navigateTo` instead of a screen id, rather than this file
+ *  importing ScreenId from session.ts). */
+export interface RemoveSavedFragment {
+  savedCases: Casefile[]
+  activeCaseId: string | null
+}
+
+export function removeSaved(
+  state: { savedCases: Casefile[]; activeCaseId: string | null },
+  id: string,
+): RemoveSavedFragment {
+  return {
+    savedCases: state.savedCases.filter(c => c.id !== id),
+    activeCaseId: state.activeCaseId === id ? null : state.activeCaseId,
+  }
+}
+
+/** Prototype setRemind() (2721-2724) — DEVIATION D5. The prototype searches
+ *  `S.savedCases` by id (`c=S.savedCases.find(x=>x.id===id)`), which
+ *  silently no-ops for a WORKING (unsaved) case: a working case is never a
+ *  member of `savedCases`, yet the check-back date input sits right there
+ *  on the working case's own casefile screen (2953-2955), unconditionally.
+ *  This is a real bug, not a deliberate prototype choice. The fix: resolve
+ *  `activeCase()` (working OR saved) and write through `placeCase` — the
+ *  same helper every CI_* function above already uses for exactly this
+ *  reason. `value` is the date input's raw ISO string, or `''` when the
+ *  citizen clears it; stored as `value || null`, and never rendered raw
+ *  (Task 8's `fmtRemind`). Returns null when there is no active case. */
+export function setRemind(
+  state: { activeCaseId: string | null; workingCase: Casefile | null; savedCases: Casefile[] },
+  value: string,
+): { workingCase: Casefile | null; savedCases: Casefile[] } | null {
+  const c = activeCase(state)
+  if (!c) return null
+  const updated: Casefile = { ...c, remindAt: value || null }
+  return placeCase(state, updated)
+}
+
+/** The journey log's "Show all N entries" button (2825): `S.logOpen[c.id] =
+ *  true`. DESIGN NOTE 7 — the prototype only ever OPENS; there is no
+ *  counterpart "Show less". Transcribe that asymmetry exactly: do not add a
+ *  collapse. Never mutates the input record. */
+export function toggleLog(logOpen: Record<string, boolean>, caseId: string): { logOpen: Record<string, boolean> } {
+  return { logOpen: { ...logOpen, [caseId]: true } }
+}
+
+/** The casefile screen's destructive inline confirm (2879-2883): armed by
+ *  case id, or disarmed with `null`. */
+export function setRemoveConfirm(id: string | null): { removeConfirm: string | null } {
+  return { removeConfirm: id }
+}
+
+/** copyReminder()'s (3728-3730) flash flag. DESIGN NOTE 8 — mirrors C4's
+ *  `PrepareScreen` `copied` handling, with one deliberate shape difference:
+ *  C4's `copied` is component-local `useState` (`PrepareScreen.tsx`); this
+ *  one is SESSION state, because the copy button that sets it lives inside
+ *  a reducer-driven screen (the casefile screen is not its own standalone
+ *  component the way `PrepareScreen` is) — so it is cleared by RESTART like
+ *  every other transient field, rather than resetting on unmount. */
+export function setReminderCopied(value: boolean): { reminderCopied: boolean } {
+  return { reminderCopied: value }
+}

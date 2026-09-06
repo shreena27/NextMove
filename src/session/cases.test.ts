@@ -12,6 +12,7 @@ import { ladderFor } from '../templates/ladder'
 import {
   activeCase, sameAnswers, caseIsSaved, loadCase, openCheckin, beginWorkingCheckin, completeSave,
   appendLog, ciChoose, ciConfirm, ciValence, ciClosureAnswer, ciUndo, ciCancel,
+  closeUnresolved, reopenCase, removeSaved, setRemind, toggleLog, setRemoveConfirm, setReminderCopied,
 } from './cases'
 import type { OpenCheckinFragment, BeginWorkingFragment, CiSnapshot } from './cases'
 
@@ -1072,5 +1073,206 @@ describe('Immutability: no CI_* arm mutates the previous state', () => {
     ciUndo(s1)
 
     expect(s1.ciSnapshot).toEqual(snapshotClone)
+  })
+})
+
+// =============================================================================
+// Task 7 — closure, dead end, reopen, remove, check-back date, journey-log
+// "show all" toggle, reminder copy-flash flag. Prototype 2178-2187,
+// 2721-2730, 2825, 3728-3730.
+// =============================================================================
+
+describe('closeUnresolved (prototype closeUnresolved, 2725-2730)', () => {
+  it('on a SAVED active case: sets outcome to closed_unresolved, stamps closedAt, and appends the exact closed entry', () => {
+    const c = savedCase(PASSPORT_ANSWERS, { id: 'c1' })
+    const preLog = [...c.log]
+
+    const fragment = closeUnresolved({ activeCaseId: 'c1', workingCase: null, savedCases: [c] }, NOW + 5000)!
+
+    expect(fragment).not.toBeNull()
+    expect(fragment.workingCase).toBeNull()
+    const updated = fragment.savedCases.find(x => x.id === 'c1')!
+    expect(updated.outcome).toBe('closed_unresolved')
+    expect(updated.closedAt).toBe(NOW + 5000)
+    expect(updated.log).toEqual([...preLog, { t: NOW + 5000, kind: 'closed', text: LOG_COPY.closedUnresolved }])
+  })
+
+  it('on the WORKING case: writes through placeCase (workingCase, not savedCases)', () => {
+    const c = savedCase(PASSPORT_ANSWERS, { id: 'working', unsaved: true })
+
+    const fragment = closeUnresolved({ activeCaseId: 'working', workingCase: c, savedCases: [] }, NOW + 5000)!
+
+    expect(fragment.workingCase!.outcome).toBe('closed_unresolved')
+    expect(fragment.workingCase!.closedAt).toBe(NOW + 5000)
+    expect(fragment.workingCase!.log.at(-1)).toEqual({ t: NOW + 5000, kind: 'closed', text: LOG_COPY.closedUnresolved })
+  })
+
+  it('returns null when there is no active case', () => {
+    expect(closeUnresolved({ activeCaseId: null, workingCase: null, savedCases: [] }, NOW)).toBeNull()
+  })
+
+  it('DESIGN NOTE 9 pin: closing a WORKING case leaves savedCases genuinely unchanged — the SAME reference, not even copied. A citizen who closes a case they never saved gets no record: this is the locked prototype\'s own behaviour (workingCase is never a member of savedCases, and CLOSE_UNRESOLVED ends in RESTART, which drops workingCase), NOT a bug to silently "fix" by auto-saving on closure', () => {
+    const working = savedCase(PASSPORT_ANSWERS, { id: 'working', unsaved: true })
+    // Non-empty and distinguishable from [] on purpose — a vacuous
+    // []===[] check would pass even if this function accidentally
+    // dropped, reordered or copied savedCases.
+    const savedCases: Casefile[] = [savedCase(PASSPORT_ANSWERS_2, { id: 'c-other' })]
+
+    const fragment = closeUnresolved({ activeCaseId: 'working', workingCase: working, savedCases }, NOW)!
+
+    expect(fragment.savedCases).toBe(savedCases)
+  })
+})
+
+describe('reopenCase (design note 3; prototype reopenCase, 2183-2187)', () => {
+  it("flips outcome to still_open, appends the exact 'reopened' entry (log intact — append, never replace), loads the case's answers/prepChecks, and targets '{engineKey}-diagnosis'; closedAt is left standing, not tidied", () => {
+    const c = savedCase(PASSPORT_ANSWERS, {
+      id: 'c1',
+      outcome: 'closed_unresolved',
+      closedAt: NOW - 1000,
+      log: [
+        { t: NOW - 2000, kind: 'diagnosed', text: 'seed' },
+        { t: NOW - 1000, kind: 'closed', text: LOG_COPY.closedUnresolved },
+      ],
+    })
+    const preLog = [...c.log]
+
+    const fragment = reopenCase([c], 'c1', NOW + 1000)!
+
+    expect(fragment).not.toBeNull()
+    expect(fragment.savedCases).toHaveLength(1)
+    const updated = fragment.savedCases[0]
+    expect(updated.outcome).toBe('still_open')
+    expect(updated.log).toEqual([...preLog, { t: NOW + 1000, kind: 'reopened', text: LOG_COPY.reopened }])
+    // DESIGN NOTE 3 — deliberately NOT cleared. The journey log is the
+    // record either way; a reopened case that still shows when it was once
+    // closed is honest history, not a stale field left by an incomplete fix.
+    expect(updated.closedAt).toBe(NOW - 1000)
+    expect(fragment.activeCaseId).toBe('c1')
+    expect(fragment.answers).toEqual(c.answers)
+    expect(fragment.prepChecks).toEqual(c.prepChecks)
+    expect(fragment.navigateTo).toBe('passport-diagnosis')
+  })
+
+  it('returns null for an unknown id', () => {
+    expect(reopenCase([], 'nope', NOW)).toBeNull()
+  })
+
+  it("a reopened case reappears in the still-open set and disappears from the closed set — the SAME predicates Home uses (prototype 3137-3138: outcome==='still_open' / outcome!=='still_open')", () => {
+    const closed = savedCase(PASSPORT_ANSWERS, { id: 'c1', outcome: 'closed_unresolved', closedAt: NOW - 1000 })
+    const other = savedCase(PASSPORT_ANSWERS_2, { id: 'c2', outcome: 'closed_unresolved', closedAt: NOW - 1000 })
+
+    const fragment = reopenCase([closed, other], 'c1', NOW + 1000)!
+
+    const stillOpen = fragment.savedCases.filter(c => c.outcome === 'still_open')
+    const closedSet = fragment.savedCases.filter(c => c.outcome !== 'still_open')
+    expect(stillOpen.map(c => c.id)).toEqual(['c1'])
+    expect(closedSet.map(c => c.id)).toEqual(['c2'])
+  })
+
+  it('targets the right engine for voter and sir too, not just passport', () => {
+    const voterCase = caseFor('voter', voterEngine, 'Voter roll', 'voter-nextmove', { voterQ1: 'no_word' }, { id: 'v1', outcome: 'closed_unresolved' })
+    const sirCase = caseFor('sir', sirEngine, 'Voter roll (SIR)', 'sir-nextmove', { sirState: 'delhi', sirQ1: 'notice' }, { id: 's1', outcome: 'closed_unresolved' })
+
+    expect(reopenCase([voterCase], 'v1', NOW)!.navigateTo).toBe('voter-diagnosis')
+    expect(reopenCase([sirCase], 's1', NOW)!.navigateTo).toBe('sir-diagnosis')
+  })
+})
+
+describe('removeSaved (design note 4; prototype removeSaved, 2178-2182 — "real deletion")', () => {
+  it('removes exactly one case, leaves the others, and never mutates the input array', () => {
+    const a = savedCase(PASSPORT_ANSWERS, { id: 'a' })
+    const b = savedCase(PASSPORT_ANSWERS_2, { id: 'b' })
+    const savedCases = [a, b]
+    const clone = structuredClone(savedCases)
+
+    const fragment = removeSaved({ savedCases, activeCaseId: 'b' }, 'a')
+
+    expect(fragment.savedCases).toEqual([b])
+    expect(fragment.savedCases[0]).toBe(b) // same object reference — not even copied
+    expect(savedCases).toHaveLength(2)
+    expect(savedCases).toEqual(clone) // input array untouched
+  })
+
+  it('clears activeCaseId only when it pointed at the removed case', () => {
+    const a = savedCase(PASSPORT_ANSWERS, { id: 'a' })
+    expect(removeSaved({ savedCases: [a], activeCaseId: 'a' }, 'a').activeCaseId).toBeNull()
+    expect(removeSaved({ savedCases: [a], activeCaseId: 'other' }, 'a').activeCaseId).toBe('other')
+    expect(removeSaved({ savedCases: [a], activeCaseId: null }, 'a').activeCaseId).toBeNull()
+  })
+
+  it('removing an unknown id is a harmless no-op', () => {
+    const a = savedCase(PASSPORT_ANSWERS, { id: 'a' })
+    const fragment = removeSaved({ savedCases: [a], activeCaseId: 'a' }, 'nope')
+    expect(fragment.savedCases).toEqual([a])
+    expect(fragment.activeCaseId).toBe('a')
+  })
+})
+
+describe('setRemind — DEVIATION D5 (prototype setRemind, 2721-2724)', () => {
+  it('D5 RED: on a WORKING case (activeCaseId === "working"), writes workingCase.remindAt. A faithful transcription — searching savedCases by id — is a no-op here: a working case is never a member of savedCases, yet the check-back date input sits right there on the working case\'s own casefile screen (2953-2955), unconditionally', () => {
+    const working = savedCase(PASSPORT_ANSWERS, { id: 'working', unsaved: true, remindAt: null })
+    const state = { activeCaseId: 'working', workingCase: working, savedCases: [] as Casefile[] }
+
+    const fragment = setRemind(state, '2026-10-12')!
+
+    expect(fragment).not.toBeNull()
+    expect(fragment.workingCase).not.toBeNull()
+    expect(fragment.workingCase!.remindAt).toBe('2026-10-12')
+    expect(fragment.savedCases).toEqual([]) // nothing here to find under a faithful (buggy) transcription
+  })
+
+  it('writes remindAt on a SAVED case at its position, leaving other saved cases untouched', () => {
+    const a = savedCase(PASSPORT_ANSWERS, { id: 'a', remindAt: null })
+    const b = savedCase(PASSPORT_ANSWERS_2, { id: 'b', remindAt: null })
+
+    const fragment = setRemind({ activeCaseId: 'a', workingCase: null, savedCases: [a, b] }, '2026-11-01')!
+
+    expect(fragment.savedCases.find(c => c.id === 'a')!.remindAt).toBe('2026-11-01')
+    expect(fragment.savedCases.find(c => c.id === 'b')!.remindAt).toBeNull()
+  })
+
+  it("clears to null when the date input emits '' (cleared)", () => {
+    const a = savedCase(PASSPORT_ANSWERS, { id: 'a', remindAt: '2026-09-01' })
+
+    const fragment = setRemind({ activeCaseId: 'a', workingCase: null, savedCases: [a] }, '')!
+
+    expect(fragment.savedCases[0].remindAt).toBeNull()
+  })
+
+  it('returns null when there is no active case', () => {
+    expect(setRemind({ activeCaseId: null, workingCase: null, savedCases: [] }, '2026-09-01')).toBeNull()
+  })
+})
+
+describe('toggleLog — the journey log "Show all" toggle (design note 7; prototype 2825)', () => {
+  it("sets exactly the given case's key to true and leaves other cases' flags alone", () => {
+    const fragment = toggleLog({ other: false, another: true }, 'c1')
+    expect(fragment.logOpen).toEqual({ other: false, another: true, c1: true })
+  })
+
+  it('has no counterpart "close" — there is nothing to toggle back off; calling it again on an already-open case stays true', () => {
+    const fragment = toggleLog({ c1: true }, 'c1')
+    expect(fragment.logOpen).toEqual({ c1: true })
+  })
+
+  it('never mutates the input record', () => {
+    const logOpen = { c1: false }
+    toggleLog(logOpen, 'c1')
+    expect(logOpen).toEqual({ c1: false })
+  })
+})
+
+describe('setRemoveConfirm (design note 5 — declared alongside SET_REMINDER_COPIED, given the same test-it-anyway treatment: this project\'s Global Constraints call a declared-but-untested action a defect)', () => {
+  it('arms with an id and disarms with null', () => {
+    expect(setRemoveConfirm('c1')).toEqual({ removeConfirm: 'c1' })
+    expect(setRemoveConfirm(null)).toEqual({ removeConfirm: null })
+  })
+})
+
+describe('setReminderCopied (design note 8 — a previous draft declared this action and never tested it; shipped with a real test this time)', () => {
+  it('SET_REMINDER_COPIED(true) sets the flag; SET_REMINDER_COPIED(false) clears it', () => {
+    expect(setReminderCopied(true)).toEqual({ reminderCopied: true })
+    expect(setReminderCopied(false)).toEqual({ reminderCopied: false })
   })
 })
