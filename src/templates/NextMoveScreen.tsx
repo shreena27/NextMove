@@ -4,9 +4,11 @@
  *
  *  Deliberately NOT ported here (Out of Scope, later chunks): `freshBanner`
  *  (C6 — slots in as the first child of the right column, per this plan's
- *  C6 handoff notes), `updateEntry`'s "Add an update" button and
- *  `saveControl`'s "Save this case" control (both C5 — `updateEntry` slots
- *  back in immediately after the CTA below, `saveControl` last of all).
+ *  C6 handoff notes). `updateEntry`'s "Add an update" button and
+ *  `saveControl`'s "Save this case" control are Task 11's own (this
+ *  commit, same chunk) — `<UpdateEntry>` renders immediately after the CTA
+ *  below, `<SaveControl>` last of all (design note 4; see the `onUpdate`/
+ *  `savedCases`/`onSave` props below).
  *
  *  Government-process rules never live here — the only branching is
  *  structural: `d.needList` presence (does this rule's "what you'll need"
@@ -82,9 +84,12 @@
 import type { ReactNode } from 'react'
 import type { Diagnosis } from '../domain/types'
 import type { ServiceKey, SessionAction } from '../session/session'
+import type { Casefile } from '../domain/casefile'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { Split } from '../ui/Split'
 import { Button } from '../ui/Button'
+import { UpdateEntry } from './UpdateEntry'
+import { SaveControl } from './SaveControl'
 import { UI } from '../screens/screenCopy'
 
 export interface NextMoveScreenProps {
@@ -92,8 +97,9 @@ export interface NextMoveScreenProps {
   /** The routing/storage prefix (ServiceEngine.key). Kept for the same
    *  `ServiceKey`-typed shape `DiagnosisScreen.engineKey` carries (and for
    *  the real prepare-navigation target C4 wires behind `hasPrepPlan`,
-   *  prototype line 3661) — not read by this file today (see design note
-   *  2). Never rendered as text. */
+   *  prototype line 3661). Was unread by this file before Task 11; now
+   *  forwarded to `<SaveControl>`'s own `engineKey` prop (design note 2,
+   *  below). Never rendered as text. */
   engineKey: ServiceKey
   d: Diagnosis
   /** True once a real prep plan exists for this rule
@@ -111,16 +117,47 @@ export interface NextMoveScreenProps {
   /** Dispatches session actions. "Back to Home" sends `{ type: 'RESTART' }`
    *  (design note 3) — never a navigation. */
   dispatch?: (action: SessionAction) => void
+
+  // ---- Task 11 additions (design note 4). Optional, `undefined` by
+  // default, so every pre-existing test above (which passes none of them)
+  // renders BYTE-IDENTICAL output — the PRE-CHANGE PIN in
+  // NextMoveScreen.test.tsx pins exactly this. ----
+
+  /** The "Add an update" entry point (prototype 3680) — gates whether
+   *  `<UpdateEntry>` renders at all. See DiagnosisScreen.tsx's own prop of
+   *  the same name and UpdateEntry.tsx's header note for why the routing
+   *  decision does not live in the component. */
+  onUpdate?: () => void
+  /** SaveControl's own inputs (prototype 3681; design note 2). `onSave`
+   *  gates whether `<SaveControl>` renders at all — same convention
+   *  `onUpdate` uses above. `savedCases` defaults to `[]` when `onSave` IS
+   *  supplied but `savedCases` itself is not. `answers` is deliberately NOT
+   *  its own prop: `d.matchedAnswers` already IS a full copy of the
+   *  answers this diagnosis was computed from (the same fact
+   *  DiagnosisScreen.test.tsx's "never leaks" test relies on), so it is
+   *  read straight off `d` instead of re-threading the same value under a
+   *  second name. `stepsDone` is a literal `0`: the prototype's own call
+   *  site (3681) passes no 4th argument at all — this screen has no
+   *  ticked-step state of its own, that belongs to Prepare (whose own call
+   *  site, 3817, passes the real count) — and `undefined > 0` is exactly
+   *  as falsy as `0 > 0`, so this is a transcription, not a computation
+   *  (the same reasoning CasefileScreen.tsx's own tail gives for its
+   *  literal `0`, prototype 2966). */
+  savedCases?: Casefile[]
+  onSave?: () => void
 }
 
 export function NextMoveScreen({
   serviceLabel,
-  engineKey: _engineKey,
+  engineKey,
   d,
   hasPrepPlan = false,
   onPrepare,
   topbar,
   dispatch,
+  onUpdate,
+  savedCases,
+  onSave,
 }: NextMoveScreenProps) {
   return (
     <>
@@ -202,6 +239,16 @@ export function NextMoveScreen({
                   {UI.common.backToHome}
                 </Button>
               )}
+              {onUpdate ? <UpdateEntry onUpdate={onUpdate} /> : null}
+              {onSave ? (
+                <SaveControl
+                  engineKey={engineKey}
+                  stepsDone={0}
+                  savedCases={savedCases ?? []}
+                  answers={d.matchedAnswers}
+                  onSave={onSave}
+                />
+              ) : null}
             </>
           }
         />

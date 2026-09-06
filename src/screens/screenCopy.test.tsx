@@ -448,6 +448,18 @@ function UiChrome() {
           for me") branches. */}
       <NextMoveScreen serviceLabel="X" engineKey="passport" d={classifiedDiagnosis} dispatch={noop} />
       <NextMoveScreen serviceLabel="X" engineKey="passport" d={classifiedDiagnosis} hasPrepPlan onPrepare={noop} />
+      {/* C5 Task 11: the ciJustUpdated undo banner (diagnosis.updateRecorded/
+          undoUpdate) and the "Add an update" entry point (updateEntry.label)
+          — both new optional props, so covered via their own dedicated
+          mount rather than changing an existing DiagnosisScreen mount's
+          props. One mount covers all three strings: the banner renders
+          `<UpdateEntry>` too, ahead of the trust toggle. */}
+      <DiagnosisScreen
+        serviceLabel="X" engineKey="passport" d={classifiedDiagnosis}
+        answerLabels={{}} trustOpen={false} onToggleTrust={noop}
+        ciJustUpdated onUndo={noop} onUpdate={noop}
+        ciSnapshot={{ answers: caseSnap.answers, prepChecks: {}, casefile: openCase }}
+      />
       {/* Prepare (C4): draft-bearing (real state-5a — channelPhone,
           hintMany, stepsCount, copy and channelOpen all reach real,
           substituted or verbatim text at FIRST RENDER, no interaction
@@ -511,6 +523,18 @@ function UiChrome() {
         engineKey="passport" stepsDone={0} answers={caseSnap.answers} onSave={noop}
         savedCases={[{ ...caseSnap, id: 'ui-sc-saved', outcome: 'still_open', lastCheck: null, remindAt: null, log: [] }]}
       />
+      {/* C5 Task 11: Home's casefiles section (home.casefilesOne/
+          casefilesMany, both CAPTION_TEMPLATES — see below — and
+          home.closedLead, a literal). One open case for the singular lead;
+          openCase + yesterdayCase (both still_open) plus closedGotItCase
+          (deliverable_received) together for the plural lead + Closed
+          section, reusing the SAME fixtures CaseCard's own mounts above
+          already use. */}
+      <Home state={{ ...initialSession, savedCases: [openCase] }} dispatch={noop} now={CASE_NOW} />
+      <Home
+        state={{ ...initialSession, savedCases: [openCase, yesterdayCase, closedGotItCase] }}
+        dispatch={noop} now={CASE_NOW}
+      />
       {/* C5 Task 10: DeadEndScreen (crumbTail, headline, lede, keepOpen,
           closeUnresolved), CaseClosedScreen (crumb, headlineLead/Mark,
           ledeLead, backToHome), and SaveDoneScreen (crumb, headline, lede,
@@ -571,6 +595,11 @@ const CAPTION_TEMPLATES = new Set([
   'ui:casefile.journeyOne', // interpolates the entry count (always 1) for {n}
   'ui:casefile.journeyMany', // interpolates the entry count for {n}
   'ui:casefile.reminderText', // interpolates fmtRemind(remindAt) for {date}
+  // C5 Task 11 (Home's casefiles section). Same category as the entries
+  // above — a count of the citizen's OWN saved casefiles, never a
+  // government-process claim.
+  'ui:home.casefilesOne', // interpolates the open-case count (always 1) for {n}
+  'ui:home.casefilesMany', // interpolates the open-case count for {n}
 ])
 
 // `INTERACTION_GATED` itself (design note 4a: entries no STATIC mount can
@@ -669,6 +698,11 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     'ui:casefile.journeyOne': UI.casefile.journeyOne.replace('{n}', '1'),
     'ui:casefile.journeyMany': UI.casefile.journeyMany.replace('{n}', '3'),
     'ui:casefile.reminderText': UI.casefile.reminderText.replace('{date}', fmtRemind('2026-10-12')),
+    // C5 Task 11 — derived from the SAME Home mounts the UiChrome mounts
+    // above use ([openCase] for the singular; [openCase, yesterdayCase,
+    // closedGotItCase] for the plural).
+    'ui:home.casefilesOne': UI.home.casefilesOne.replace('{n}', '1'),
+    'ui:home.casefilesMany': UI.home.casefilesMany.replace('{n}', '2'),
   }
 
   it('CAPTION_SUBSTITUTIONS covers exactly CAPTION_TEMPLATES, and each substituted form actually renders', async () => {
@@ -740,6 +774,9 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:casefile.journeyOne'])
     expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:casefile.journeyMany'])
     expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:casefile.reminderText'])
+    // C5 Task 11 — Home's casefiles section, off the SAME uiContainer mount.
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:home.casefilesOne'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:home.casefilesMany'])
   })
 
   // `INTERACTION_GATED` needs no membership pin here (fix-round review
