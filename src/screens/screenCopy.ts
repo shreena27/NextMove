@@ -296,6 +296,75 @@ export const UI = {
     whoOther: '—',
     note: 'Your journey record, not an official document.',
   },
+  /** DeadEndScreen (C5, Task 10) — port of `renderDeadEnd` (prototype
+   *  2971-2985, tag v1-design-lock-2): the screen shown once every
+   *  verified step in a service's escalation ladder is exhausted. `lede` is
+   *  transcribed whole, word for word — per the task brief, "the most
+   *  carefully written copy in the product." This screen offers no next
+   *  action, ever: no `*-prepare`/`*-nextmove` link, only "keep it open"
+   *  (RESTART) or "close as unresolved" (CLOSE_UNRESOLVED). */
+  deadEnd: {
+    crumbTail: 'End of the verified ladder',
+    headline: "You've used every step this playbook can verify.",
+    lede:
+      "That's a hard place to be, and NextMove won't pretend otherwise. There is no further official rung in the "
+      + 'verified sources, and inventing one would be worse than saying so. What you\'ve built still matters: every '
+      + 'filing, number, and date in your journey record is exactly what any lawyer, RTI request, or public '
+      + 'representative would ask for first.',
+    keepOpen: 'Keep the case open',
+    closeUnresolved: 'Close it as unresolved',
+  },
+  /** CaseClosedScreen (C5, Task 10) — port of `renderCaseClosed` (prototype
+   *  2986-3000, tag v1-design-lock-2): "the single calm celebratory beat"
+   *  the spec allows, shown only on outcome `deliverable_received`.
+   *
+   *  `ledeLead`/`ledeSavedClause` are TWO SEPARATE strings, not one full
+   *  sentence split at render time (design note 2 of the task brief; Open
+   *  Question 3, RESOLVED; Finding 13). The prototype's full lede ends
+   *  "...NextMove's part is done; the casefile and its journey stay under
+   *  "Closed" on Home if you ever need the record." That closing clause is
+   *  true for a SAVED case, but affirmatively FALSE for a working (unsaved)
+   *  one — an unsaved case is never in `savedCases`, and RESTART drops it,
+   *  so nothing stays under "Closed" on Home. `ledeSavedClause` therefore
+   *  renders (in CaseClosedScreen.tsx) ONLY when the case is not `unsaved`
+   *  — a SUBTRACTION, not a rewrite: no replacement clause is authored for
+   *  the working-case branch, and the working case is never auto-saved to
+   *  make the sentence true (that would create a casefile the citizen
+   *  never asked for, contradicting the casefile screen's own
+   *  informed-consent warning). */
+  caseClosed: {
+    crumb: 'Case closed',
+    headlineLead: 'You',
+    headlineMark: 'got it',
+    ledeLead:
+      "The thing you were waiting for is in your hands. That's the whole point of all of this: the diagnosis, the "
+      + "letters, the waiting. NextMove's part is done",
+    ledeSavedClause: '; the casefile and its journey stay under "Closed" on Home if you ever need the record.',
+    backToHome: 'Back to Home',
+  },
+  /** SaveDoneScreen (C5, Task 10) — port of `renderSaveDone` (prototype
+   *  3887-3899, tag v1-design-lock-2): the confirmation shown right after a
+   *  case is saved.
+   *
+   *  `lede` is ONLY the prototype's first sentence (design note 3 of the
+   *  task brief; Open Question 1, RESOLVED, option (b)) — the second
+   *  sentence ("Nothing else happens with your
+   *  ${S.user && S.user.method==='phone' ? 'number' : 'account'}.") is a
+   *  deliberate SUBTRACTION, not an oversight: C5 is device-local, has no
+   *  accounts at all, and keeping that sentence would tell a reader they DO
+   *  have an account. C7 (real auth) restores it with its original ternary
+   *  — both branches recorded here so it is re-derived, not re-authored:
+   *    - phone sign-in: "Nothing else happens with your number."
+   *    - any other sign-in: "Nothing else happens with your account." */
+  saveDone: {
+    crumb: 'Case saved',
+    headline: 'Your casefile is saved.',
+    lede:
+      "It's waiting on the Home screen whenever you come back: your answers, your diagnosis, and any steps "
+      + "you've already ticked off.",
+    backToCase: 'Back to my case',
+    goHome: 'Go to Home',
+  },
   /** `fmtDay`/`fmtRemind`/`daysAgo`'s (src/ui/dates.ts) own chrome —
    *  `daysAgo`'s three branches (prototype 2739). `daysAgo` renders, at
    *  runtime, a real day-count ("3 days ago"); the registered TEMPLATE

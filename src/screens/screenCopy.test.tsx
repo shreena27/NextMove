@@ -47,6 +47,9 @@ import { JourneyLog } from '../templates/JourneyLog'
 import { CaseCard } from '../templates/CaseCard'
 import { CasefileScreen } from '../templates/CasefileScreen'
 import { SaveControl } from '../templates/SaveControl'
+import { DeadEndScreen } from '../templates/DeadEndScreen'
+import { CaseClosedScreen } from '../templates/CaseClosedScreen'
+import { SaveDoneScreen } from '../templates/SaveDoneScreen'
 
 const noop = () => {}
 
@@ -507,6 +510,23 @@ function UiChrome() {
       <SaveControl
         engineKey="passport" stepsDone={0} answers={caseSnap.answers} onSave={noop}
         savedCases={[{ ...caseSnap, id: 'ui-sc-saved', outcome: 'still_open', lastCheck: null, remindAt: null, log: [] }]}
+      />
+      {/* C5 Task 10: DeadEndScreen (crumbTail, headline, lede, keepOpen,
+          closeUnresolved), CaseClosedScreen (crumb, headlineLead/Mark,
+          ledeLead, backToHome), and SaveDoneScreen (crumb, headline, lede,
+          backToCase, goHome). All reachable at FIRST RENDER — props-driven,
+          no interaction needed. `ledeSavedClause` needs a case that is not
+          `unsaved` to render at all (design note 2's gate); `cfClosedGotIt`
+          carries no `unsaved` field, so this same mount covers it. The
+          unsaved branch's own ABSENCE is CaseClosedScreen.test.tsx's own
+          concern, not this sweep's — this coverage test only asks "does
+          every UI string appear SOMEWHERE", never "does every branch
+          render". */}
+      <DeadEndScreen case={openCase} logOpen={{}} now={CASE_NOW} dispatch={noop} />
+      <CaseClosedScreen case={cfClosedGotIt} logOpen={{}} dispatch={noop} />
+      <SaveDoneScreen
+        pendingSave={{ engineKey: 'passport', serviceLabel: UI.serviceLabel.passport, returnScreen: 'passport-nextmove' }}
+        dispatch={noop}
       />
     </>
   )
