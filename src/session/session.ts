@@ -3,7 +3,11 @@ import type { Casefile } from '../domain/casefile'
 import type { CheckinOption } from '../domain/checkinOptions'
 import { applyCorrection } from '../domain/answers'
 import { DEPS_FOR } from '../playbooks/engines'
-import { beginWorkingCheckin, openCheckin, completeSave } from './cases'
+import type { CiFragment, CiSnapshot } from './cases'
+import {
+  beginWorkingCheckin, openCheckin, completeSave,
+  ciChoose, ciConfirm, ciValence, ciClosureAnswer, ciUndo, ciCancel,
+} from './cases'
 
 /** The three services C3 ships. Declared here rather than derived from
  *  DEPS_FOR, which is typed Record<string, DependentKeys> — `keyof` that is
@@ -36,18 +40,16 @@ export type ScreenId =
 // 'interp-confirm' (C8's free-text interpretation confirm) — each belongs
 // to a later chunk and stays off this union until that chunk lands.
 
-/** Snapshot ciSnapshotNow() (C6) takes just before a check-in write, so
- *  ciUndo() (C6) can restore exactly what was there. Mirrors the
- *  prototype's own ad hoc shape (2658-2660): `answers`/`prepChecks` copied
- *  by value, plus the active case serialised whole to `caseJson` so ciUndo
- *  can `Object.assign` every one of its fields back, not just the ones this
- *  port's Casefile type happens to declare — matching prototype behaviour
- *  exactly. */
-export interface CiSnapshot {
-  answers: AnswerRecord
-  prepChecks: Record<number, boolean>
-  caseJson: string
-}
+// CiSnapshot is cases.ts's, not this file's (imported above): Task 4
+// anticipated its shape here (`answers`/`prepChecks` copied by value, plus
+// the active case serialised whole to a `caseJson` string so ciUndo could
+// `Object.assign` every field back — a faithful mirror of the prototype's
+// own ciSnapshotNow(), 2658-2661). Task 6's brief corrects that
+// anticipation: this port is immutable, so the snapshot can hold the case
+// object directly — no JSON.stringify/parse round trip is needed the way
+// the prototype's needs one (it mutates the case in place after
+// snapshotting, so a live reference would drift under it). See cases.ts's
+// own CiSnapshot doc comment for the full reasoning.
 
 /** C3+C4's slice, plus everything C5 adds: the persisted casefile list,
  *  working/active case tracking, prepare-progress state, check-in
@@ -154,6 +156,34 @@ export type SessionAction =
   // — a field nothing reads is a field that rots.
   | { type: 'OPEN_CHECKIN'; id: string }
   | { type: 'BEGIN_SAVE'; engineKey: ServiceKey; serviceLabel: string; returnScreen: ScreenId; now: number }
+  // The check-in interaction state machine (Task 6; design notes 2-10).
+  // Every one of these six is a thin arm over its matching cases.ts pure
+  // function, run through applyCiFragment below.
+  | { type: 'CI_CHOOSE'; index: number; now: number }
+  | { type: 'CI_CONFIRM'; now: number }
+  | { type: 'CI_VALENCE'; accepted: boolean; now: number }
+  | { type: 'CI_CLOSURE'; gotIt: boolean; now: number }
+  | { type: 'CI_UNDO' }
+  | { type: 'CI_CANCEL' }
+
+/** Applies a CiFragment (cases.ts) onto SessionState. `navigateTo` decides
+ *  the shape: a non-null screen id gets the SAME nav()-style treatment
+ *  every other navigating action gets (history push, screen change,
+ *  trustOpen/restartConfirm/removeConfirm cleared — prototype nav(), line
+ *  2029); `null` means the interaction stays on the current screen (e.g.
+ *  CI_CHOOSE opening a panel, or CI_CLOSURE's "still pending, no patch"
+ *  branch), so only the fragment's own fields are spread on. */
+function applyCiFragment(s: SessionState, fragment: CiFragment): SessionState {
+  const { navigateTo, ...rest } = fragment
+  if (navigateTo) {
+    return {
+      ...s, ...rest,
+      history: [...s.history, s.screen], screen: navigateTo as ScreenId,
+      trustOpen: false, restartConfirm: false, removeConfirm: null,
+    }
+  }
+  return { ...s, ...rest }
+}
 
 export function sessionReducer(s: SessionState, a: SessionAction): SessionState {
   switch (a.type) {
@@ -236,5 +266,50 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         trustOpen: false, restartConfirm: false, removeConfirm: null,
       }
     }
+    case 'CI_CHOOSE': {
+      const fragment = ciChoose(
+        { answers: s.answers, prepChecks: s.prepChecks, activeCaseId: s.activeCaseId, workingCase: s.workingCase, savedCases: s.savedCases },
+        { index: a.index, now: a.now },
+      )
+      return fragment ? applyCiFragment(s, fragment) : s
+    }
+    case 'CI_CONFIRM': {
+      const fragment = ciConfirm(
+        {
+          answers: s.answers, prepChecks: s.prepChecks, activeCaseId: s.activeCaseId,
+          workingCase: s.workingCase, savedCases: s.savedCases, ciPending: s.ciPending,
+        },
+        a.now,
+      )
+      return fragment ? applyCiFragment(s, fragment) : s
+    }
+    case 'CI_VALENCE': {
+      const fragment = ciValence(
+        {
+          answers: s.answers, prepChecks: s.prepChecks, activeCaseId: s.activeCaseId,
+          workingCase: s.workingCase, savedCases: s.savedCases, ciPending: s.ciPending,
+        },
+        a.accepted, a.now,
+      )
+      return fragment ? applyCiFragment(s, fragment) : s
+    }
+    case 'CI_CLOSURE': {
+      const fragment = ciClosureAnswer(
+        {
+          answers: s.answers, prepChecks: s.prepChecks, activeCaseId: s.activeCaseId,
+          workingCase: s.workingCase, savedCases: s.savedCases, ciPending: s.ciPending, ciAccepted: s.ciAccepted,
+        },
+        a.gotIt, a.now,
+      )
+      return fragment ? applyCiFragment(s, fragment) : s
+    }
+    case 'CI_UNDO': {
+      const fragment = ciUndo({
+        activeCaseId: s.activeCaseId, workingCase: s.workingCase, savedCases: s.savedCases, ciSnapshot: s.ciSnapshot,
+      })
+      return fragment ? applyCiFragment(s, fragment) : s
+    }
+    case 'CI_CANCEL':
+      return applyCiFragment(s, ciCancel())
   }
 }

@@ -1,15 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import type { AnswerRecord } from '../domain/types'
-import type { Casefile } from '../domain/casefile'
-import { caseSnapshot } from '../domain/casefile'
+import type { AnswerRecord, Diagnosis } from '../domain/types'
+import type { Casefile, ServiceKey } from '../domain/casefile'
+import { caseSnapshot, LOG_COPY } from '../domain/casefile'
 import { diagnose } from '../domain/engine'
+import type { ServiceEngine } from '../domain/engine'
 import { applyCorrection, applyEvent } from '../domain/answers'
-import { passportEngine, sirEngine } from '../playbooks/engines'
+import { passportEngine, voterEngine, sirEngine } from '../playbooks/engines'
 import { PASSPORT_DEPS } from '../playbooks/passportPlaybook'
+import { checkinOptionsFor, type CheckinOption } from '../domain/checkinOptions'
+import { ladderFor } from '../templates/ladder'
 import {
   activeCase, sameAnswers, caseIsSaved, loadCase, openCheckin, beginWorkingCheckin, completeSave,
+  appendLog, ciChoose, ciConfirm, ciValence, ciClosureAnswer, ciUndo, ciCancel,
 } from './cases'
-import type { OpenCheckinFragment, BeginWorkingFragment } from './cases'
+import type { OpenCheckinFragment, BeginWorkingFragment, CiSnapshot } from './cases'
 
 const NOW = 1_725_000_000_000
 
@@ -66,6 +70,82 @@ function assertBeginWorking(f: OpenCheckinFragment | BeginWorkingFragment): asse
   if (!('workingCase' in f)) {
     throw new Error('expected beginWorkingCheckin to create/reuse a working case, not redirect to a saved one')
   }
+}
+
+// ---------------------------------------------------------------------------
+// Task 6 fixtures: the check-in state machine. Every walk below drives the
+// real diagnose()/checkinOptionsFor() pipeline — never a hand-built
+// Diagnosis — per the brief's own instruction.
+// ---------------------------------------------------------------------------
+
+/** Builds a saved case for any of the three engines, real diagnose() + real
+ *  caseSnapshot(), the same shape savedCase() above builds for passport
+ *  only. `id` defaults to 'c1' (savedCase()'s own default) unless overridden. */
+function caseFor(
+  engineKey: ServiceKey,
+  engine: ServiceEngine,
+  serviceLabel: string,
+  returnScreen: string,
+  answers: AnswerRecord,
+  overrides: Partial<Casefile> = {},
+  prepChecks: Record<number, boolean> = {},
+  now = NOW,
+): Casefile {
+  const d = diagnose(engine, answers)
+  const snap = caseSnapshot(engineKey, serviceLabel, returnScreen, d, answers, prepChecks, now)
+  return {
+    ...snap,
+    id: 'c1',
+    outcome: 'still_open',
+    lastCheck: null,
+    remindAt: null,
+    log: [{ t: now, kind: 'diagnosed', text: snap.stateLabel }],
+    ...overrides,
+  }
+}
+
+/** The minimal-but-real check-in-relevant session slice every ciChoose/
+ *  ciConfirm/ciValence/ciClosureAnswer/ciUndo test below builds and chains
+ *  fragments onto (design note 1's own stated purpose — see this file's own
+ *  header comment on BASE above). `c` becomes the SOLE saved case (or, with
+ *  `working=true`, the working case) so `activeCase()` resolves it. */
+interface CiTestState {
+  answers: AnswerRecord
+  prepChecks: Record<number, boolean>
+  activeCaseId: string | null
+  workingCase: Casefile | null
+  savedCases: Casefile[]
+  ciPending: CheckinOption | null
+  ciPendingIdx: number | null
+  ciStage: 'confirm' | 'valence' | 'closureq' | null
+  ciReassure: boolean
+  ciSnapshot: CiSnapshot | null
+  ciJustUpdated: boolean
+  ciConsecutive: boolean
+  ciAccepted: boolean
+}
+
+function sessionFor(c: Casefile, working = false): CiTestState {
+  return {
+    answers: { ...c.answers },
+    prepChecks: { ...c.prepChecks },
+    activeCaseId: working ? 'working' : c.id,
+    workingCase: working ? c : null,
+    savedCases: working ? [] : [c],
+    ciPending: null, ciPendingIdx: null, ciStage: null, ciReassure: false,
+    ciSnapshot: null, ciJustUpdated: false, ciConsecutive: false, ciAccepted: false,
+  }
+}
+
+/** Finds a real checkinOptionsFor(...) option by its exact label — every
+ *  test below picks an option the same way the checkin screen itself would
+ *  (by what's actually offered), never by a hand-typed index. */
+function optIndex(d: Diagnosis, prepChecks: Record<number, boolean>, engineKey: ServiceKey, label: string): number {
+  const i = checkinOptionsFor(d, prepChecks, engineKey).findIndex(o => o.label === label)
+  if (i === -1) {
+    throw new Error(`checkinOptionsFor(${engineKey}, state ${d.state}) has no option labeled ${JSON.stringify(label)}`)
+  }
+  return i
 }
 
 describe('activeCase (design note 2)', () => {
@@ -356,5 +436,615 @@ describe('D3 — key-order-independent answers comparison (deviation D3)', () =>
     // helper, not a reimplementation (design note 5): a fix applied to one
     // of the three D3 sites is a bug left standing in the other two.
     expect(sameAnswers(saved, session)).toBe(true)
+  })
+})
+
+// =============================================================================
+// Task 6 — the check-in interaction state machine. Prototype 2617-2724.
+// =============================================================================
+
+describe('appendLog (design note 4 — deliberate unification, NOT a transcription)', () => {
+  it('stamps lastCheck on a "closed" append and a "reopened" append — the prototype does NOT do this for either: c.log.push(...) for both bypasses ciLog (2699/2728, 2185) and leaves c.lastCheck untouched; this port unifies every append through one helper for reasons this file\'s appendLog doc comment gives', () => {
+    const c = savedCase(PASSPORT_ANSWERS, { id: 'c1', lastCheck: null })
+
+    const closed = appendLog(c, { kind: 'closed', text: LOG_COPY.closedUnresolved }, NOW + 5000)
+    expect(closed.lastCheck).toBe(NOW + 5000)
+    expect(closed.log).toEqual([...c.log, { t: NOW + 5000, kind: 'closed', text: LOG_COPY.closedUnresolved }])
+
+    const reopened = appendLog(c, { kind: 'reopened', text: LOG_COPY.reopened }, NOW + 6000)
+    expect(reopened.lastCheck).toBe(NOW + 6000)
+    expect(reopened.log).toEqual([...c.log, { t: NOW + 6000, kind: 'reopened', text: LOG_COPY.reopened }])
+  })
+
+  it('a noChange entry carries the flag; a plain entry does not carry the key at all', () => {
+    const c = savedCase(PASSPORT_ANSWERS)
+    const nothing = appendLog(c, { kind: 'checked', text: LOG_COPY.checkedNoChange, noChange: true }, NOW + 1000)
+    expect(nothing.log.at(-1)).toEqual({ t: NOW + 1000, kind: 'checked', text: LOG_COPY.checkedNoChange, noChange: true })
+    const reported = appendLog(c, { kind: 'reported', text: 'x' }, NOW + 1000)
+    expect(reported.log.at(-1)).not.toHaveProperty('noChange')
+  })
+})
+
+describe('passport walk: state-1 -> state-2 (design notes 3-5)', () => {
+  it('"Police contacted or visited me" confirms into state-2, preserves q2 (a fact), and logs reported-then-diagnosed in order', () => {
+    const answers: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const d0 = diagnose(passportEngine, answers)
+    expect(d0.ruleId).toBe('state-1') // premise
+
+    const s0 = sessionFor(c)
+    const idx = optIndex(d0, {}, 'passport', 'Police contacted or visited me')
+    const f1 = ciChoose(s0, { index: idx, now: NOW + 1000 })!
+    expect(f1.ciStage).toBe('confirm')
+    const s1 = { ...s0, ...f1 }
+
+    const f2 = ciConfirm(s1, NOW + 2000)!
+    expect(f2.navigateTo).toBe('passport-diagnosis')
+    const s2 = { ...s1, ...f2 }
+
+    const after = diagnose(passportEngine, s2.answers)
+    expect(after.ruleId).toBe('state-2')
+    expect(s2.answers.q1).toBe('contacted_incomplete')
+    expect(s2.answers.q2).toBe('no_followup') // the fact survived
+
+    const updatedCase = s2.savedCases[0]
+    expect(updatedCase.log.slice(1)).toEqual([
+      { t: NOW + 2000, kind: 'reported', text: 'Police contacted or visited me' },
+      { t: NOW + 2000, kind: 'diagnosed', text: after.label },
+    ])
+  })
+})
+
+describe('passport action attestation + ladder: state-5a -> state-5b-p -> state-5b -> state-dpg-p -> dead-end', () => {
+  it('state-5a: "I filed the formal grievance..." confirms into state-5b-p (grievance pending WAIT)', () => {
+    const d0 = diagnose(passportEngine, PASSPORT_ANSWERS)
+    expect(d0.ruleId).toBe('state-5a') // premise (this file's own fixture comment)
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', PASSPORT_ANSWERS)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d0, {}, 'passport', 'I filed the formal grievance on CPGRAMS and have a number')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+    const f2 = ciConfirm(s1, NOW + 1100)!
+    const after = diagnose(passportEngine, f2.answers!)
+    expect(after.ruleId).toBe('state-5b-p')
+    expect(after.rec).toBe('WAIT')
+  })
+
+  it('state-5b-p: "They responded, but it did not help" confirms into state-5b — the ladder does NOT climb itself (rung 2 done, rung 3 next — never "now")', () => {
+    const answers: AnswerRecord = { q1: 'adverse', q2: 'formal_grievance', gOutcome: 'pending' }
+    const d0 = diagnose(passportEngine, answers)
+    expect(d0.ruleId).toBe('state-5b-p')
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d0, {}, 'passport', 'They responded, but it did not help')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+    const f2 = ciConfirm(s1, NOW + 1100)!
+    const after = diagnose(passportEngine, f2.answers!)
+    expect(after.ruleId).toBe('state-5b')
+
+    const ladder = ladderFor('passport', f2.answers!, after)
+    expect(ladder?.s[1]).toBe('done')
+    expect(ladder?.s[2]).toBe('next')
+  })
+
+  it('state-5b: "I escalated to the DPG and have a reference number" confirms into state-dpg-p', () => {
+    const answers: AnswerRecord = { q1: 'adverse', q2: 'formal_grievance', gOutcome: 'unhelpful' }
+    const d0 = diagnose(passportEngine, answers)
+    expect(d0.ruleId).toBe('state-5b')
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d0, {}, 'passport', 'I escalated to the DPG and have a reference number')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+    const f2 = ciConfirm(s1, NOW + 1100)!
+    const after = diagnose(passportEngine, f2.answers!)
+    expect(after.ruleId).toBe('state-dpg-p')
+  })
+
+  it('state-dpg-p: the deadend option navigates to dead-end, logs a reported entry, and leaves answers unchanged', () => {
+    const answers: AnswerRecord = { q1: 'adverse', q2: 'formal_grievance', gOutcome: 'unhelpful', dpgFiled: 'yes' }
+    const d0 = diagnose(passportEngine, answers)
+    expect(d0.ruleId).toBe('state-dpg-p')
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d0, {}, 'passport', 'The DPG responded, but it did not resolve anything')
+    const f1 = ciChoose(s0, { index: idx, now: NOW + 1000 })!
+    expect(f1.ciStage).toBe('confirm')
+    const s1 = { ...s0, ...f1 }
+
+    const f2 = ciConfirm(s1, NOW + 1100)!
+    expect(f2.navigateTo).toBe('dead-end')
+    expect(f2.answers).toBeUndefined() // no patch applied at all
+    const updated = f2.savedCases!.find(x => x.id === 'c1')!
+    expect(updated.log.at(-1)).toEqual({ t: NOW + 1100, kind: 'reported', text: 'The DPG responded, but it did not resolve anything' })
+    expect(updated.answers).toEqual(answers) // untouched
+  })
+})
+
+describe('passport resolved rung: state-5a-p, "retire don\'t reset" (design note 8)', () => {
+  const answers: AnswerRecord = { q1: 'adverse', q2: 'informal', fOutcome: 'pending' }
+
+  it('closure "Not yet" applies the pendingPatch, lands back on a WAIT, and logs a "...deliverable still pending" entry', () => {
+    const d0 = diagnose(passportEngine, answers)
+    expect(d0.ruleId).toBe('state-5a-p')
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d0, {}, 'passport', 'They responded and things are moving again')
+    const f1 = ciChoose(s0, { index: idx, now: NOW + 1000 })!
+    expect(f1.ciStage).toBe('closureq')
+    const s1 = { ...s0, ...f1 }
+
+    const f2 = ciClosureAnswer(s1, false, NOW + 1100)!
+    const after = diagnose(passportEngine, f2.answers!)
+    expect(after.ruleId).toBe('state-5a-r') // id DID change (5a-p -> 5a-r), so a diagnosed entry follows
+    expect(after.rec).toBe('WAIT')
+    const updated = f2.savedCases!.find(x => x.id === 'c1')!
+    expect(updated.log.at(-2)).toEqual({
+      t: NOW + 1100, kind: 'reported',
+      text: 'They responded and things are moving again' + LOG_COPY.pendingSuffix,
+    })
+    expect(updated.log.at(-1)).toEqual({ t: NOW + 1100, kind: 'diagnosed', text: after.label })
+  })
+
+  it('the SAME option, "Yes, it\'s done": outcome becomes deliverable_received, closedAt is set, a closed entry is appended, screen is case-closed', () => {
+    const d0 = diagnose(passportEngine, answers)
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d0, {}, 'passport', 'They responded and things are moving again')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+
+    const f2 = ciClosureAnswer(s1, true, NOW + 1100)!
+    expect(f2.navigateTo).toBe('case-closed')
+    const updated = f2.savedCases!.find(x => x.id === 'c1')!
+    expect(updated.outcome).toBe('deliverable_received')
+    expect(updated.closedAt).toBe(NOW + 1100)
+    expect(updated.log.at(-1)).toEqual({ t: NOW + 1100, kind: 'closed', text: LOG_COPY.closedDeliverable })
+  })
+})
+
+describe('voter valence (design note 7 — "the celebratory beat can never land on a rejection")', () => {
+  it('v-4: "The appeal was decided" + CI_VALENCE(false) sets voterAppealed=decided, diagnosis becomes v-5, and the log entry text ends " — rejected"', () => {
+    const answers: AnswerRecord = { voterQ1: 'decision', voterAppealed: 'pending' }
+    const d0 = diagnose(voterEngine, answers)
+    expect(d0.ruleId).toBe('v-4')
+    const c = caseFor('voter', voterEngine, 'Voter roll', 'voter-nextmove', answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d0, {}, 'voter', 'The appeal was decided')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+    expect(s1.ciStage).toBe('valence')
+
+    const f2 = ciValence(s1, false, NOW + 1100)!
+    expect(f2.answers!.voterAppealed).toBe('decided')
+    const after = diagnose(voterEngine, f2.answers!)
+    expect(after.ruleId).toBe('v-5') // id DID change (v-4 -> v-5), so a diagnosed entry follows
+    const updated = f2.savedCases!.find(x => x.id === 'c1')!
+    expect(updated.log.at(-2)?.text.endsWith(LOG_COPY.rejectedSuffix)).toBe(true)
+    expect(updated.log.at(-1)).toEqual({ t: NOW + 1100, kind: 'diagnosed', text: after.label })
+  })
+
+  it('v-5: "I filed the second appeal with the state CEO" confirms into v-5-p', () => {
+    const answers: AnswerRecord = { voterQ1: 'decision', voterAppealed: 'decided' }
+    const d0 = diagnose(voterEngine, answers)
+    expect(d0.ruleId).toBe('v-5')
+    const c = caseFor('voter', voterEngine, 'Voter roll', 'voter-nextmove', answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d0, {}, 'voter', 'I filed the second appeal with the state CEO')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+    const f2 = ciConfirm(s1, NOW + 1100)!
+    const after = diagnose(voterEngine, f2.answers!)
+    expect(after.ruleId).toBe('v-5-p')
+  })
+
+  it('v-5-p: CI_VALENCE(false) is a rejectDeadend — navigates to dead-end with NO patch applied', () => {
+    const answers: AnswerRecord = { voterQ1: 'decision', voterAppealed: 'decided', ceoAppeal: 'filed' }
+    const d0 = diagnose(voterEngine, answers)
+    expect(d0.ruleId).toBe('v-5-p')
+    const c = caseFor('voter', voterEngine, 'Voter roll', 'voter-nextmove', answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d0, {}, 'voter', 'The second appeal was decided')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+    const f2 = ciValence(s1, false, NOW + 1100)!
+    expect(f2.navigateTo).toBe('dead-end')
+    expect(f2.answers).toBeUndefined() // no patch applied
+  })
+
+  it('v-4: CI_VALENCE(true) sets ciStage=closureq with NO log entry and NO patch yet', () => {
+    const answers: AnswerRecord = { voterQ1: 'decision', voterAppealed: 'pending' }
+    const c = caseFor('voter', voterEngine, 'Voter roll', 'voter-nextmove', answers)
+    const preLog = [...c.log]
+    const d0 = diagnose(voterEngine, answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d0, {}, 'voter', 'The appeal was decided')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+
+    const f2 = ciValence(s1, true, NOW + 1100)!
+    expect(f2.ciStage).toBe('closureq')
+    expect(f2.answers).toBeUndefined()
+    expect(f2.savedCases).toBeUndefined()
+    expect(s1.savedCases[0].log).toEqual(preLog) // still completely untouched
+  })
+
+  it('...then CI_CLOSURE(false) applies acceptPendingPatch (voterOutcome=accepted_pending), NOT pendingPatch', () => {
+    const answers: AnswerRecord = { voterQ1: 'decision', voterAppealed: 'pending' }
+    const c = caseFor('voter', voterEngine, 'Voter roll', 'voter-nextmove', answers)
+    const d0 = diagnose(voterEngine, answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d0, {}, 'voter', 'The appeal was decided')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+    const s2 = { ...s1, ...ciValence(s1, true, NOW + 1100)! }
+
+    const f3 = ciClosureAnswer(s2, false, NOW + 1200)!
+    expect(f3.answers!.voterOutcome).toBe('accepted_pending')
+    const after = diagnose(voterEngine, f3.answers!)
+    expect(after.ruleId).toBe('v-acc')
+  })
+})
+
+describe('"Nothing yet" (CI_CHOOSE nothing branch — first-class, previously the one un-undoable kind)', () => {
+  it('logs a checked/noChange entry, sets ciReassure, does NOT navigate, does NOT touch answers; a second consecutive one sets ciConsecutive; one after a "reported" entry does not', () => {
+    const answers: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const d = diagnose(passportEngine, answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d, {}, 'passport', 'Nothing yet')
+
+    const f1 = ciChoose(s0, { index: idx, now: NOW + 1000 })!
+    expect(f1.ciConsecutive).toBe(false) // the case's last entry was 'diagnosed', not 'checked'
+    expect(f1.ciReassure).toBe(true)
+    expect(f1.ciPending).toBeNull()
+    expect(f1.navigateTo).toBeNull()
+    expect(f1.answers).toBeUndefined() // never touches answers
+    const s1 = { ...s0, ...f1 }
+    expect(s1.answers).toBe(s0.answers) // same reference — literally untouched
+    const case1 = s1.savedCases[0]
+    expect(case1.log.at(-1)).toEqual({ t: NOW + 1000, kind: 'checked', text: LOG_COPY.checkedNoChange, noChange: true })
+
+    const f2 = ciChoose(s1, { index: idx, now: NOW + 2000 })!
+    expect(f2.ciConsecutive).toBe(true) // second consecutive nothing-yet
+
+    // a "nothing yet" AFTER a reported entry (not a checked one) is not consecutive
+    const withReported = appendLog(c, { kind: 'reported', text: 'x' }, NOW + 500)
+    const s0b = sessionFor(withReported)
+    const f3 = ciChoose(s0b, { index: idx, now: NOW + 1000 })!
+    expect(f3.ciConsecutive).toBe(false)
+  })
+})
+
+describe('"Something else happened" (CI_CHOOSE else branch — the mandatory universal escape hatch)', () => {
+  it('passport: logs a checked entry and navigates to passport-q1', () => {
+    const answers: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const d = diagnose(passportEngine, answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d, {}, 'passport', 'Something else happened')
+    const f = ciChoose(s0, { index: idx, now: NOW + 1000 })!
+    expect(f.navigateTo).toBe('passport-q1')
+    expect(f.savedCases![0].log.at(-1)).toEqual({ t: NOW + 1000, kind: 'checked', text: LOG_COPY.elseReDiagnose })
+  })
+
+  it('voter: navigates to voter-entry', () => {
+    const answers: AnswerRecord = { voterQ1: 'no_word' }
+    const c = caseFor('voter', voterEngine, 'Voter roll', 'voter-nextmove', answers)
+    const d = diagnose(voterEngine, answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d, {}, 'voter', 'Something else happened')
+    const f = ciChoose(s0, { index: idx, now: NOW + 1000 })!
+    expect(f.navigateTo).toBe('voter-entry')
+  })
+
+  it('sir: navigates to sir-q1', () => {
+    const answers: AnswerRecord = { sirQ1: 'roll_present' }
+    const c = caseFor('sir', sirEngine, 'Voter roll (SIR)', 'sir-nextmove', answers)
+    const d = diagnose(sirEngine, answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d, {}, 'sir', 'Something else happened')
+    const f = ciChoose(s0, { index: idx, now: NOW + 1000 })!
+    expect(f.navigateTo).toBe('sir-q1')
+  })
+})
+
+describe('"I haven\'t done this yet" (CI_CHOOSE notdone branch)', () => {
+  it('navigates to the prepare screen and writes NO log entry, no patch, no snapshot', () => {
+    const answers: AnswerRecord = { q1: 'verified_no_progress', q2: 'no_followup' }
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const d = diagnose(passportEngine, answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d, {}, 'passport', "I haven't done this yet; take me back to the steps")
+    const f = ciChoose(s0, { index: idx, now: NOW + 1000 })!
+    expect(f.navigateTo).toBe('passport-prepare')
+    expect(f.ciSnapshot).toBeUndefined()
+    expect(f.savedCases).toEqual(s0.savedCases)
+    expect(f.savedCases![0]).toBe(c) // same reference — nothing written at all
+  })
+})
+
+describe('D1 RED — the Undo snapshot bug (deviation D1; the single most important test in this task)', () => {
+  it('undo after a diagnosis-changing check-in restores answers, prepChecks AND the log to their pre-check-in state', () => {
+    // state-2, prepChecks={0:true} seeded (state-2 has a real 4-step prep
+    // plan — prep.ts). Choosing "I asked the office what was pending"
+    // changes the diagnosis id (state-2 -> state-5a-p): exactly the
+    // two-log-write path (`reported` then `diagnosed`) design note 5 (D1)
+    // is about.
+    const answers: AnswerRecord = { q1: 'contacted_incomplete', q2: 'no_followup' }
+    const prepChecks = { 0: true }
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers, {}, prepChecks)
+    const preAnswers = { ...answers }
+    const preLog = [...c.log]
+    const d0 = diagnose(passportEngine, answers)
+    expect(d0.ruleId).toBe('state-2') // premise
+
+    const s0 = sessionFor(c)
+    expect(s0.prepChecks).toEqual({ 0: true }) // premise
+    const idx = optIndex(d0, s0.prepChecks, 'passport', 'I asked the office what was pending (call, visit, or message)')
+    const f1 = ciChoose(s0, { index: idx, now: NOW + 1000 })!
+    const s1 = { ...s0, ...f1 }
+    const f2 = ciConfirm(s1, NOW + 2000)!
+    const s2 = { ...s1, ...f2 }
+
+    const afterCheckin = diagnose(passportEngine, s2.answers)
+    expect(afterCheckin.ruleId).toBe('state-5a-p') // premise: the diagnosis DID change
+    expect(s2.prepChecks).toEqual({}) // premise: prep cleared by the id change
+
+    // DEVIATION D1. A faithful transcription of the prototype's ciLog
+    // (2621-2627) re-snapshots on EVERY log write. applyCheckinPatch here
+    // writes TWO entries for this ONE interaction (`reported` then
+    // `diagnosed`) — under a faithful transcription, snapshot #1 would be
+    // taken correctly before `reported` (capturing the true pre-check-in
+    // answers/prepChecks/log), and then OVERWRITTEN by snapshot #2, taken
+    // before `diagnosed` — which is AFTER updateAns/the prepChecks-clear
+    // has already run, and AFTER the `reported` entry is already in the
+    // log (the `diagnosed` push happens strictly after #2 is taken).
+    //
+    // Restoring FROM that faithful #2 would still correctly drop the
+    // `diagnosed` entry from the log — Undo's log-shrinking IS real and
+    // DOES happen even under the unfixed prototype behaviour. So a test
+    // run where the log merely shrank by one entry is NOT evidence D1 is
+    // fixed. What a faithful transcription gets wrong is `answers`
+    // (already patched when #2 was taken — the citizen's Undo click would
+    // silently keep `fOutcome`), `prepChecks` (already {} when #2 was
+    // taken), and the surviving `reported` entry (already in the log at
+    // #2). The `answers` assertion just below is the one that actually
+    // catches D1, and it is the one that matters.
+    const f3 = ciUndo(s2)!
+    const s3 = { ...s2, ...f3 }
+
+    expect(s3.answers).toEqual(preAnswers) // THE assertion that catches D1
+    expect(s3.prepChecks).toEqual({ 0: true })
+    const restoredCase = s3.savedCases.find(x => x.id === 'c1')!
+    expect(restoredCase.log).toEqual(preLog) // BOTH reported and diagnosed removed
+    expect(s3.ciSnapshot).toBeNull()
+    expect(s3.ciJustUpdated).toBe(false)
+    expect(s3.ciReassure).toBe(false)
+  })
+})
+
+describe('CI_UNDO — additional cases', () => {
+  it('undoes a "nothing yet" check-in (previously the one un-undoable kind), restoring the log', () => {
+    const answers: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const preLog = [...c.log]
+    const d = diagnose(passportEngine, answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d, {}, 'passport', 'Nothing yet')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+    expect(s1.savedCases[0].log).toHaveLength(2) // premise: the check DID get logged
+
+    const f2 = ciUndo(s1)!
+    const s2 = { ...s1, ...f2 }
+    expect(s2.savedCases[0].log).toEqual(preLog)
+    expect(s2.ciSnapshot).toBeNull()
+  })
+
+  it('restores a WORKING case as well as a saved one', () => {
+    const answers: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers, { id: 'working', unsaved: true })
+    const preLog = [...c.log]
+    const d = diagnose(passportEngine, answers)
+    const s0 = sessionFor(c, true) // working case
+    const idx = optIndex(d, {}, 'passport', 'Nothing yet')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+    expect(s1.workingCase!.log).toHaveLength(2)
+
+    const f2 = ciUndo(s1)!
+    const s2 = { ...s1, ...f2 }
+    expect(s2.workingCase!.log).toEqual(preLog)
+    expect(s2.savedCases).toEqual([]) // untouched
+  })
+
+  it('returns null (no-op) when there is no snapshot to restore', () => {
+    const c = savedCase(PASSPORT_ANSWERS)
+    const s0 = sessionFor(c)
+    expect(ciUndo(s0)).toBeNull()
+  })
+})
+
+describe('Prep-step survival (design note 3)', () => {
+  it('a same-diagnosis-id check-in leaves prepChecks intact; an id-changing one clears it AND memorialises the old plan with a diagnosed entry', () => {
+    // No CHECKIN_META option in the locked prototype ever leaves the
+    // diagnosis id unchanged — every real option is designed to move the
+    // case forward. The "same id" half is exercised with a synthetic
+    // CheckinOption whose patch key ('note') no playbook rule condition
+    // ever reads, applied through the real applyCheckinPatch path (via
+    // CI_CONFIRM) against a REAL diagnose() call — never a hand-built
+    // Diagnosis.
+    const prepChecks = { 0: true }
+    const answers2: AnswerRecord = { q1: 'contacted_incomplete', q2: 'no_followup' } // state-2, has a prep plan
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers2, {}, prepChecks)
+    const s0 = sessionFor(c)
+    const sameIdOpt: CheckinOption = { k: 'event', label: 'test: same-id event', patch: { note: 'x' } }
+    const f1 = ciConfirm({ ...s0, ciPending: sameIdOpt }, NOW + 1000)!
+    expect(f1.prepChecks).toEqual({ 0: true }) // intact — the ruleId did not change
+    // no memorial entry beyond the case's own pre-existing seed 'diagnosed'
+    // entry (caseFor's own log[0]) — log grows by exactly one, 'reported'.
+    expect(f1.savedCases![0].log).toHaveLength(2)
+    expect(f1.savedCases![0].log.at(-1)?.kind).toBe('reported')
+
+    // id-changing half: state-3 (prepAware, has a prep plan) -> state-4.
+    const answers3: AnswerRecord = { q1: 'verified_no_progress', q2: 'no_followup' }
+    const c2 = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers3, {}, { 0: true })
+    const d2 = diagnose(passportEngine, answers3)
+    expect(d2.ruleId).toBe('state-3') // premise
+    const s2a = sessionFor(c2)
+    const idx2 = optIndex(d2, { 0: true }, 'passport', 'The portal shows an adverse or confusing status')
+    const s2b = { ...s2a, ...ciChoose(s2a, { index: idx2, now: NOW + 1000 })! }
+    const f2 = ciConfirm(s2b, NOW + 1100)!
+    expect(f2.prepChecks).toEqual({}) // cleared — the ruleId DID change
+    expect(f2.savedCases![0].log.at(-1)?.kind).toBe('diagnosed') // memorialised
+  })
+})
+
+describe('CI_CANCEL (design note 10 — previously declared and untested; a defect by this project\'s own Global Constraints)', () => {
+  it('from ciStage "confirm": clears ciStage/ciPending/ciPendingIdx; log, answers, ciSnapshot, ciReassure and savedCases are unchanged BY IDENTITY', () => {
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', { q1: 'no_contact', q2: 'no_followup' })
+    const opt: CheckinOption = { k: 'event', label: 'x', patch: { q1: 'adverse' } }
+    const s0: CiTestState = { ...sessionFor(c), ciStage: 'confirm', ciPending: opt, ciPendingIdx: 0 }
+
+    const f = ciCancel()
+    const s1 = { ...s0, ...f }
+
+    expect(s1.ciStage).toBeNull()
+    expect(s1.ciPending).toBeNull()
+    expect(s1.ciPendingIdx).toBeNull()
+    expect(s1.savedCases).toBe(s0.savedCases) // same array — not a copy
+    expect(s1.savedCases[0]).toBe(c) // same case object — no log write
+    expect(s1.answers).toBe(s0.answers)
+    expect(s1.ciSnapshot).toBe(s0.ciSnapshot)
+    expect(s1.ciReassure).toBe(s0.ciReassure)
+  })
+
+  it('from ciStage "valence": the same guarantees — a cancel that quietly wrote a log entry would be the worst kind of bug here (the citizen said "no")', () => {
+    const c = caseFor('voter', voterEngine, 'Voter roll', 'voter-nextmove', { voterQ1: 'decision', voterAppealed: 'pending' })
+    const opt: CheckinOption = { k: 'valence', label: 'The appeal was decided', rejectPatch: { voterAppealedRaw: 'decided', voterAppealed: 'decided' } }
+    const s0: CiTestState = { ...sessionFor(c), ciStage: 'valence', ciPending: opt, ciPendingIdx: 0 }
+
+    const f = ciCancel()
+    const s1 = { ...s0, ...f }
+
+    expect(s1.ciStage).toBeNull()
+    expect(s1.ciPending).toBeNull()
+    expect(s1.ciPendingIdx).toBeNull()
+    expect(s1.savedCases[0]).toBe(c)
+    expect(s1.answers).toBe(s0.answers)
+  })
+})
+
+describe("The re-snapshot's actual purpose (design note 3) + D7 RED — savedAt survives the re-snapshot", () => {
+  it('after a diagnosis-changing check-in on a SAVED case: stateLabel/rec/whatShort/stepsTotal/stepsDone match a fresh caseSnapshot against the NEW diagnosis; savedAt is UNCHANGED while lastCheck DOES advance', () => {
+    const answers: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+    const FIXED_SAVED_AT = 1_700_000_000_000
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers, { savedAt: FIXED_SAVED_AT })
+    const d0 = diagnose(passportEngine, answers)
+    const s0 = sessionFor(c)
+    const FAR_FUTURE = FIXED_SAVED_AT + 999_999_999
+    const idx = optIndex(d0, {}, 'passport', 'Police contacted or visited me')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: FAR_FUTURE })! }
+    const f2 = ciConfirm(s1, FAR_FUTURE)!
+    const updated = f2.savedCases!.find(x => x.id === 'c1')!
+
+    const after = diagnose(passportEngine, f2.answers!)
+    const freshSnap = caseSnapshot('passport', 'Passport', 'passport-nextmove', after, f2.answers!, f2.prepChecks!, FAR_FUTURE)
+    expect(updated.stateLabel).toBe(freshSnap.stateLabel)
+    expect(updated.rec).toBe(freshSnap.rec)
+    expect(updated.whatShort).toBe(freshSnap.whatShort)
+    expect(updated.stepsTotal).toBe(freshSnap.stepsTotal)
+    expect(updated.stepsDone).toBe(freshSnap.stepsDone)
+
+    // D7: a faithful transcription of ciPersistState (Object.assign(c,
+    // caseSnapshot(...))) would overwrite savedAt with the fresh stamp,
+    // making the rendered "Saved {date}" untrue.
+    expect(updated.savedAt).toBe(FIXED_SAVED_AT)
+    expect(updated.savedAt).not.toBe(freshSnap.savedAt)
+    // lastCheck is a DIFFERENT clock and genuinely SHOULD advance.
+    expect(updated.lastCheck).toBe(FAR_FUTURE)
+  })
+})
+
+describe('ciSnapshot does not leak across cases (Task 4 design note 5\'s third sibling)', () => {
+  it('OPEN_CHECKIN on a different case clears a snapshot left standing by a prior check-in', () => {
+    const answersA: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+    const answersB: AnswerRecord = { q1: 'adverse', q2: 'informal' }
+    const caseA = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answersA, { id: 'a' })
+    const caseB = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answersB, { id: 'b' })
+    const s0: CiTestState = { ...sessionFor(caseA), activeCaseId: 'a', savedCases: [caseA, caseB] }
+    const d = diagnose(passportEngine, answersA)
+    const idx = optIndex(d, {}, 'passport', 'Nothing yet')
+    const f1 = ciChoose(s0, { index: idx, now: NOW + 1000 })!
+    const s1 = { ...s0, ...f1 }
+    expect(s1.ciSnapshot).not.toBeNull() // premise: A's check-in left a snapshot standing
+
+    const opened = openCheckin(s1.savedCases, 'b')!
+    expect(opened.ciSnapshot).toBeNull()
+  })
+
+  it('BEGIN_WORKING_CHECKIN clears a snapshot left standing by a prior check-in', () => {
+    const answersA: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+    const caseA = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answersA, { id: 'a' })
+    const s0: CiTestState = { ...sessionFor(caseA), activeCaseId: 'a' }
+    const d = diagnose(passportEngine, answersA)
+    const idx = optIndex(d, {}, 'passport', 'Nothing yet')
+    const f1 = ciChoose(s0, { index: idx, now: NOW + 1000 })!
+    const s1 = { ...s0, ...f1 }
+    expect(s1.ciSnapshot).not.toBeNull()
+
+    const fragment = beginWorkingCheckin(
+      { savedCases: s1.savedCases, workingCase: null, answers: { q1: 'different', q2: 'different' }, prepChecks: {} },
+      PASSPORT_PAYLOAD,
+    )
+    assertBeginWorking(fragment)
+    expect(fragment.ciSnapshot).toBeNull()
+  })
+})
+
+describe('ciReassure is cleared by CI_CHOOSE on every branch (2640)', () => {
+  it('an event option (opens the confirm panel) clears ciReassure to false', () => {
+    const answers: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const d = diagnose(passportEngine, answers)
+    const s0: CiTestState = { ...sessionFor(c), ciReassure: true }
+    const idx = optIndex(d, {}, 'passport', 'Police contacted or visited me')
+    const f = ciChoose(s0, { index: idx, now: NOW + 1000 })!
+    expect(f.ciReassure).toBe(false)
+  })
+
+  it('the "nothing" branch clears it first, then ends the branch with it true', () => {
+    const answers: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const d = diagnose(passportEngine, answers)
+    const s0: CiTestState = { ...sessionFor(c), ciReassure: true }
+    const idx = optIndex(d, {}, 'passport', 'Nothing yet')
+    const f = ciChoose(s0, { index: idx, now: NOW + 1000 })!
+    expect(f.ciReassure).toBe(true)
+  })
+})
+
+describe('Immutability: no CI_* arm mutates the previous state', () => {
+  it('CI_CHOOSE + CI_CONFIRM (event, diagnosis-changing) never mutate savedCases, the case object, answers, or the log', () => {
+    const answers: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const savedCases = [c]
+    const cloneCases = structuredClone(savedCases)
+    const cloneAnswers = { ...answers }
+    const d = diagnose(passportEngine, answers)
+    const s0 = { ...sessionFor(c), savedCases }
+    const idx = optIndex(d, {}, 'passport', 'Police contacted or visited me')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+    ciConfirm(s1, NOW + 2000)
+
+    expect(savedCases).toEqual(cloneCases)
+    expect(savedCases[0]).toBe(c)
+    expect(answers).toEqual(cloneAnswers)
+    expect(c.log).toEqual(cloneCases[0].log)
+  })
+
+  it('CI_UNDO never mutates the snapshot it restores from', () => {
+    const answers: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const d = diagnose(passportEngine, answers)
+    const s0 = sessionFor(c)
+    const idx = optIndex(d, {}, 'passport', 'Nothing yet')
+    const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+    const snapshotClone = structuredClone(s1.ciSnapshot)
+
+    ciUndo(s1)
+
+    expect(s1.ciSnapshot).toEqual(snapshotClone)
   })
 })

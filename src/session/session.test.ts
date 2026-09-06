@@ -171,7 +171,7 @@ describe('RESTART preserves the persisted slice (Issue #7 / design note 3)', () 
       ciPendingIdx: 1,
       ciStage: 'valence',
       ciReassure: true,
-      ciSnapshot: { answers: {}, prepChecks: {}, caseJson: '{}' },
+      ciSnapshot: { answers: {}, prepChecks: {}, casefile: FIXTURE_CASE },
       ciJustUpdated: true,
       ciConsecutive: true,
       ciAccepted: true,
@@ -312,6 +312,78 @@ describe("BEGIN_SAVE (design notes 8-9: completes immediately, no auth detour in
     expect(s.activeCaseId).toBe(s.savedCases[0].id)
     expect(s.pendingSave).toEqual({ engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove' })
     expect(s.workingCase).toBeNull()
+  })
+})
+
+describe('CI_CHOOSE / CI_CONFIRM / CI_VALENCE / CI_CLOSURE / CI_UNDO / CI_CANCEL — reducer wiring (Task 6, design notes 2-10)', () => {
+  // The state machine's own branch-by-branch logic is exhaustively pinned
+  // in cases.test.ts (ciChoose/ciConfirm/ciValence/ciClosureAnswer/ciUndo/
+  // ciCancel, called directly). This block only proves the WIRING: each
+  // reducer arm calls the right function, applies navigation exactly when
+  // the fragment's navigateTo says to (and not otherwise), and no-ops
+  // cleanly with no active case / no pending option / no snapshot.
+  const NOW = 1_725_000_000_000
+
+  function withPassportCheckin(answers: Record<string, string> = { q1: 'no_contact', q2: 'no_followup' }) {
+    const answerActions = Object.entries(answers).map(
+      ([key, value]) => ({ type: 'ANSWER' as const, service: 'passport' as const, key, value }),
+    )
+    return seq(
+      ...answerActions,
+      { type: 'BEGIN_WORKING_CHECKIN', engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove', now: NOW },
+    )
+  }
+
+  it('CI_CHOOSE on a confirm-opening option (index 0, "Police contacted or visited me") stays on the checkin screen and sets ciStage — no navigation', () => {
+    const s0 = withPassportCheckin()
+    const s1 = r(s0, { type: 'CI_CHOOSE', index: 0, now: NOW + 1000 })
+    expect(s1.screen).toBe('checkin')
+    expect(s1.history).toEqual(s0.history) // untouched — no nav happened
+    expect(s1.ciStage).toBe('confirm')
+    expect(s1.ciPending).not.toBeNull()
+  })
+
+  it('CI_CONFIRM applies the patch, navigates to passport-diagnosis, and pushes history', () => {
+    const s0 = withPassportCheckin()
+    const s1 = r(s0, { type: 'CI_CHOOSE', index: 0, now: NOW + 1000 })
+    const s2 = r(s1, { type: 'CI_CONFIRM', now: NOW + 2000 })
+    expect(s2.screen).toBe('passport-diagnosis')
+    expect(s2.history).toEqual([...s1.history, 'checkin'])
+    expect(s2.answers.q1).toBe('contacted_incomplete')
+    expect(s2.ciJustUpdated).toBe(true)
+    expect(s2.ciSnapshot).not.toBeNull()
+    expect(s2.ciStage).toBeNull()
+    expect(s2.ciPending).toBeNull()
+  })
+
+  it('CI_UNDO restores the pre-check-in state after CI_CONFIRM, without navigating', () => {
+    const s0 = withPassportCheckin()
+    const s1 = r(s0, { type: 'CI_CHOOSE', index: 0, now: NOW + 1000 })
+    const s2 = r(s1, { type: 'CI_CONFIRM', now: NOW + 2000 })
+    const s3 = r(s2, { type: 'CI_UNDO' })
+    expect(s3.answers.q1).toBe('no_contact')
+    expect(s3.ciSnapshot).toBeNull()
+    expect(s3.screen).toBe(s2.screen) // CI_UNDO never navigates
+  })
+
+  it('CI_CANCEL clears the confirm panel without touching answers or navigating', () => {
+    const s0 = withPassportCheckin()
+    const s1 = r(s0, { type: 'CI_CHOOSE', index: 0, now: NOW + 1000 })
+    expect(s1.ciStage).toBe('confirm')
+    const s2 = r(s1, { type: 'CI_CANCEL' })
+    expect(s2.ciStage).toBeNull()
+    expect(s2.ciPending).toBeNull()
+    expect(s2.ciPendingIdx).toBeNull()
+    expect(s2.screen).toBe('checkin')
+    expect(s2.answers).toBe(s1.answers) // untouched
+  })
+
+  it('CI_CHOOSE / CI_CONFIRM / CI_VALENCE / CI_CLOSURE / CI_UNDO are clean no-ops with no active case / no pending option / no snapshot', () => {
+    expect(r(initialSession, { type: 'CI_CHOOSE', index: 0, now: NOW })).toEqual(initialSession)
+    expect(r(initialSession, { type: 'CI_CONFIRM', now: NOW })).toEqual(initialSession)
+    expect(r(initialSession, { type: 'CI_VALENCE', accepted: true, now: NOW })).toEqual(initialSession)
+    expect(r(initialSession, { type: 'CI_CLOSURE', gotIt: true, now: NOW })).toEqual(initialSession)
+    expect(r(initialSession, { type: 'CI_UNDO' })).toEqual(initialSession)
   })
 })
 

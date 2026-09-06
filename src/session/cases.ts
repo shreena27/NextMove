@@ -27,9 +27,12 @@
 // at all three sites that ask this same question, so a fix applied to one
 // is never a bug left standing in the other two.
 import type { AnswerRecord } from '../domain/types'
-import type { Casefile, JourneyEntry, ServiceKey } from '../domain/casefile'
-import { caseSnapshot } from '../domain/casefile'
+import type { Casefile, JourneyEntry, JourneyEntryKind, ServiceKey } from '../domain/casefile'
+import { caseSnapshot, LOG_COPY } from '../domain/casefile'
 import { diagnose } from '../domain/engine'
+import { applyEvent } from '../domain/answers'
+import type { CheckinOption } from '../domain/checkinOptions'
+import { checkinOptionsFor } from '../domain/checkinOptions'
 import { ENGINES } from '../playbooks/engines'
 
 /** D3 fix: key-order-independent equality between two answer records. */
@@ -229,4 +232,454 @@ export function completeSave(
     log: working ? working.log : [{ t: payload.now, kind: 'diagnosed', text: snap.stateLabel }],
   }
   return { savedCases: [created, ...state.savedCases], activeCaseId: created.id, workingCase: null }
+}
+
+// =============================================================================
+// The check-in interaction state machine (Task 6). TRANSCRIBED, not authored:
+// design/nextmove-v1-prototype.html (git tag v1-design-lock-2) —
+// checkinOptions/ciChoose (2597-2657), ciSnapshotNow/ciApplyPatch/ciConfirm
+// (2658-2683), ciValence (2684-2693), ciClosureAnswer (2694-2712), ciUndo
+// (2713-2720). "Answer-model surgery" (docs/superpowers/specs/
+// 2026-09-05-checkin-tracking-loop-design.md) is the *why*: a check-in is an
+// EVENT (applyEvent/updateAns, C1's pure merge — 2099-2103), never a
+// CORRECTION (applyCorrection, C1, used only by ANSWER/Back) — facts survive,
+// only the resulting diagnosis id decides whether prepare progress clears.
+//
+// Same pure-function shape as beginWorkingCheckin/completeSave above (design
+// note 1): every function here takes (state slice, payload) and returns a
+// FRAGMENT to spread back onto SessionState — session.ts's CI_* reducer arms
+// stay thin, and every value these functions need (including the clock) comes
+// in as an argument.
+// =============================================================================
+
+/** One check-in interaction's undo snapshot. Holds the case object directly,
+ *  not a JSON string the way the prototype's ciSnapshotNow() (2658-2661)
+ *  does (`caseJson: JSON.stringify(activeCase())`): the prototype needs that
+ *  round trip only because it mutates the case object in place after the
+ *  snapshot is taken, so a live reference would drift under it. This port is
+ *  immutable — every write below produces a NEW case object — so the case
+ *  reference captured at snapshot time is already an independent value
+ *  nothing later mutates. */
+export interface CiSnapshot {
+  answers: AnswerRecord
+  prepChecks: Record<number, boolean>
+  casefile: Casefile
+}
+
+/** The slice of SessionState every CI_* function below needs to resolve
+ *  activeCase() and (where relevant) apply an event patch to it. */
+interface CheckinCaseState {
+  answers: AnswerRecord
+  prepChecks: Record<number, boolean>
+  activeCaseId: string | null
+  workingCase: Casefile | null
+  savedCases: Casefile[]
+}
+
+/** The fragment every CI_* function returns. Every field is OPTIONAL and a
+ *  caller (session.ts) spreads only the keys actually present — a field left
+ *  out of a given branch's returned object is a field that branch does not
+ *  touch, matching the prototype's own per-branch assignments line for line
+ *  (see each function's own comment for exactly which fields a given branch
+ *  sets). `navigateTo` is the one field always present: a screen id to
+ *  navigate to (session.ts applies nav()'s own clears — trustOpen/
+ *  restartConfirm/removeConfirm — plus the history push, 2027-2029), or
+ *  `null` to stay on the current screen with no navigation at all. Typed as
+ *  plain `string`, not session.ts's `ScreenId`: cases.ts must not import
+ *  from session.ts (same layering reason as CaseSnapshot.returnScreen in
+ *  casefile.ts). */
+export interface CiFragment {
+  answers?: AnswerRecord
+  prepChecks?: Record<number, boolean>
+  workingCase?: Casefile | null
+  savedCases?: Casefile[]
+  ciPending?: CheckinOption | null
+  ciPendingIdx?: number | null
+  ciStage?: 'confirm' | 'valence' | 'closureq' | null
+  ciReassure?: boolean
+  ciSnapshot?: CiSnapshot | null
+  ciJustUpdated?: boolean
+  ciConsecutive?: boolean
+  ciAccepted?: boolean
+  navigateTo: string | null
+}
+
+/** Design note 4 — the ONE log-append helper, used at every append site
+ *  below. DELIBERATE PORT DECISION, not a transcription: the prototype has
+ *  TWO append paths. `ciLog` (2621-2627) stamps `c.lastCheck` on every
+ *  write. But the `closed` entries (`ciClosureAnswer` 2699, `closeUnresolved`
+ *  2728) and the `reopened` entry (`reopenCase` 2185) are pushed with a bare
+ *  `c.log.push(...)` that does NOT touch `lastCheck` — so "every log write
+ *  sets lastCheck" is not actually what the prototype does. This port
+ *  unifies both paths into this one helper anyway, for three reasons: it
+ *  removes a second, untested append path; `lastCheck` renders as "last
+ *  update {ago}" on the Home card (3129), and a close or reopen genuinely IS
+ *  the last thing that happened to the case; and an open case's card is the
+ *  only place the value shows, so a closed case's `lastCheck` moving is
+ *  invisible either way. Does NOT take a snapshot itself (see CiSnapshot's
+ *  own comment and each CI_* function below) — snapshotting is each
+ *  function's own, one-per-interaction responsibility, never this helper's,
+ *  which is exactly the D1 fix (design note 5). */
+export function appendLog(
+  c: Casefile,
+  entry: { kind: JourneyEntryKind; text: string; noChange?: true },
+  now: number,
+): Casefile {
+  const logEntry: JourneyEntry = entry.noChange
+    ? { t: now, kind: entry.kind, text: entry.text, noChange: true }
+    : { t: now, kind: entry.kind, text: entry.text }
+  return { ...c, log: [...c.log, logEntry], lastCheck: now }
+}
+
+/** One check-in interaction's undo snapshot, captured BEFORE the first log
+ *  write of that interaction (design note 5 / deviation D1) — see each
+ *  caller below: every one of them calls this exactly ONCE, at its own top,
+ *  before its own first `appendLog`, and never again afterwards even when
+ *  that same interaction goes on to write a second entry. */
+function takeCiSnapshot(state: { answers: AnswerRecord; prepChecks: Record<number, boolean> }, c: Casefile): CiSnapshot {
+  return { answers: { ...state.answers }, prepChecks: { ...state.prepChecks }, casefile: c }
+}
+
+/** Writes `updated` back into whichever of workingCase/savedCases is
+ *  currently active — the port's answer to the prototype's
+ *  `Object.assign(c, ...)` (which works on either because it mutates the
+ *  live object in place; design note 9). Passes back the UNCHANGED side's
+ *  exact input reference (never a fresh copy), so a CI_* arm that only ever
+ *  touches one side never breaks the other side's identity. */
+function placeCase(
+  state: { activeCaseId: string | null; workingCase: Casefile | null; savedCases: Casefile[] },
+  updated: Casefile,
+): { workingCase: Casefile | null; savedCases: Casefile[] } {
+  if (state.activeCaseId === 'working') return { workingCase: updated, savedCases: state.savedCases }
+  return {
+    workingCase: state.workingCase,
+    savedCases: state.savedCases.map(x => (x.id === state.activeCaseId ? updated : x)),
+  }
+}
+
+/** Prototype ciApplyPatch() (2662-2675), renamed applyCheckinPatch per this
+ *  task's brief — the shared tail every non-deadend, non-"nothing"/"else"/
+ *  "notdone" check-in option resolves through (CI_CONFIRM's non-deadend
+ *  branch; CI_VALENCE's non-rejectDeadend branches; CI_CLOSURE's
+ *  pendingPatch/acceptPendingPatch branch):
+ *   1. capture `before`, the diagnosis the case is leaving.
+ *   2. DEVIATION D1: take the interaction's ONE snapshot HERE, before the
+ *      first write below — never re-taken before the second (`diagnosed`)
+ *      write further down. A faithful transcription of `ciLog` (2621-2627)
+ *      re-snapshots on EVERY write, so a diagnosis-changing check-in (which
+ *      writes `reported` THEN `diagnosed`) silently corrupts its own undo
+ *      data — see cases.test.ts's own "D1 RED" test for exactly what that
+ *      does and does not break.
+ *   3. append the `reported` entry (reportLabel is the caller's own,
+ *      already-composed text — e.g. with a " — rejected" suffix).
+ *   4. apply the event patch via `applyEvent` (never `applyCorrection` — a
+ *      check-in is the EVENT write path; see this section's header note).
+ *   5. capture `after`, the resulting diagnosis.
+ *   6. if the diagnosis id genuinely changed (ruleId OR state differs):
+ *      clear prepChecks (the plan changed) and append a `diagnosed` entry
+ *      memorializing the OLD plan's completion — written strictly after
+ *      `reported`, so the log reads in the order things happened.
+ *   7. DEVIATION D7: re-snapshot the case (`caseSnapshot`, so the Home card
+ *      cannot drift) but preserve the case's ORIGINAL `savedAt` — a fresh
+ *      `caseSnapshot` always stamps `savedAt: now` (casefile.ts, 2059-
+ *      equivalent), which would otherwise silently move the case's save
+ *      date forward on every diagnosis-changing check-in (it renders as
+ *      "Saved {date}" in two places — `.saved-kicker` 3123 and
+ *      `.case-meta-line` 2914). `lastCheck` is a DIFFERENT clock ("last
+ *      update {ago}") and genuinely SHOULD advance — `appendLog` above
+ *      already did that, for both writes.
+ *   8. return the fragment: ciJustUpdated=true, ciStage/ciPending/
+ *      ciPendingIdx all cleared, navigate to `${engineKey}-diagnosis`. */
+function applyCheckinPatch(
+  state: CheckinCaseState,
+  opt: CheckinOption,
+  reportLabel: string,
+  now: number,
+): CiFragment | null {
+  const c = activeCase(state)
+  if (!c) return null
+  const engine = ENGINES[c.engineKey]
+  const before = diagnose(engine, state.answers)
+
+  const snapshot = takeCiSnapshot(state, c)
+
+  let updated = appendLog(c, { kind: 'reported', text: reportLabel }, now)
+  const answers = applyEvent(state.answers, opt.patch ?? {})
+  const after = diagnose(engine, answers)
+
+  let prepChecks = state.prepChecks
+  if (before.ruleId !== after.ruleId || before.state !== after.state) {
+    prepChecks = {}
+    updated = appendLog(updated, { kind: 'diagnosed', text: after.label }, now)
+  }
+
+  const snap = caseSnapshot(c.engineKey, c.serviceLabel, c.returnScreen, after, answers, prepChecks, now)
+  updated = { ...updated, ...snap, savedAt: c.savedAt } // D7: savedAt survives
+
+  const placement = placeCase(state, updated)
+  return {
+    answers,
+    prepChecks,
+    workingCase: placement.workingCase,
+    savedCases: placement.savedCases,
+    ciSnapshot: snapshot,
+    ciJustUpdated: true,
+    ciStage: null,
+    ciPending: null,
+    ciPendingIdx: null,
+    navigateTo: `${c.engineKey}-diagnosis`,
+  }
+}
+
+/** Prototype ciChoose() (2638-2657): the citizen picked one option off the
+ *  check-in list. Sets `ciPending`/`ciPendingIdx` and clears `ciReassure`
+ *  FIRST, once, before any branching (2640) — every branch below shares
+ *  this `base`; only 'nothing' overrides `ciPending`/`ciReassure` again
+ *  within its own arm. Branches, in the prototype's own order:
+ *   - 'nothing' → log a `checked`/noChange entry, set ciConsecutive from
+ *     whether the case's LAST entry (before this write) was itself
+ *     `checked`, set ciReassure=true, clear ciPending. No navigation.
+ *   - 'notdone' → navigate to prepare. No log entry, no patch, no snapshot
+ *     (nothing was written).
+ *   - 'else' → log a `checked` entry, navigate to the engine's first
+ *     question.
+ *   - 'valence' → open the valence panel (ciStage='valence').
+ *   - 'closureq' | 'resolved-rung' | 'deliverable' → open the closure panel.
+ *   - anything else (event/action/deadend) → open the confirm panel. */
+export function ciChoose(state: CheckinCaseState, payload: { index: number; now: number }): CiFragment | null {
+  const c = activeCase(state)
+  if (!c) return null
+  const engineKey = c.engineKey
+  const d = diagnose(ENGINES[engineKey], state.answers)
+  const options = checkinOptionsFor(d, state.prepChecks, engineKey)
+  const opt = options[payload.index]
+
+  const base = { ciPending: opt, ciPendingIdx: payload.index, ciReassure: false }
+
+  if (opt.k === 'nothing') {
+    const prevEntry = c.log[c.log.length - 1]
+    const ciConsecutive = !!(prevEntry && prevEntry.kind === 'checked')
+    const snapshot = takeCiSnapshot(state, c)
+    const updated = appendLog(c, { kind: 'checked', text: LOG_COPY.checkedNoChange, noChange: true }, payload.now)
+    const placement = placeCase(state, updated)
+    return {
+      ...base,
+      ciPending: null,
+      ciReassure: true,
+      ciConsecutive,
+      ciSnapshot: snapshot,
+      workingCase: placement.workingCase,
+      savedCases: placement.savedCases,
+      navigateTo: null,
+    }
+  }
+
+  if (opt.k === 'notdone') {
+    return { ...base, workingCase: state.workingCase, savedCases: state.savedCases, navigateTo: `${engineKey}-prepare` }
+  }
+
+  if (opt.k === 'else') {
+    const snapshot = takeCiSnapshot(state, c)
+    const updated = appendLog(c, { kind: 'checked', text: LOG_COPY.elseReDiagnose }, payload.now)
+    const placement = placeCase(state, updated)
+    const first: Record<ServiceKey, string> = { passport: 'passport-q1', voter: 'voter-entry', sir: 'sir-q1' }
+    return {
+      ...base,
+      ciSnapshot: snapshot,
+      workingCase: placement.workingCase,
+      savedCases: placement.savedCases,
+      navigateTo: first[engineKey],
+    }
+  }
+
+  if (opt.k === 'valence') {
+    return { ...base, ciStage: 'valence', workingCase: state.workingCase, savedCases: state.savedCases, navigateTo: null }
+  }
+
+  if (opt.k === 'closureq' || opt.k === 'resolved-rung' || opt.k === 'deliverable') {
+    return { ...base, ciStage: 'closureq', workingCase: state.workingCase, savedCases: state.savedCases, navigateTo: null }
+  }
+
+  // event | action | deadend
+  return { ...base, ciStage: 'confirm', workingCase: state.workingCase, savedCases: state.savedCases, navigateTo: null }
+}
+
+/** Prototype ciConfirm() (2676-2683): a `deadend` option logs a `reported`
+ *  entry (its own snapshot, taken here — its own interaction) and navigates
+ *  straight to 'dead-end' — no patch, no diagnosis change. Everything else
+ *  goes through applyCheckinPatch. */
+export function ciConfirm(state: CheckinCaseState & { ciPending: CheckinOption | null }, now: number): CiFragment | null {
+  const opt = state.ciPending
+  if (!opt) return null
+  const c = activeCase(state)
+  if (!c) return null
+
+  if (opt.k === 'deadend') {
+    const snapshot = takeCiSnapshot(state, c)
+    const updated = appendLog(c, { kind: 'reported', text: opt.label }, now)
+    const placement = placeCase(state, updated)
+    return {
+      workingCase: placement.workingCase,
+      savedCases: placement.savedCases,
+      ciSnapshot: snapshot,
+      ciStage: null,
+      ciPending: null,
+      navigateTo: 'dead-end',
+    }
+  }
+
+  return applyCheckinPatch(state, opt, opt.label, now)
+}
+
+/** Prototype ciValence() (2684-2693) — the valence gate for decision-class
+ *  events: "was it accepted or rejected?" asked BEFORE any routing, so the
+ *  celebratory beat can never land on a rejection.
+ *   - accepted → ciAccepted=true, ciStage='closureq'. No patch, no log entry
+ *     yet — ciPending/ciPendingIdx are untouched (the SAME option's label
+ *     still drives the closure panel's own "you picked" echo).
+ *   - rejected AND opt.rejectDeadend → log a `reported ... — rejected`
+ *     entry (its own snapshot) and navigate to 'dead-end'. No patch: this
+ *     rung is the top of the verified ladder.
+ *   - rejected otherwise → applyCheckinPatch with opt.rejectPatch. */
+export function ciValence(
+  state: CheckinCaseState & { ciPending: CheckinOption | null },
+  accepted: boolean,
+  now: number,
+): CiFragment | null {
+  const opt = state.ciPending
+  if (!opt) return null
+  const c = activeCase(state)
+  if (!c) return null
+
+  if (accepted) {
+    return { ciAccepted: true, ciStage: 'closureq', navigateTo: null }
+  }
+
+  if (opt.rejectDeadend) {
+    const snapshot = takeCiSnapshot(state, c)
+    const updated = appendLog(c, { kind: 'reported', text: opt.label + LOG_COPY.rejectedSuffix }, now)
+    const placement = placeCase(state, updated)
+    return {
+      ciAccepted: false,
+      workingCase: placement.workingCase,
+      savedCases: placement.savedCases,
+      ciSnapshot: snapshot,
+      ciStage: null,
+      ciPending: null,
+      navigateTo: 'dead-end',
+    }
+  }
+
+  const applied = applyCheckinPatch(state, { ...opt, patch: opt.rejectPatch }, opt.label + LOG_COPY.rejectedSuffix, now)
+  if (!applied) return null
+  return { ...applied, ciAccepted: false }
+}
+
+/** Prototype ciClosureAnswer() (2694-2712) — "Did you get it?", asked after
+ *  a resolved-rung/closureq/deliverable/accepted-valence option.
+ *   - gotIt → log a `reported` entry (its own snapshot — the universal
+ *     'deliverable' option's own label as-is; every other kind gets the
+ *     " — and the deliverable is in hand" suffix), set outcome to
+ *     'deliverable_received' + closedAt, append a `closed` entry, navigate
+ *     to 'case-closed'.
+ *   - not yet → "retire, don't reset" (spec): `pp` = the accepted-valence
+ *     pending patch if this closureq followed an acceptance, else the
+ *     option's own pendingPatch. If `pp` exists, applyCheckinPatch consumes
+ *     the rung. Otherwise (the universal "I got it!" option, which has no
+ *     patch — the prototype's own comment: "reporting maybe-then-not
+ *     changes nothing, honestly") just log a `reported ... still pending`
+ *     entry (its own snapshot), set ciReassure, and stay on the casefile
+ *     screen. Either way ciAccepted resets to false. */
+export function ciClosureAnswer(
+  state: CheckinCaseState & { ciPending: CheckinOption | null; ciAccepted: boolean },
+  gotIt: boolean,
+  now: number,
+): CiFragment | null {
+  const opt = state.ciPending
+  if (!opt) return null
+  const c = activeCase(state)
+  if (!c) return null
+
+  if (gotIt) {
+    const reportLabel = opt.k === 'deliverable' ? opt.label : opt.label + LOG_COPY.inHandSuffix
+    const snapshot = takeCiSnapshot(state, c)
+    let updated = appendLog(c, { kind: 'reported', text: reportLabel }, now)
+    updated = { ...updated, outcome: 'deliverable_received', closedAt: now }
+    updated = appendLog(updated, { kind: 'closed', text: LOG_COPY.closedDeliverable }, now)
+    const placement = placeCase(state, updated)
+    return {
+      workingCase: placement.workingCase,
+      savedCases: placement.savedCases,
+      ciSnapshot: snapshot,
+      ciStage: null,
+      ciPending: null,
+      navigateTo: 'case-closed',
+    }
+  }
+
+  const pp = (state.ciAccepted && opt.acceptPendingPatch) || opt.pendingPatch
+  if (pp) {
+    const applied = applyCheckinPatch(state, { ...opt, patch: pp }, opt.label + LOG_COPY.pendingSuffix, now)
+    if (!applied) return null
+    return { ...applied, ciAccepted: false }
+  }
+
+  const snapshot = takeCiSnapshot(state, c)
+  const updated = appendLog(c, { kind: 'reported', text: opt.label + LOG_COPY.pendingSuffix }, now)
+  const placement = placeCase(state, updated)
+  return {
+    ciAccepted: false,
+    workingCase: placement.workingCase,
+    savedCases: placement.savedCases,
+    ciSnapshot: snapshot,
+    ciReassure: true,
+    ciStage: null,
+    ciPending: null,
+    navigateTo: null,
+  }
+}
+
+/** Prototype ciUndo() (2713-2720): restore `answers`, `prepChecks` and the
+ *  active case (including its `log`) from `ciSnapshot`, then clear
+ *  `ciSnapshot`/`ciJustUpdated`/`ciReassure`. A working case restores into
+ *  `workingCase`; a saved case restores into `savedCases` at its position
+ *  (design note 9) — the prototype's `Object.assign(c, restored)` handles
+ *  both because it mutates the object in place; `placeCase` is this port's
+ *  branch on `activeCaseId==='working'`. No-op (returns null) when there is
+ *  no snapshot to restore. */
+export function ciUndo(state: {
+  activeCaseId: string | null
+  workingCase: Casefile | null
+  savedCases: Casefile[]
+  ciSnapshot: CiSnapshot | null
+}): CiFragment | null {
+  const snap = state.ciSnapshot
+  if (!snap) return null
+  const placement = placeCase(state, snap.casefile)
+  return {
+    answers: { ...snap.answers },
+    prepChecks: { ...snap.prepChecks },
+    workingCase: placement.workingCase,
+    savedCases: placement.savedCases,
+    ciSnapshot: null,
+    ciJustUpdated: false,
+    ciReassure: false,
+    navigateTo: null,
+  }
+}
+
+/** The confirm (2846) and valence (2856) panels' "Cancel" button — the
+ *  citizen said "no, cancel this". Design note 10: a previous draft of this
+ *  plan declared this reducer action and never wrote a test for it, which
+ *  this project's own Global Constraints call a defect outright. Clears
+ *  ciStage/ciPending/ciPendingIdx ONLY — the prototype's own Cancel handler
+ *  (`S.ciStage=null; S.ciPending=null; render();`) does not clear
+ *  ciPendingIdx either, but this port does, as deliberate type hygiene (a
+ *  declared, typed field should not go stale) — it touches nothing else:
+ *  not the log, not answers, not ciSnapshot, not ciReassure, not
+ *  savedCases. The closureq panel deliberately has NO Cancel (2863-2866) —
+ *  Task 9's screen enforces that absence; this function is never wired to
+ *  it. */
+export function ciCancel(): CiFragment {
+  return { ciStage: null, ciPending: null, ciPendingIdx: null, navigateTo: null }
 }
