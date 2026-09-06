@@ -162,6 +162,15 @@ export const UI = {
     channelK: 'Official channel',
     channelPhone: 'Helpline: {phone}', // TEMPLATE — see the header note above.
     channelOpen: 'Open in new tab ↗',
+    draftK: 'Your draft',
+    draftAria: 'Editable draft',
+    hintOne: '{n} blank in [brackets] left to fill; everything else is ready.', // TEMPLATE
+    hintMany: '{n} blanks in [brackets] left to fill; everything else is ready.', // TEMPLATE
+    hintReady: 'All blanks filled. Ready to copy and send.',
+    copy: 'Copy draft',
+    copied: 'Copied ✓',
+    copiedOne: 'Copied, {n} blank left', // TEMPLATE
+    copiedMany: 'Copied, {n} blanks left', // TEMPLATE
   },
 } as const
 

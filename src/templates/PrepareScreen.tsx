@@ -22,11 +22,30 @@
  *  DESIGN NOTE 2 (the C8 fillDraft middle branch is deliberately
  *  unbuilt, not stubbed): the prototype's `renderPrepare` composes a draft
  *  card with autofill-from-bracket parsing between the trust line and the
- *  checklist (3772 onward). That whole card — draft textarea, copy
- *  button, fill-review panel — is Task 4's. This file does not render it,
- *  does not stub an empty `<div>` for it, and carries no dead branch
- *  waiting to be filled in; its absence here is a scoping decision, not an
- *  oversight.
+ *  checklist (3772 onward). Task 4 builds the draft textarea and the copy
+ *  control, but NOT the fill-review panel: the prototype's `fillDraft()`
+ *  (autofill from `S.caseFacts` into matching brackets) is not ported, so
+ *  the draft is always the RAW template, and `bracketHintText`'s middle
+ *  branch (`fills>0 && !S.fillsReviewed`) has no equivalent here — the
+ *  hint below has exactly two branches, not three. That whole
+ *  `S.caseFacts`/`.fill-list`/`.fill-review` mechanism is C8's.
+ *
+ *  DESIGN NOTE 2b (mechanism deviation, not a behaviour one): the
+ *  prototype's `updateBracketHint` (3721-3723) patches `#bracket-hint`'s
+ *  `textContent` directly because the prototype has no re-render on
+ *  input. This component re-renders on every `setDraft`, so the hint is
+ *  simply computed from `draft` during render — same behaviour, one fewer
+ *  moving part (no `document.getElementById`).
+ *
+ *  DESIGN NOTE 2c (the Copy button's frozen count): the blank count shown
+ *  on the Copy button is the count AT THE MOMENT OF COPYING, captured into
+ *  `copied` state before the flash starts (prototype: `S.copiedBrackets =
+ *  bracketCount(ta.value)`, 3741, captured before `S.copied=true`). If the
+ *  citizen edits the draft during the 2200ms flash, the button keeps
+ *  reporting what was true when they copied — it does not track the live
+ *  count. `copied: number | null` carries both facts in one piece of
+ *  state: `null` is idle, and any number (including 0) is "just copied,
+ *  with this many blanks left at that moment."
  *
  *  DESIGN NOTE 3 (the C5 saveControl tail is deliberately absent): the
  *  prototype's full `renderPrepare` ends with a "Save this case" control
@@ -42,13 +61,22 @@
  *  a future data change happens to leave phone-less rules as the only
  *  ones reachable — the branch is doing its job either way.
  */
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Diagnosis } from '../domain/types'
 import type { ServiceKey, SessionAction } from '../session/session'
 import type { PrepPlan } from '../playbooks/prep'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { Split } from '../ui/Split'
 import { UI } from '../screens/screenCopy'
+
+/** [Bracketed] blanks are real sub-tasks ("find your ARN"), so they get
+ *  counted and surfaced, live — never left as invisible work the citizen
+ *  discovers after sending. Prototype 3699, verbatim. */
+const bracketCount = (t: string) => (t.match(/\[[^\]]*\]/g) ?? []).length
+
+/** The COPY FLASH duration (prototype 3742): how long the button keeps
+ *  showing its "Copied…" state before reverting to idle. */
+const COPY_FLASH_MS = 2200
 
 export interface PrepareScreenProps {
   serviceLabel: string
@@ -81,6 +109,62 @@ export function PrepareScreen({
   topbar,
   dispatch: _dispatch,
 }: PrepareScreenProps) {
+  // Local state only (this task's scope exclusion 2 — see the plan). Nothing
+  // here goes into SessionState: the prototype uses S.prepDraft/S.copied
+  // because it has one global object and no components; C5 is the chunk
+  // with a reason (persistence) to lift this.
+  const [draft, setDraft] = useState(prep.draft ?? '')
+  // null = idle. Any number (0 included) = "just copied, this many blanks
+  // were left AT THE MOMENT OF COPYING" — frozen, not live (design note 2c).
+  const [copied, setCopied] = useState<number | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  useEffect(() => {
+    // Cleared on unmount so a flash mid-flight never calls setState on a
+    // dead component.
+    return () => {
+      if (flashTimer.current !== undefined) clearTimeout(flashTimer.current)
+    }
+  }, [])
+
+  const handleCopy = () => {
+    // The copy always succeeds — remaining blanks are named, not policed
+    // (prototype 3740's own comment). Never disabled, never blocked.
+    const n = bracketCount(draft)
+    const flash = () => {
+      setCopied(n)
+      if (flashTimer.current !== undefined) clearTimeout(flashTimer.current)
+      flashTimer.current = setTimeout(() => setCopied(null), COPY_FLASH_MS)
+    }
+    const fallback = () => {
+      // navigator.clipboard.writeText isn't implemented in jsdom, and
+      // navigator.clipboard may be undefined entirely — the same fallback
+      // the prototype uses on rejection or throw (design note 5).
+      textareaRef.current?.select()
+    }
+    try {
+      navigator.clipboard.writeText(draft).then(flash, fallback)
+    } catch {
+      fallback()
+    }
+  }
+
+  const liveBlanks = bracketCount(draft)
+  const hint =
+    liveBlanks > 0
+      ? (liveBlanks === 1 ? UI.prepare.hintOne : UI.prepare.hintMany).replace('{n}', String(liveBlanks))
+      : UI.prepare.hintReady
+
+  const copyLabel =
+    copied === null
+      ? UI.prepare.copy
+      : copied === 0
+        ? UI.prepare.copied
+        : (copied === 1 ? UI.prepare.copiedOne : UI.prepare.copiedMany).replace('{n}', String(copied))
+  const copyClass =
+    copied === null ? 'copy-btn' : copied === 0 ? 'copy-btn copied' : 'copy-btn copied-warn'
+
   return (
     <>
       {topbar}
@@ -116,7 +200,28 @@ export function PrepareScreen({
                   </a>
                 ) : null}
               </div>
-              {/* DESIGN NOTE 2: the draft card (Task 4) slots in here. */}
+              {prep.draft ? (
+                <div className="prep-card">
+                  {/* .nm-k, not a new .prep-k — this file's design note 8:
+                      the lifted CSS (Task 2) defines no .prep-k, and the
+                      inline margin is the prototype's own (3773), not a
+                      new rule. */}
+                  <div className="nm-k" style={{ marginBottom: 10 }}>{UI.prepare.draftK}</div>
+                  <textarea
+                    ref={textareaRef}
+                    className="prep-draft"
+                    aria-label={UI.prepare.draftAria}
+                    value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                  />
+                  <div className="prep-card-foot">
+                    <div className="prep-hint">{hint}</div>
+                    <button className={copyClass} onClick={handleCopy}>
+                      {copyLabel}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {/* The checklist and visit card (Task 5) slot in after it. */}
             </>
           }
