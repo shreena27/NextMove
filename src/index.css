@@ -494,7 +494,10 @@ h2.headline{
 /* ---------- prepare: draft + guided submission ----------
    The user reviews, edits, copies, and submits the draft themselves —
    NextMove never files anything. Steps are a tick-off checklist
-   (satisfying, visible progress; not persisted — it's a prototype). */
+   (satisfying, visible progress — persisted in the session reducer as of
+   Task 12, so it survives navigating away and back; C4 built this
+   styling against a prototype-parity local-only checklist, which is why
+   this comment used to say otherwise). */
 .prep-card{
   background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
   box-shadow:var(--shadow-float); padding:20px 22px; margin-bottom:26px;

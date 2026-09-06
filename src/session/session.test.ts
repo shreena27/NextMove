@@ -526,3 +526,90 @@ describe('CLOSE_UNRESOLVED / REOPEN_CASE / REMOVE_SAVED / SET_REMIND / TOGGLE_LO
     expect(s3.reminderCopied).toBe(false)
   })
 })
+
+describe('TOGGLE_PREP_STEP / SET_PREP_DRAFT — PrepareScreen\'s tick/draft state lifted into the reducer (Task 12)', () => {
+  const NOW = 1_725_000_000_000
+  // state-5b (q1 'adverse' + q2 'formal_grievance'): 4 real steps, the same
+  // fixture PrepareScreen.test.tsx uses as `escalate` — real playbook data,
+  // not a toy fixture, so `caseSnapshot`'s own `stepsTotal`/`stepsDone`
+  // derivation is exercised for real.
+  const ESCALATE_ANSWERS = { q1: 'adverse', q2: 'formal_grievance' }
+
+  it('SET_PREP_DRAFT stores the text verbatim', () => {
+    const s = r(initialSession, { type: 'SET_PREP_DRAFT', text: 'in progress draft' })
+    expect(s.prepDraft).toBe('in progress draft')
+  })
+
+  it('TOGGLE_PREP_STEP flips one index and leaves the rest; toggling twice returns to the original value; the previous prepChecks object is not mutated', () => {
+    // Index 1 starts as an explicit `false` (not absent) so the round trip
+    // is exact: `!false` -> `true` -> `!true` -> `false`, the SAME explicit
+    // value it started at — an index that started absent would instead
+    // land on an explicit `false` after two toggles (prototype
+    // `S.prepChecks[i]=!S.prepChecks[i]`, verbatim), which is behaviourally
+    // identical everywhere `prepChecks[i]` is read for truthiness but is
+    // not what this test is checking.
+    const before: SessionState = { ...initialSession, prepChecks: { 0: true, 1: false, 2: true } }
+    const s1 = r(before, { type: 'TOGGLE_PREP_STEP', index: 1, now: NOW })
+    expect(s1.prepChecks).toEqual({ 0: true, 1: true, 2: true })
+    expect(before.prepChecks).toEqual({ 0: true, 1: false, 2: true }) // not mutated
+    const s2 = r(s1, { type: 'TOGGLE_PREP_STEP', index: 1, now: NOW })
+    expect(s2.prepChecks).toEqual({ 0: true, 1: false, 2: true })
+  })
+
+  it('re-snapshots the active still-open case when its engine matches the CURRENT screen — returnScreen becomes S.screen, stepsDone reflects the new tick', () => {
+    const active: Casefile = {
+      ...FIXTURE_CASE, id: 'c1', engineKey: 'passport', outcome: 'still_open',
+      answers: ESCALATE_ANSWERS, returnScreen: 'passport-nextmove',
+      stepsTotal: 0, stepsDone: 0, savedAt: NOW - 10_000,
+    }
+    const dirty: SessionState = {
+      ...initialSession, savedCases: [active], activeCaseId: 'c1',
+      screen: 'passport-prepare', answers: ESCALATE_ANSWERS, prepChecks: {},
+    }
+    const s = r(dirty, { type: 'TOGGLE_PREP_STEP', index: 0, now: NOW })
+    expect(s.prepChecks).toEqual({ 0: true })
+    expect(s.savedCases[0].returnScreen).toBe('passport-prepare')
+    expect(s.savedCases[0].stepsTotal).toBe(4)
+    expect(s.savedCases[0].stepsDone).toBe(1)
+  })
+
+  it('a MISMATCHED engine leaves the active case untouched — ticking a passport step must never overwrite a voter case', () => {
+    const voterCase: Casefile = {
+      ...FIXTURE_CASE, id: 'c1', engineKey: 'voter', outcome: 'still_open',
+      returnScreen: 'voter-nextmove', savedAt: NOW - 10_000,
+    }
+    const dirty: SessionState = {
+      ...initialSession, savedCases: [voterCase], activeCaseId: 'c1',
+      screen: 'passport-prepare', answers: ESCALATE_ANSWERS, prepChecks: {},
+    }
+    const s = r(dirty, { type: 'TOGGLE_PREP_STEP', index: 0, now: NOW })
+    expect(s.prepChecks).toEqual({ 0: true }) // the tick itself still happens
+    expect(s.savedCases[0]).toEqual(voterCase) // but the voter case is untouched
+    expect(s.savedCases).toBe(dirty.savedCases) // same reference — never rebuilt
+  })
+
+  it('with no active case, TOGGLE_PREP_STEP is a no-op on savedCases/workingCase', () => {
+    const dirty: SessionState = { ...initialSession, screen: 'passport-prepare', prepChecks: {} }
+    const s = r(dirty, { type: 'TOGGLE_PREP_STEP', index: 0, now: NOW })
+    expect(s.prepChecks).toEqual({ 0: true })
+    expect(s.savedCases).toBe(dirty.savedCases)
+    expect(s.workingCase).toBe(dirty.workingCase)
+  })
+
+  it('D7: preserves the case\'s ORIGINAL savedAt — a faithful transcription would push "Saved {date}" forward on every ticked checkbox', () => {
+    const FIXED_SAVED_AT = 1_700_000_000_000
+    const FAR_FUTURE_NOW = 9_999_999_999_999
+    const active: Casefile = {
+      ...FIXTURE_CASE, id: 'c1', engineKey: 'passport', outcome: 'still_open',
+      answers: ESCALATE_ANSWERS, returnScreen: 'passport-nextmove', savedAt: FIXED_SAVED_AT,
+      stepsTotal: 0, stepsDone: 0,
+    }
+    const dirty: SessionState = {
+      ...initialSession, savedCases: [active], activeCaseId: 'c1',
+      screen: 'passport-prepare', answers: ESCALATE_ANSWERS, prepChecks: {},
+    }
+    const s = r(dirty, { type: 'TOGGLE_PREP_STEP', index: 0, now: FAR_FUTURE_NOW })
+    expect(s.savedCases[0].savedAt).toBe(FIXED_SAVED_AT) // unchanged
+    expect(s.savedCases[0].stepsDone).toBe(1) // but the tick DID update
+  })
+})

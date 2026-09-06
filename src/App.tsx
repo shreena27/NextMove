@@ -185,6 +185,15 @@ export default function App() {
         break
       }
       body = (
+        // `key={d.ruleId}` remounts PrepareScreen when the diagnosis changes
+        // under it. Before Task 12 this also reset the screen's local
+        // tick/draft `useState` — a clean slate per new plan. Now that
+        // `prepChecks`/`prepDraft` live in the reducer (cleared by ANSWER
+        // itself, not by this remount), the only state left for the
+        // remount to discard is `copied`'s pending flash timer — still
+        // worth doing (a stale "Copied ✓" flash from the OLD plan's draft
+        // should not survive onto a new one), just for a narrower reason
+        // than before. Kept for that reason, not dropped.
         <PrepareScreen
           key={d.ruleId}
           serviceLabel={UI.serviceLabel.passport}
@@ -251,6 +260,7 @@ export default function App() {
         break
       }
       body = (
+        // See the passport-prepare case's own comment on `key={d.ruleId}`.
         <PrepareScreen
           key={d.ruleId}
           serviceLabel={UI.serviceLabel.voterServices}
@@ -319,6 +329,7 @@ export default function App() {
         break
       }
       body = (
+        // See the passport-prepare case's own comment on `key={d.ruleId}`.
         <PrepareScreen
           key={d.ruleId}
           serviceLabel={UI.serviceLabel.sir}

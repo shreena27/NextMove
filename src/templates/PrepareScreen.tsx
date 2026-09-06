@@ -47,11 +47,16 @@
  *  state: `null` is idle, and any number (including 0) is "just copied,
  *  with this many blanks left at that moment."
  *
- *  DESIGN NOTE 3 (the C5 saveControl tail is deliberately absent): the
- *  prototype's full `renderPrepare` ends with a "Save this case" control
- *  (C5 scope). This screen ends at "Done, back to Home" (dispatches
- *  `RESTART`, prototype 3816) — there is no save/casefile element anywhere
- *  in this file, now or later in this chunk.
+ *  DESIGN NOTE 3 (Task 12 — the C5 saveControl tail): the prototype's full
+ *  `renderPrepare` ends with a "Save this case" control (prototype 3817).
+ *  `<SaveControl>` is now the LAST child of the right column, after "Done,
+ *  back to Home", with `stepsDone` = this file's own `done` — see that
+ *  render spot below. `onSave`/`savedCases` are optional, same on/off
+ *  convention `NextMoveScreen`'s own tail uses (Task 11): the control
+ *  renders only once a caller actually wires `onSave`, which App.tsx does
+ *  not yet do (Task 13's job) — so every render call in this file and in
+ *  App.tsx today, none of which pass `onSave`, keeps behaving exactly as
+ *  it did before this task.
  *
  *  DESIGN NOTE 4 (`.channel-phone` is optional-by-data, not dead): the
  *  helpline row is conditional on `d.where.phone`, an optional field —
@@ -60,14 +65,36 @@
  *  because the field itself is optional. Do not "clean up" this branch if
  *  a future data change happens to leave phone-less rules as the only
  *  ones reachable — the branch is doing its job either way.
- */
+ *
+ *  DESIGN NOTE 6 (Task 12 — `prepChecks`/`prepDraft` lifted into the
+ *  reducer, controlled-with-fallback): C4's local `checks`/`draft`
+ *  `useState` reset on unmount, so a Back-then-return lost every tick and
+ *  draft edit — a real behaviour gap, not a deliberate one (see this
+ *  file's own history before this task). The fix is the SessionState
+ *  fields of the same names (`session.ts`), written through via
+ *  `TOGGLE_PREP_STEP`/`SET_PREP_DRAFT`. This component still never reaches
+ *  into the session itself: it takes `prepChecks`/`prepDraft` and the two
+ *  matching callback props (`onTogglePrepStep`/`onSetPrepDraft`), exactly
+ *  the same controlled-prop shape `DiagnosisScreen`'s `trustOpen`/
+ *  `onToggleTrust` already uses — a parent (App.tsx, Task 13) supplies the
+ *  value and re-renders with the reducer's new one after every dispatch.
+ *  Both are OPTIONAL, with the value prop's own presence (not the
+ *  callback's) deciding controlled-ness: when a caller does not pass
+ *  `prepChecks`/`prepDraft` at all — every call site in this file's own
+ *  test suite that predates this task, and App.tsx's three call sites
+ *  until Task 13 wires them — this component falls back to owning the
+ *  exact same local state C4 built, so none of that existing behaviour
+ *  changes. `copied` is untouched either way (design note 2c above): a
+ *  2200ms visual flash was never session state and still is not. */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Diagnosis } from '../domain/types'
+import type { Casefile } from '../domain/casefile'
 import type { ServiceKey, SessionAction } from '../session/session'
 import { VISIT_EXPECT, type PrepPlan } from '../playbooks/prep'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { Split } from '../ui/Split'
 import { Button } from '../ui/Button'
+import { SaveControl } from './SaveControl'
 import { ICONS } from '../ui/icons'
 import { UI } from '../screens/screenCopy'
 
@@ -82,10 +109,11 @@ const COPY_FLASH_MS = 2200
 
 export interface PrepareScreenProps {
   serviceLabel: string
-  /** The routing/storage prefix (ServiceEngine.key). Kept for parity with
-   *  `NextMoveScreen.engineKey` and for the real `freshBanner(engineKey)`
-   *  call Task-C6 wires in at design note 1's seam — not read by this file
-   *  today. Never rendered as text. */
+  /** The routing/storage prefix (ServiceEngine.key). Read by this file as of
+   *  Task 12, for `<SaveControl>`'s own `engineKey` prop (design note 3) —
+   *  also kept for parity with `NextMoveScreen.engineKey` and for the real
+   *  `freshBanner(engineKey)` call Task-C6 wires in at design note 1's seam.
+   *  Never rendered as text. */
   engineKey: ServiceKey
   d: Diagnosis
   /** The resolved prep plan for `d`'s matched rule. Required and
@@ -96,38 +124,78 @@ export interface PrepareScreenProps {
    *  the top of `renderPrepare`, line 3762 — symmetric with
    *  `NextMoveScreen`'s and `DiagnosisScreen`'s own `topbar` slot. */
   topbar?: ReactNode
-  /** Dispatches session actions. Currently used by the closing "Done, back
-   *  to Home" control, which dispatches `RESTART` (prototype 3816). */
+  /** Dispatches session actions. Used by the closing "Done, back to Home"
+   *  control (`RESTART`, prototype 3816). `TOGGLE_PREP_STEP`/
+   *  `SET_PREP_DRAFT` are NOT dispatched through this — see
+   *  `onTogglePrepStep`/`onSetPrepDraft` below and design note 6. */
   dispatch?: (action: SessionAction) => void
+  /** The reducer's `prepChecks`/`prepDraft` (design note 6) — controlled
+   *  when supplied, with a local-state fallback when not (every render
+   *  call in this file's OWN test suite that predates Task 12, and
+   *  App.tsx's three call sites until Task 13 wires them). */
+  prepChecks?: Record<number, boolean>
+  prepDraft?: string | null
+  /** Fires with the toggled index; the caller is responsible for supplying
+   *  `now` (D6 — never an internal `Date.now()`) when it dispatches
+   *  `TOGGLE_PREP_STEP`. */
+  onTogglePrepStep?: (index: number) => void
+  onSetPrepDraft?: (text: string) => void
+  /** SaveControl's own inputs (design note 3) — same on/off convention
+   *  `NextMoveScreen`'s own `onSave`/`savedCases` use: `onSave` gates
+   *  whether `<SaveControl>` renders at all. `answers` is read straight off
+   *  `d.matchedAnswers`, same reasoning `NextMoveScreen`'s own comment
+   *  gives — not re-threaded under a second prop name. */
+  savedCases?: Casefile[]
+  onSave?: () => void
 }
 
 export function PrepareScreen({
   serviceLabel,
-  engineKey: _engineKey,
+  engineKey,
   d,
   prep,
   topbar,
   dispatch,
+  prepChecks,
+  prepDraft,
+  onTogglePrepStep,
+  onSetPrepDraft,
+  savedCases,
+  onSave,
 }: PrepareScreenProps) {
-  // Local state only (this task's scope exclusion 2 — see the plan). Nothing
-  // here goes into SessionState: the prototype uses S.prepDraft/S.copied
-  // because it has one global object and no components; C5 is the chunk
-  // with a reason (persistence) to lift this.
-  // Precision on that: unlike the prototype (whose S.prepChecks/S.prepDraft
-  // survive navigating away and back within a session, cleared only by
-  // restart/answer-change), this local useState resets on unmount — so
-  // Back-then-return loses ticks/draft edits. Scope-justified (C4 cannot
-  // touch SessionState, see scope exclusion 2) but a real behaviour
-  // difference C5 should know about when it lifts this state.
-  const [draft, setDraft] = useState(prep.draft ?? '')
+  // DESIGN NOTE 6 (Task 12): `prepChecks`/`prepDraft` are CONTROLLED when
+  // the caller supplies the value prop — the caller's own presence, not
+  // the matching callback's, decides controlled-ness (same rule a native
+  // `<input value=... />` follows). When not supplied, this component
+  // falls back to owning the exact local state C4 built, so every
+  // existing render call in this file's test suite — and App.tsx's three
+  // call sites, until Task 13 wires the reducer through — keeps behaving
+  // exactly as it did before this task. Local `localDraft`/`localChecks`
+  // are the ONLY state left that resets on unmount; a controlled caller's
+  // own state (the session reducer, in the real app) survives it, which
+  // is the whole point of this task.
+  const [localDraft, setLocalDraft] = useState(prep.draft ?? '')
+  const draftControlled = prepDraft !== undefined
+  const draft = draftControlled ? (prepDraft ?? (prep.draft ?? '')) : localDraft
+  const setDraftValue = (text: string) => {
+    if (draftControlled) onSetPrepDraft?.(text)
+    else setLocalDraft(text)
+  }
   // null = idle. Any number (0 included) = "just copied, this many blanks
   // were left AT THE MOMENT OF COPYING" — frozen, not live (design note 2c).
+  // Always local — a 2200ms visual flash was never session state (design
+  // note 6).
   const [copied, setCopied] = useState<number | null>(null)
-  // Step ticks: local only, same reasoning as `draft`/`copied` above. The
-  // prototype's `togglePrepStep` (3685-3695) also syncs an active casefile
-  // and re-renders — that part is C5's (activeCase()/caseSnapshot()/
-  // persistCases()) and must not appear here in any form (design note 1).
-  const [checks, setChecks] = useState<boolean[]>(() => prep.steps.map(() => false))
+  // Step ticks (design note 6): `Record<number, boolean>`, not `boolean[]`
+  // — the shape `session.ts`'s own `prepChecks` field and `caseSnapshot`
+  // already use, so the controlled and uncontrolled paths share one type.
+  const [localChecks, setLocalChecks] = useState<Record<number, boolean>>({})
+  const checksControlled = prepChecks !== undefined
+  const checks = checksControlled ? prepChecks! : localChecks
+  const toggleStep = (i: number) => {
+    if (checksControlled) onTogglePrepStep?.(i)
+    else setLocalChecks(prev => ({ ...prev, [i]: !prev[i] }))
+  }
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -161,10 +229,17 @@ export function PrepareScreen({
     }
   }
 
-  const toggleStep = (i: number) => {
-    setChecks(prev => prev.map((c, idx) => (idx === i ? !c : c)))
-  }
-  const done = checks.filter(Boolean).length
+  // Index-based, not `Object.values(checks).filter(Boolean).length` (Task
+  // 12's own brief, design note about the stale-index correctness gap): a
+  // diagnosis change can leave a stale tick at an index the NEW plan's
+  // `prep.steps` no longer has (Task 6's diagnosis-changing check-in
+  // clears `prepChecks` to `{}`, but a stale index could still reach this
+  // component in principle — e.g. mid-transition, or a future caller that
+  // does not clear it). `Object.values` would count that stale tick and
+  // render "4 of 3 done"; indexing through `prep.steps.length` cannot, the
+  // same form `caseSnapshot`'s own `stepsDone` and `checkinOptionsFor`'s
+  // own `done` already use.
+  const done = prep.steps.filter((_, i) => checks[i]).length
 
   const liveBlanks = bracketCount(draft)
   const hint =
@@ -228,7 +303,7 @@ export function PrepareScreen({
                     className="prep-draft"
                     aria-label={UI.prepare.draftAria}
                     value={draft}
-                    onChange={e => setDraft(e.target.value)}
+                    onChange={e => setDraftValue(e.target.value)}
                   />
                   <div className="prep-card-foot">
                     <div className="prep-hint">{hint}</div>
@@ -246,7 +321,12 @@ export function PrepareScreen({
               <div className="psteps">
                 {prep.steps.map((s, i) => {
                   const step = typeof s === 'string' ? { text: s } : s
-                  const checked = checks[i]
+                  // Coerced to a real boolean: `checks[i]` reads `undefined`
+                  // for an untouched sparse index, and `aria-pressed`
+                  // dropping the attribute entirely (React's own handling of
+                  // an `undefined` prop) is not the same as the locked
+                  // `aria-pressed="false"` every row ships with initially.
+                  const checked = !!checks[i]
                   return (
                     <div key={i} className={`pstep${checked ? ' done' : ''}`}>
                       <button
@@ -314,11 +394,23 @@ export function PrepareScreen({
                   <div className="visit-note">{UI.prepare.visitNote}</div>
                 </div>
               ) : null}
-              {/* DESIGN NOTE 3 (file header): no saveControl tail — this is
-                  the last control on the screen in C4. */}
               <Button variant="secondary" block onClick={() => dispatch?.({ type: 'RESTART' })}>
                 {UI.prepare.doneBackHome}
               </Button>
+              {/* DESIGN NOTE 3 (file header, Task 12): <SaveControl> is the
+                  LAST child of the right column (prototype 3817), after
+                  "Done, back to Home" — same on/off convention
+                  NextMoveScreen's own tail uses: it renders only once a
+                  caller wires `onSave`. */}
+              {onSave ? (
+                <SaveControl
+                  engineKey={engineKey}
+                  stepsDone={done}
+                  savedCases={savedCases ?? []}
+                  answers={d.matchedAnswers}
+                  onSave={onSave}
+                />
+              ) : null}
             </>
           }
         />

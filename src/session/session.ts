@@ -1,11 +1,13 @@
 import type { AnswerRecord } from '../domain/types'
 import type { Casefile } from '../domain/casefile'
+import { caseSnapshot } from '../domain/casefile'
 import type { CheckinOption } from '../domain/checkinOptions'
 import { applyCorrection } from '../domain/answers'
-import { DEPS_FOR } from '../playbooks/engines'
+import { diagnose } from '../domain/engine'
+import { DEPS_FOR, ENGINES } from '../playbooks/engines'
 import type { CiFragment, CiSnapshot } from './cases'
 import {
-  beginWorkingCheckin, openCheckin, completeSave,
+  beginWorkingCheckin, openCheckin, completeSave, activeCase,
   ciChoose, ciConfirm, ciValence, ciClosureAnswer, ciUndo, ciCancel,
   closeUnresolved, reopenCase, removeSaved, setRemind, toggleLog, setRemoveConfirm, setReminderCopied,
 } from './cases'
@@ -182,6 +184,16 @@ export type SessionAction =
   | { type: 'TOGGLE_LOG'; caseId: string }
   | { type: 'SET_REMOVE_CONFIRM'; id: string | null }
   | { type: 'SET_REMINDER_COPIED'; value: boolean }
+  // Task 12: PrepareScreen's tick/draft state, lifted out of its own local
+  // `useState` (C4) so it survives a Back-then-return instead of resetting
+  // on unmount. `TOGGLE_PREP_STEP` takes `now` (D6: the dispatching
+  // component supplies the clock, never an internal `Date.now()`) because
+  // it may re-snapshot an active case (prototype `togglePrepStep`,
+  // 3685-3695) — see the reducer arm's own comment. `SET_PREP_DRAFT` needs
+  // no clock; it only ever writes `prepDraft` (prototype 3722-ish;
+  // `updateBracketHint`'s own textarea `oninput`).
+  | { type: 'TOGGLE_PREP_STEP'; index: number; now: number }
+  | { type: 'SET_PREP_DRAFT'; text: string }
 
 /** Applies a CiFragment (cases.ts) onto SessionState. `navigateTo` decides
  *  the shape: a non-null screen id gets the SAME nav()-style treatment
@@ -379,5 +391,39 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       return { ...s, ...setRemoveConfirm(a.id) }
     case 'SET_REMINDER_COPIED':
       return { ...s, ...setReminderCopied(a.value) }
+    case 'SET_PREP_DRAFT':
+      return { ...s, prepDraft: a.text }
+    case 'TOGGLE_PREP_STEP': {
+      const prepChecks = { ...s.prepChecks, [a.index]: !s.prepChecks[a.index] }
+      // Prototype togglePrepStep() (3685-3695): "a saved case keeps itself
+      // current: ticking steps after saving updates the snapshot rather
+      // than letting the Home card drift." Guarded on BOTH still_open AND
+      // an engine match — `c.engineKey===S.screen.split('-')[0]` (3690),
+      // transcribed verbatim as `s.screen.split('-')[0]` below. The engine
+      // guard is load-bearing, not incidental: without it, ticking a
+      // passport step while a voter case happens to be the active one
+      // would silently overwrite the voter case's snapshot with passport
+      // data.
+      const c = activeCase(s)
+      const currentEngine = s.screen.split('-')[0]
+      if (!c || c.outcome !== 'still_open' || c.engineKey !== currentEngine) {
+        return { ...s, prepChecks }
+      }
+      const d = diagnose(ENGINES[c.engineKey], s.answers)
+      const snap = caseSnapshot(c.engineKey, c.serviceLabel, s.screen, d, s.answers, prepChecks, a.now)
+      // DEVIATION D7 (second site — the first was Task 6's check-in state
+      // machine, cases.ts's applyCheckinPatch): a faithful
+      // `Object.assign(c, caseSnapshot(...))` (3691) resets `savedAt` to
+      // `now`, so EVERY ticked checkbox would push the case's "Saved
+      // {date}" forward on Home and the casefile screen. `savedAt` is
+      // pinned back to the existing case's own value; `lastCheck` is a
+      // DIFFERENT clock this action never touches (the prototype doesn't
+      // stamp it here either).
+      const updated: Casefile = { ...c, ...snap, savedAt: c.savedAt }
+      const placement = s.activeCaseId === 'working'
+        ? { workingCase: updated, savedCases: s.savedCases }
+        : { workingCase: s.workingCase, savedCases: s.savedCases.map(x => (x.id === s.activeCaseId ? updated : x)) }
+      return { ...s, prepChecks, ...placement }
+    }
   }
 }

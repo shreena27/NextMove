@@ -13,9 +13,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PrepareScreen } from './PrepareScreen'
-import { PREP, VISIT_EXPECT } from '../playbooks/prep'
+import { PREP, VISIT_EXPECT, type PrepPlan } from '../playbooks/prep'
 import { diagnose } from '../domain/engine'
 import { passportEngine, sirEngine } from '../playbooks/engines'
+import { caseSnapshot } from '../domain/casefile'
+import type { Casefile } from '../domain/casefile'
 import { UI } from '../screens/screenCopy'
 import { INTERACTION_GATED } from '../screens/interactionGated'
 
@@ -563,5 +565,150 @@ describe('INTERACTION_GATED coverage — the five SCREEN_COPY strings a static m
       if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
       else delete (navigator as { clipboard?: unknown }).clipboard
     }
+  })
+})
+
+// Task 12: `prepChecks`/`prepDraft` lifted into the reducer. `PrepareScreen`
+// stays a controlled component when a caller supplies these props (design
+// note 6) — every test above renders with NEITHER supplied, exercising the
+// local-state fallback that keeps this file's existing behaviour identical.
+// These describe blocks exercise the CONTROLLED path specifically.
+describe('the "done" count is index-based, not Object.values-based (design note 3)', () => {
+  it('a stale prepChecks index beyond the plan\'s own step count must not inflate the count', () => {
+    // A synthetic 3-step plan (any content works — the point is the STEP
+    // COUNT, not what the steps say) with a stale prepChecks index (3) that
+    // has no matching step: index 3 "left over" from what would have been a
+    // longer plan before a diagnosis change. `Object.values(prepChecks)
+    // .filter(Boolean).length` would wrongly count BOTH index 0 and the
+    // stale index 3 and render "2 of 3 done" — indexing through
+    // `prep.steps.length` (===3) can only ever see indices 0-2, so the
+    // stale tick is invisible to the count, and the correct answer is 1.
+    const stalePlan: PrepPlan = { steps: ['Step A', 'Step B', 'Step C'] }
+    render(
+      <PrepareScreen
+        serviceLabel="Passport" engineKey="passport" d={escalate} prep={stalePlan}
+        prepChecks={{ 0: true, 3: true }}
+      />,
+    )
+    expect(document.querySelector('.psteps-count')).toHaveTextContent(
+      UI.prepare.stepsCount.replace('{done}', '1').replace('{total}', '3'),
+    )
+    // Only 3 rows render — the stale index 3 has no step to render a row
+    // for, the same way a sparse record never carries a meaningless
+    // `false` for a step that does not exist (design note 2, Task 12).
+    expect(document.querySelectorAll('.pstep-tick')).toHaveLength(3)
+  })
+})
+
+describe('prepChecks/prepDraft — controlled with a local-state fallback (Task 12, design note 6)', () => {
+  it('ticking a step, navigating away and back (unmount/remount with the SAME reducer-held prepChecks) preserves the ticks — the C4 behaviour gap, now closed', async () => {
+    // Simulates a real dispatch -> reducer -> new-props cycle without a real
+    // reducer: `onTogglePrepStep` mutates this outer, component-external
+    // variable exactly the way a session reducer's committed state would
+    // survive independently of any one PrepareScreen instance.
+    let liveChecks: Record<number, boolean> = {}
+    const onTogglePrepStep = (i: number) => {
+      liveChecks = { ...liveChecks, [i]: !liveChecks[i] }
+    }
+    const plan = PREP['state-5b']
+    const renderScreen = () => render(
+      <PrepareScreen
+        serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan}
+        prepChecks={liveChecks} onTogglePrepStep={onTogglePrepStep}
+      />,
+    )
+
+    const first = renderScreen()
+    await userEvent.click(document.querySelectorAll('.pstep-tick')[0])
+    expect(liveChecks).toEqual({ 0: true }) // the callback fired and updated the OUTER state
+    first.unmount() // simulates navigating away — throws away every local useState
+
+    // Simulates navigating back: a FRESH mount, fed the SAME (now-updated)
+    // `liveChecks` a real reducer would still be holding.
+    renderScreen()
+    expect(document.querySelectorAll('.pstep-tick')[0]).toHaveAttribute('aria-pressed', 'true')
+    expect(document.querySelector('.psteps-count')).toHaveTextContent(
+      UI.prepare.stepsCount.replace('{done}', '1').replace('{total}', String(plan.steps.length)),
+    )
+  })
+
+  it('controlled draft: typing calls onSetPrepDraft with the raw text, and prepDraft=null (post-ANSWER reset) shows the raw template', () => {
+    const onSetPrepDraft = vi.fn()
+    const plan = PREP['state-5b']
+    const { rerender } = render(
+      <PrepareScreen
+        serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan}
+        prepDraft="edited text" onSetPrepDraft={onSetPrepDraft}
+      />,
+    )
+    const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
+    expect(ta).toHaveValue('edited text') // controlled — shows the prop, not the raw template
+
+    fireEvent.change(ta, { target: { value: 'edited more' } })
+    expect(onSetPrepDraft).toHaveBeenCalledWith('edited more')
+    expect(ta).toHaveValue('edited text') // still controlled: unchanged until the prop itself moves
+
+    // ANSWER resets prepDraft to null at the reducer (session.test.ts,
+    // Task 4/12) — re-asserted HERE, through the screen: null means "shows
+    // the raw template", not "shows an empty box".
+    rerender(
+      <PrepareScreen
+        serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan}
+        prepDraft={null} onSetPrepDraft={onSetPrepDraft}
+      />,
+    )
+    expect(screen.getByRole('textbox', { name: UI.prepare.draftAria })).toHaveValue(plan.draft)
+  })
+})
+
+describe('the saveControl tail (Task 12, design note 6 / design note 3)', () => {
+  it('renders <SaveControl> LAST, after "Done, back to Home", with stepsDone = the ticked-step count', () => {
+    const onSave = vi.fn()
+    const plan = PREP['state-5b']
+    render(
+      <PrepareScreen
+        serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan}
+        onSave={onSave} savedCases={[]} prepChecks={{ 0: true }}
+      />,
+    )
+    const rightCol = document.querySelector('.split-r')!
+    const children = Array.from(rightCol.children)
+    const doneBtn = screen.getByRole('button', { name: UI.prepare.doneBackHome })
+    const saveBtn = document.querySelector('.btn-ghost')!
+    const doneIdx = children.indexOf(doneBtn)
+    const saveIdx = children.indexOf(saveBtn as Element)
+    expect(doneIdx).toBeGreaterThan(-1) // guard: direct child
+    expect(saveIdx).toBeGreaterThan(-1) // guard: direct child
+    expect(saveIdx).toBeGreaterThan(doneIdx)
+    expect(saveIdx).toBe(children.length - 1) // the LAST child
+    // One step ticked -> the "your ticked steps come with it" label.
+    expect(saveBtn).toHaveTextContent(UI.saveControl.saveWithSteps)
+
+    saveBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(onSave).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the plain save label when nothing is ticked yet', () => {
+    render(
+      <PrepareScreen
+        serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']}
+        onSave={vi.fn()} savedCases={[]}
+      />,
+    )
+    expect(document.querySelector('.btn-ghost')).toHaveTextContent(UI.saveControl.save)
+  })
+
+  it('shows the saved-note (no button) when a matching still-open saved case already exists', () => {
+    const answers = { q1: 'adverse', q2: 'formal_grievance' }
+    const snap = caseSnapshot('passport', 'Passport', 'passport-prepare', escalate, answers, {}, 1_760_000_000_000)
+    const saved: Casefile = { ...snap, id: 'c1', outcome: 'still_open', lastCheck: null, remindAt: null, log: [] }
+    render(
+      <PrepareScreen
+        serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']}
+        onSave={vi.fn()} savedCases={[saved]}
+      />,
+    )
+    expect(document.querySelector('.saved-note')).toHaveTextContent(UI.saveControl.savedNote)
+    expect(screen.queryByRole('button', { name: UI.saveControl.save })).toBeNull()
   })
 })
