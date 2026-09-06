@@ -82,11 +82,30 @@ describe('reserved status colours — the ΔE perceptual floor (impl plan §7)',
 
   // --done-bg is EXEMPT from the sweep above and is pinned here instead, so
   // the collision is on the record rather than hidden by a low floor.
-  // See tokens.ts and Task 1 design note 4: --done-bg #DFF3E6 sits 2.80 from
-  // --wait-bg #D9F2DF. C3 mounts --done-bg on nothing (its only lifted use,
-  // .lrung.done .lr-tag, ships in C5 with the ladder component), so it is
-  // not a classification surface here. This test FAILS THE MOMENT the gap
-  // widens or narrows, forcing a fresh ruling rather than silent drift.
+  // See tokens.ts: --done-bg #DFF3E6 sits 2.80 from --wait-bg #D9F2DF.
+  //
+  // RE-RULED at C5 Task 1, now that .lrung.done .lr-tag actually mounts
+  // (issue #7): --done-bg now paints the escalation ladder's "Done" rung
+  // tag; --wait-bg paints the WAIT status stamp. ΔE ≈ 2.8 is below the
+  // project's self-imposed 2.7-3.0 noticeable-difference floor.
+  //
+  // CORRECTION to the original C3 exemption, not carried forward: it said
+  // the two tokens sit in "a different block", implying they never
+  // co-occur. That was wrong. They DO co-occur — a state-5b-p WAIT case
+  // renders the stamp ABOVE a ladder whose earlier rungs are marked Done,
+  // on the same screen and in the same column. The honest description is
+  // "same screen, never the same surface or size, each labelled", not
+  // "different block".
+  //
+  // The exemption still holds, because the ΔE floor is a SELF-IMPOSED
+  // project standard for classification surfaces, not a WCAG requirement,
+  // and the binding accessibility rule (1.4.1, colour is never the sole
+  // carrier) is independently satisfied: the stamp reads "WAIT", the rung
+  // tag reads "Done", at different sizes and weights, and neither is
+  // decodable only by hue.
+  //
+  // This test FAILS THE MOMENT the gap widens or narrows, forcing a fresh
+  // ruling rather than silent drift.
   it('records the known --done-bg / --wait-bg proximity instead of hiding it', () => {
     const d = deltaE2000(TOKENS['done-bg'], TOKENS['wait-bg'])
     expect(d).toBeGreaterThan(2.7)
@@ -148,18 +167,47 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
     ]) expect(css, cls).toContain(cls)
   })
 
-  it('does NOT ship C5 casefile styles that sit inside the same prototype range', () => {
-    // Prototype 562-568 (.saved-next/.saved-steps/.saved-meta) is C5's, and
-    // it is physically interleaved into C4's block — appending 533-646 in one
-    // go is the exact mistake this pins. Issue #7 / C3 handoff.
+  it('carries the casefile/ladder/check-in/journey CSS (prototype 562-568, 651-661, 744-878)', () => {
+    for (const cls of [
+      '.saved-card', '.saved-next', '.saved-steps', '.saved-meta',
+      '.btn-ghost', '.saved-note',
+      '.home-cases', '.case-meta-line', '.case-links', '.case-link', '.case-remove', '.case-h1',
+      '.case-progress', '.cp-head', '.cp-count', '.cp-bar', '.cp-fill',
+      '.ladder', '.lrung', '.lr-dot', '.lr-label', '.lr-tag', '.ladder-note',
+      '.update-mod', '.um-head', '.um-kicker', '.um-title',
+      '.stamp.mini', '.closedmark', '.saved-card.closed',
+      '.ci-panel', '.remind-row', '.remind-input',
+      '.journey', '.log-e', '.log-mile', '.log-d', '.log-who', '.log-note',
+    ]) expect(css, cls).toContain(cls)
+  })
+
+  it('ships the C5 casefile styles that used to sit inside the same prototype range', () => {
+    // Inverse of the C4-era test this replaces: prototype 562-568
+    // (.saved-next/.saved-steps/.saved-meta) was C5's and physically
+    // interleaved into C4's block, so C4 correctly deferred it (issue #7 /
+    // C3 handoff). Now that C5 Task 1 lifts it, asserting its absence would
+    // be false — assert presence instead.
     // Scoped to the CSS body (past the header) — the header's own
-    // provenance prose legitimately names these classes as "deliberately
-    // NOT lifted"; this test exists to catch the class shipping as a live
-    // rule in the body, not to forbid mentioning it in the disclaimer.
+    // provenance prose legitimately names these classes in its lifted-range
+    // list; this test is about the class shipping as a live rule.
     const body = css.slice(css.indexOf(':root{'))
     for (const cls of ['.saved-next', '.saved-steps', '.saved-meta']) {
-      expect(body, cls).not.toContain(cls)
+      expect(body, cls).toContain(cls)
     }
+  })
+
+  it("does NOT ship C7's auth/account CSS or C8's describe-it CSS", () => {
+    // 662-743 (.auth-*, .btn-google, .otp-input, .acct-*, .demo-hint) sits
+    // physically BETWEEN this task's 651-661 and 744-878 ranges and belongs
+    // to C7 — it must be skipped, not swallowed into one contiguous append,
+    // the same kind of interleaved-range hazard C4 had to handle. 881-995
+    // (C8's describe-it / fills-review CSS) still isn't built.
+    // Scoped to the body — see the test above for why.
+    const body = css.slice(css.indexOf(':root{'))
+    for (const cls of [
+      '.auth-input', '.btn-google', '.otp-input', '.acct-chip', '.acct-pop',
+      '.demo-hint', '.fill-list', '.fill-review', '.describe-ta', '.fchip',
+    ]) expect(body, cls).not.toContain(cls)
   })
 
   it('does NOT ship the C8 describe-it fills-review styles', () => {
@@ -178,14 +226,53 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
     expect(body.indexOf('.visit-note')).toBeLessThan(body.indexOf('@media (prefers-reduced-motion:reduce)'))
   })
 
+  it('orders the C5 casefile card between .visit-note and the settled tail', () => {
+    const body = css.slice(css.indexOf(':root{'))
+    expect(body.indexOf('.saved-card')).toBeGreaterThan(body.indexOf('.visit-note'))
+    expect(body.indexOf('.saved-card')).toBeLessThan(body.indexOf('#app.settled'))
+  })
+
+  it('pins the cascade order: the compact-card overrides of .saved-next/.saved-meta land LAST', () => {
+    // .saved-next and .saved-meta are each declared TWICE in the prototype
+    // — once at 562/568 (the base chip rules) and again at 761-762 (inside
+    // the compact-card block) — with identical selector specificity, so
+    // the LATER declaration in this file is the one that wins the cascade,
+    // and only because it comes later. Appending 744-878 before 562-568
+    // would silently drop the compact card's own overrides with no error
+    // anywhere; this test turns that into a loud failure instead.
+    const body = css.slice(css.indexOf(':root{'))
+    const savedNextFirst = body.indexOf('.saved-next{font-size:13.5px;')
+    const savedNextSecond = body.indexOf('.saved-next{display:block;}')
+    const savedMetaFirst = body.indexOf('.saved-meta{display:flex;')
+    const savedMetaSecond = body.indexOf('.saved-meta{font-size:12.5px;')
+    expect(savedNextFirst, '.saved-next base rule').toBeGreaterThan(-1)
+    expect(savedNextSecond, '.saved-next compact-card override').toBeGreaterThan(-1)
+    expect(savedMetaFirst, '.saved-meta base rule').toBeGreaterThan(-1)
+    expect(savedMetaSecond, '.saved-meta compact-card override').toBeGreaterThan(-1)
+    expect(savedNextSecond).toBeGreaterThan(savedNextFirst)
+    expect(savedMetaSecond).toBeGreaterThan(savedMetaFirst)
+  })
+
   it("the file's own provenance header no longer disclaims what it now ships", () => {
-    // index.css:13-14 said "Deliberately NOT lifted ... 532-650 (.prep-*,
-    // .channel-*, .visit-* -> C4)". After this task that sentence is false.
     // A provenance header that lies is worse than none. Design note 6.
+    // C5 Task 1 lifts three more ranges — the header must say so, in order,
+    // with the reason the order is load-bearing, and it must still disclaim
+    // the C7 range sitting physically between two of them.
     const header = css.slice(0, css.indexOf(':root{'))
-    expect(header).not.toContain('532-650')
     expect(header).toContain('533-561')
     expect(header).toContain('569-646')
-    expect(header).toContain('562-568')   // the C5 carve-out, still disclaimed
+    // now named as LIFTED, not disclaimed
+    expect(header).toContain('562-568')
+    expect(header).toContain('651-661')
+    expect(header).toContain('744-878')
+    // still disclaimed: C7's interleaved range, and C8's not-yet-built range
+    expect(header).toContain('662-743')
+    expect(header).toContain('881-995')
+    // the cascade-order reasoning is on the record, not just followed
+    expect(header.toLowerCase()).toContain('cascade')
+    // the three dead-but-lifted rules are named, not silently absorbed
+    expect(header).toContain('.saved-actions')
+    expect(header).toContain('.saved-continue')
+    expect(header).toContain('.saved-remove')
   })
 })

@@ -5,20 +5,55 @@
  *  which would leave every subsequent rule nested inside :root; see Task 1
  *  report), 145-531 (reset through .inline-explain-actions button), 533-561
  *  (.prep-* + .copy-btn* + .psteps-done: prepare draft + guided submission),
- *  569-646 (.psteps/.pstep-* + .channel-* + .prep-trust + .visit-*: step
- *  checklist, official channel, in-person visit card), and 996-1008
+ *  562-568 (.saved-next/.saved-next::before/.saved-steps/.saved-meta: the
+ *  Home casefile card's chips — physically interleaved into C4's prepare
+ *  block, deliberately skipped there per the C3/C4 handoff note, lifted now
+ *  by C5), 569-646 (.psteps/.pstep-* + .channel-* + .prep-trust + .visit-*:
+ *  step checklist, official channel, in-person visit card), 651-661
+ *  (.btn-ghost + .btn-ghost:hover + .saved-note — updateEntry and
+ *  saveControl are the only .btn-ghost users in the app), and 744-878
+ *  (.saved-card through .log-note: the compact Home casefile card,
+ *  .home-cases, .case-meta-line, .case-links/.case-link, .case-remove,
+ *  .case-h1 + its 960px media query, .case-progress/.cp-*, the escalation
+ *  ladder .ladder/.lrung/.lr-dot/.lr-label/.lr-tag/.ladder-note,
+ *  .update-mod/.um-*, .stamp.mini/.closedmark, .saved-card.closed, the
+ *  check-in panel .ci-panel, .remind-row/.remind-input, and the journey log
+ *  .journey/.log-*. Three rules inside this range — .saved-actions (763),
+ *  .saved-continue (837-844) and .saved-remove (845-849) — are LIFTED BUT
+ *  CURRENTLY UNUSED: the compact-card spec removed the Home card's button
+ *  cluster they styled, and no render function in the locked prototype
+ *  emits any of those three class names. They are lifted anyway because
+ *  744-878 is a contiguous, faithful transcription — carving three rules
+ *  out of the middle would make the range a judgment call instead of a
+ *  copy — not because anything currently renders them), and 996-1008
  *  (#app.settled animation suppression + reduced-motion collapse).
+ *
+ *  APPEND ORDER IS LOAD-BEARING, NOT COSMETIC. 562-568 is appended BEFORE
+ *  744-878, in prototype order, because .saved-next and .saved-meta are
+ *  each declared TWICE in the prototype: once at 562/568 (the base chip
+ *  rules) and again at 761-762, inside the compact-card block
+ *  (`.saved-next{display:block;}`, `.saved-meta{font-size:12.5px;
+ *  color:var(--ink-soft); margin-top:4px;}`). Both declarations carry
+ *  identical selector specificity, so the LATER declaration in this file is
+ *  the one that wins the cascade — and it wins only because it comes later.
+ *  Appending 744-878 before 562-568 would silently drop the compact card's
+ *  own overrides, with no error anywhere; tokens.test.ts pins the index-of
+ *  ordering of both pairs for exactly this reason — see the cascade-order
+ *  pin test below the CSS-fidelity block.
+ *
  *  Every value, comment, keyframe, nth-child stagger and ::after marker
  *  stroke below is transcribed, not re-authored — see src/ui/tokens.ts and
  *  tokens.test.ts for why (no Tailwind import, no apply-directives, no
  *  preflight reset).
  *
- *  Deliberately NOT lifted (later chunks own them): 562-568 (.saved-next /
- *  .saved-next::before / .saved-steps / .saved-meta -> C5, physically
- *  interleaved into C4's prepare block), 651-800 (.btn-ghost, auth, .saved-*,
- *  .home-cases, .case-*, .cp-* -> C5/C7), 801-826 (the ladder -> C5),
- *  827-995 (.update-mod, .ci-*, .journey, .describe-*, .read-*,
- *  .fill-review -> C5/C8). */
+ *  Deliberately NOT lifted (later chunks own them): 662-743 (.auth-field,
+ *  .auth-label, .auth-input, .otp-input, .auth-err, .auth-divider,
+ *  .btn-google, .auth-switch, .auth-note, .demo-hint, .acct-chip, .acct-av,
+ *  .acct-wrap, .acct-scrim, .acct-pop* -> C7; this range sits physically
+ *  between this task's 651-661 and 744-878 ranges and must be skipped, not
+ *  swallowed into one contiguous append), and 881-995 (.describe-*,
+ *  .youwrote, .read-*, .span-quote, .ropt*, .fact-chips, .fchip*,
+ *  .interp-frame, .unplace-panel, .fill-list, .fill-review -> C8). */
 
 :root{
   --paper:#FAF7EF;
@@ -554,6 +589,162 @@ h2.headline{
 .visit-note{
   font-size:11.5px; color:var(--ink-faint); line-height:1.55; margin-top:12px;
   border-top:1px dashed var(--line); padding-top:10px;
+}
+
+.saved-next{font-size:13.5px; color:var(--ink); margin-top:5px; font-weight:500;}
+.saved-next::before{content:"→ "; color:var(--ink-faint);}
+.saved-steps{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.05em;
+  color:var(--ink-soft); white-space:nowrap;
+}
+.saved-meta{display:flex; align-items:center; flex-wrap:wrap; gap:5px 14px;}
+
+.btn-ghost{
+  background:none; border:none; cursor:pointer; width:100%; justify-content:center;
+  display:inline-flex; align-items:center; gap:8px; margin-top:14px; padding:10px;
+  font-family:'Work Sans',sans-serif; font-weight:600; font-size:14px; color:var(--ink-soft);
+  border-radius:999px; transition:color 150ms ease, background 150ms ease;
+}
+.btn-ghost:hover{color:var(--ink); background:var(--butter-soft);}
+.saved-note{
+  display:flex; align-items:center; justify-content:center; gap:8px; margin-top:14px;
+  font-size:13.5px; color:var(--wait); font-weight:600;
+}
+
+/* the saved casefile on Home — a compact, whole-card tap target that
+   opens the casefile screen; detail (log, check-ins, Remove) lives there */
+.saved-card{
+  display:flex; align-items:center; gap:16px; width:100%; text-align:left;
+  background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  box-shadow:var(--shadow-float); padding:15px 20px; margin:0 0 12px;
+  cursor:pointer; font-family:'Work Sans',sans-serif; color:var(--ink);
+  transition:border-color 150ms ease, transform 180ms var(--ease);
+}
+.saved-card:hover{border-color:var(--ink); transform:translateY(-1px);}
+.saved-card:hover .arow-chevron{transform:translateX(4px); color:var(--ink);}
+.saved-body{flex:1; min-width:220px; display:block;}
+.saved-kicker{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase;
+  color:var(--ink-faint); margin:0 0 5px; display:flex; align-items:center; gap:7px;
+}
+.saved-title{display:block; font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:18px; line-height:1.25;}
+.saved-next{display:block;}
+.saved-meta{font-size:12.5px; color:var(--ink-soft); margin-top:4px;}
+.saved-actions{display:flex; align-items:center; gap:10px; flex:0 0 auto;}
+/* casefiles sit in the right column BELOW the service menu (variant B,
+   user-chosen + Fable-confirmed 2026-09-05) — the menu stays first at
+   every width, and on mobile the stack is hero → menu → casefiles */
+.home-cases{margin-top:24px;}
+.case-meta-line{
+  font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.04em;
+  color:var(--ink-soft); margin:0 0 14px;
+}
+.case-links{border-top:1px solid var(--line); margin-top:20px;}
+.case-link{
+  display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+  padding:13px 4px; border:none; border-bottom:1px solid var(--line); background:none;
+  cursor:pointer; font-family:'Work Sans',sans-serif; font-size:14px; font-weight:500; color:var(--ink);
+  transition:background 150ms ease;
+}
+.case-link:hover{background:var(--butter-soft);}
+.case-remove{
+  background:none; border:none; cursor:pointer; font-family:'Work Sans',sans-serif;
+  font-size:12.5px; color:var(--ink-faint); text-decoration:underline; text-underline-offset:3px;
+  padding:4px; margin-top:18px;
+}
+.case-remove:hover{color:var(--escalate);}
+/* casefile screen: the case's identity (left) and the add-an-update
+   module (right). Butter border marks the primary action area — the one
+   place the accent is allowed to frame a container. */
+.case-h1{
+  font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:30px; line-height:1.12;
+  letter-spacing:-0.012em; margin:0 0 12px; color:var(--ink); text-wrap:balance;
+}
+@media (min-width:960px){ .case-h1{font-size:36px;} }
+.case-progress{margin:20px 0 4px;}
+.cp-head{display:flex; align-items:center; justify-content:space-between; margin:0 0 7px;}
+.cp-count{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-soft);}
+/* fill = butter with an ink edge (the trail dot's own pattern) — raw
+   butter against the line track measured 1.12:1, an invisible bar */
+.cp-bar{height:11px; border-radius:999px; background:var(--line); border:1px solid var(--line-strong); overflow:hidden;}
+.cp-fill{display:block; height:100%; background:var(--butter); border-right:1.5px solid var(--ink); border-radius:999px 3px 3px 999px; transition:width 300ms var(--ease); box-shadow:inset 0 -1px 0 rgba(61,36,28,0.25);}
+/* the escalation ladder: the case's rung position on the REAL official
+   ladder — vertical, so it can never be confused with the horizontal
+   stage trail above it */
+.ladder{margin:22px 0 4px;}
+.lrung{display:flex; align-items:center; gap:11px; padding:7px 0; position:relative;}
+.lrung:not(:last-child)::after{
+  content:''; position:absolute; left:9px; top:29px; bottom:-8px; width:1.5px; background:var(--line-strong);
+}
+.lrung.done:not(:last-child)::after{background:var(--done);}
+.lr-dot{
+  flex:0 0 auto; width:20px; height:20px; border-radius:50%; border:1.5px solid var(--line-strong);
+  background:var(--card); display:flex; align-items:center; justify-content:center; z-index:1;
+}
+.lrung.done .lr-dot{background:var(--done); border-color:var(--done-deep);}
+.lrung.now .lr-dot{border:2px solid var(--ink); background:var(--butter); box-shadow:0 0 0 3px var(--butter-soft);}
+.lrung.next .lr-dot{border:1.5px dashed var(--ink);}
+.lr-label{font-size:13.5px; font-weight:500; flex:1;}
+.lrung.up .lr-label{color:var(--ink-faint); font-weight:400;}
+.lr-tag{
+  font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.07em; text-transform:uppercase;
+  border:1px solid var(--line-strong); border-radius:4px; padding:2.5px 7px; color:var(--ink-soft); flex:0 0 auto;
+}
+.lrung.now .lr-tag{border-color:var(--ink); color:var(--ink); font-weight:600;}
+.lrung.next .lr-tag{background:var(--butter); border-color:var(--ink); color:var(--ink); font-weight:600;}
+.lrung.done .lr-tag{background:var(--done-bg); border-color:var(--done-deep); color:var(--done-deep); font-weight:600;}
+.ladder-note{font-size:11.5px; color:var(--ink-faint); line-height:1.5; margin-top:8px;}
+.update-mod{
+  background:var(--card); border:1.5px solid var(--butter); border-radius:16px;
+  padding:20px 22px;
+}
+.um-head{display:flex; align-items:center; gap:12px; margin:0 0 10px;}
+.um-kicker{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--ink-soft); margin:0 0 2px;
+}
+.um-title{font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:21px; margin:0; line-height:1.2;}
+.saved-continue{
+  display:inline-flex; align-items:center; gap:7px; font-family:'Work Sans',sans-serif;
+  font-weight:600; font-size:13.5px; color:var(--ink); background:var(--butter);
+  border:1.5px solid var(--butter); border-radius:999px; padding:10px 18px; cursor:pointer;
+  box-shadow:0 2px 0 rgba(61,36,28,0.14);
+  transition:background 150ms ease, transform 180ms var(--ease);
+}
+.saved-continue:hover{background:var(--butter-deep); border-color:var(--butter-deep); transform:translateY(-1px);}
+.saved-remove{
+  background:none; border:none; cursor:pointer; font-family:'Work Sans',sans-serif;
+  font-size:12.5px; color:var(--ink-faint); text-decoration:underline; text-underline-offset:3px; padding:4px;
+}
+.saved-remove:hover{color:var(--escalate);}
+.stamp.mini{font-size:10px; padding:4px 8px 4px 7px; border-radius:5px; animation:none;}
+/* closed cards don't wear an active status chip — the case has no status
+   anymore, only a record; a coloured WAIT/FOLLOW UP chip here read as
+   "something is still expected of you" */
+.stamp.mini.closedmark{color:var(--ink-soft); background:var(--paper); border:1px solid var(--line-strong);}
+.saved-card.closed{opacity:0.75; box-shadow:none;}
+
+/* ---------- check-in loop ---------- */
+.ci-panel{
+  background:var(--card); border:1.5px solid var(--butter); border-radius:14px;
+  padding:16px 20px; animation:enter 220ms var(--ease);
+}
+.ci-panel.reassure{border-color:var(--line-strong); border-style:dashed;}
+.remind-row{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:22px;
+  border-top:1px dashed var(--line); padding-top:14px;
+}
+.remind-input{
+  font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink);
+  border:1.5px solid var(--line-strong); border-radius:10px; padding:8px 12px; background:var(--card);
+}
+.journey{margin-top:16px; border-top:1px solid var(--line); padding-top:10px;}
+.log-e{font-size:12.5px; line-height:1.55; margin:0 0 6px; color:var(--ink-soft);}
+.log-e.log-mile{color:var(--ink); font-weight:500;}
+.log-d{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink-faint); margin-right:4px;}
+.log-who{font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.04em; text-transform:uppercase; color:var(--ink-faint); margin-right:2px;}
+.log-note{
+  font-size:10.5px; color:var(--ink-faint); margin-top:8px; font-family:'IBM Plex Mono',monospace;
 }
 
 /* Same-screen re-renders (trust toggle, selection highlight, inline
