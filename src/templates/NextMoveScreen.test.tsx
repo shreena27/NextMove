@@ -72,14 +72,19 @@ describe('optional fields appear only when the rule carries them', () => {
   })
 })
 
-describe('needList beats need, and no data field is ever injected as markup', () => {
-  it("s-notice's document list renders as real <li> elements", () => {
+describe('need and needList render together, and no data field is ever injected as markup', () => {
+  it("s-notice's document list renders as real <li> elements, alongside need's lead-in text", () => {
     const d = diagnose(sirEngine, { sirState: 'delhi', sirQ1: 'notice' })
     expect(d.needList).toBeDefined() // guard
     render(<NextMoveScreen serviceLabel="SIR" engineKey="sir" d={d} />)
     const items = document.querySelectorAll('.need-list li')
     expect(items.length).toBe(d.needList!.length)
     expect([...items].map(li => li.textContent)).toEqual(d.needList)
+    // Fix round 1, Critical: dropping `need`'s lead-in ("Any ONE of
+    // these:") would make a bare 12-item bullet list read as "bring all
+    // of these" — the opposite of the actual any-ONE requirement. Both
+    // fields must render.
+    expect(screen.getByText(d.need)).toBeInTheDocument()
   })
 
   it('the list is a real <ul>, so the UA default markers apply (Task 1 note 1)', () => {
@@ -145,6 +150,16 @@ describe('the prepare CTA seam (C4)', () => {
     render(<NextMoveScreen serviceLabel="Passport" engineKey="passport" d={d} hasPrepPlan />)
     expect(screen.getByRole('button', { name: /Prepare this for me/ })).toHaveClass('btn-primary')
     expect(screen.queryByText('Back to Home')).toBeNull()
+  })
+
+  it('clicking the "Prepare this for me" CTA calls onPrepare — no inert button ships (fix round 1, Minor)', async () => {
+    const onPrepare = vi.fn()
+    const d = diagnose(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    render(
+      <NextMoveScreen serviceLabel="Passport" engineKey="passport" d={d} hasPrepPlan onPrepare={onPrepare} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Prepare this for me/ }))
+    expect(onPrepare).toHaveBeenCalledTimes(1)
   })
 })
 

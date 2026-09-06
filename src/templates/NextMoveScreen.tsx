@@ -9,35 +9,39 @@
  *  back in immediately after the CTA below, `saveControl` last of all).
  *
  *  Government-process rules never live here — the only branching is
- *  structural: `d.needList` vs `d.need` (does this rule's "what you'll
- *  need" happen to be a list?), `d.howLong`/`d.expectNext` presence (does
- *  this rule carry an optional field at all?), and `hasPrepPlan` (is there
- *  something to prepare?). None of these ask what a government process
- *  means; they only ask what shape the already-computed `Diagnosis` is in.
+ *  structural: `d.needList` presence (does this rule's "what you'll need"
+ *  ALSO carry a structured list alongside its plain-text lead-in?),
+ *  `d.howLong`/`d.expectNext` presence (does this rule carry an optional
+ *  field at all?), and `hasPrepPlan` (is there something to prepare?). None
+ *  of these ask what a government process means; they only ask what shape
+ *  the already-computed `Diagnosis` is in.
  *
- *  DESIGN NOTE 1 (needList beats need — recorded deviation, C2's side):
- *  the prototype ships `s-notice`'s "what you'll need" as raw `<ul>` markup
- *  stuffed inside `need`. C2 already split that: a plain-text lead-in stays
- *  in `need`, the items move to `needList`. This template must never
- *  `dangerouslySetInnerHTML` a data field, so when `needList` is present it
- *  is the ENTIRE "what you'll need" content — `need` (the lead-in sentence)
- *  is not additionally rendered alongside it. That is the locked C2/C3
- *  deviation, not an omission introduced here.
+ *  DESIGN NOTE 1 (need AND needList, both — fix round 1, Critical): the
+ *  prototype ships `s-notice`'s "what you'll need" as raw `<ul>` markup
+ *  stuffed inside `need`. C2 split that in two: `need` keeps a plain-text
+ *  lead-in ("Any ONE of these:"), `needList` carries the items. Both render
+ *  — `need` as plain text, then `needList` as a real `<ul>`/`<li>` list
+ *  underneath it when present — because dropping the lead-in changes what
+ *  the guidance MEANS: a bare 12-item bullet list reads as "bring all of
+ *  these," the opposite of the actual "any ONE" requirement. This template
+ *  must never `dangerouslySetInnerHTML` a data field; rendering both
+ *  fields as plain text/real list elements is exactly how C2 intended the
+ *  split to be consumed (see `sirPlaybook.ts`'s own comment on the split).
  *
  *  DESIGN NOTE 2 (the prepare seam — Open Question 2, RULED): `hasPrepPlan`
  *  defaults to `false`, rendering the prototype's own real no-prep branch —
  *  a secondary "Back to Home" button — exactly what every WAIT and
  *  UNCLASSIFIED state already shows in the locked design. No inert button
  *  ships either way: when `hasPrepPlan` is `true` the primary "Prepare this
- *  for me" CTA renders (the render seam), but its `onclick` target
- *  (`nav('${engineKey}-prepare')`, prototype line 3661) is NOT wired here —
- *  `-prepare` screens are not yet part of `ScreenId` (C4 adds them, per
- *  this plan's C4 handoff notes) and `updateEntry`/`saveControl`, the two
- *  other prototype calls threading `engineKey` through this screen, are
- *  C5's. Wiring a click to a screen id that cannot exist yet would be a
- *  type-unsound shortcut this codebase otherwise goes out of its way to
- *  avoid (`ServiceKey`/`ScreenId` unions instead of `string`, exhaustive
- *  switches). C4 fills the seam in when it adds the real prep flow.
+ *  for me" CTA renders, wired to the optional `onPrepare` callback (fix
+ *  round 1, Minor). The prototype's own `onclick` target for this button
+ *  (`nav('${engineKey}-prepare')`, line 3661) is NOT reproduced as a
+ *  navigation here — `-prepare` screens are not yet part of `ScreenId` (C4
+ *  adds them, per this plan's C4 handoff notes), and wiring a click to a
+ *  screen id that cannot exist yet would be a type-unsound shortcut this
+ *  codebase otherwise goes out of its way to avoid (`ServiceKey`/`ScreenId`
+ *  unions instead of `string`, exhaustive switches). `onPrepare` is the
+ *  seam C4 calls into once the real prep flow exists.
  *
  *  DESIGN NOTE 3 (RESTART, not NAVIGATE — Open Question 2's residual):
  *  "Back to Home" dispatches `RESTART` (prototype 3663's `restart()`), never
@@ -59,22 +63,21 @@
  *  there — only after continuing on to Next Move. That gap is the locked
  *  prototype's own call, not an implementation shortfall.
  *
- *  <TrustDisclosure> COMPOSITION: the literal prototype's `renderNextMove`
- *  (3654-3684) never calls `trustDisclosure()` — that call exists only once
- *  in the whole file, inside `renderDiagnosis` (line 3608). This task's own
- *  build brief (Interfaces + Step 3) nonetheless names Task 6's
- *  `<TrustDisclosure>` as something this template "consumes... imported,
- *  not stubbed" and composes, so it renders here too, fully controlled via
- *  `trustOpen`/`onToggleTrust`, in the same slot `renderDiagnosis` gives it
- *  (last in the right column) — recorded here as a deliberate divergence
- *  from the literal ported markup, not a silent one, exactly as this plan's
- *  own "Recorded deviations" section documents its other departures.
- *  `trustOpen`/`onToggleTrust`/`answerLabels` are optional here (unlike
- *  `DiagnosisScreen`'s required versions of the same props) so a caller
- *  that only cares about the Next Move content itself — as every AC-11 /
- *  AC-10 test in this template's own suite does — never has to thread them
- *  through; Task 9's router supplies real ones exactly the way it does for
- *  `DiagnosisScreen`.
+ *  NO <TrustDisclosure> HERE (fix round 1, Important): an earlier draft of
+ *  this file composed Task 6's `<TrustDisclosure>` here too, reasoning from
+ *  this task's own brief text ("Consumes... TrustDisclosure — imported,
+ *  not stubbed"). That was wrong: the literal prototype's `renderNextMove`
+ *  (3654-3684) never calls `trustDisclosure()` anywhere — that call has
+ *  exactly one site in the whole prototype, inside `renderDiagnosis` (line
+ *  3608), already Task 6's. The PRD independently confirms the trust
+ *  control is Diagnosis-only (FR-16). Composing it here would have (a)
+ *  rendered `d.explanation` a second time under "What that means" whenever
+ *  the panel was opened, and (b) shown "Not enough to safely place your
+ *  case; see below." on a screen that had just told the citizen exactly
+ *  what to do, since no caller had a reason to build a real
+ *  `answerLabels` map for this screen. The plan file itself has since been
+ *  corrected (Task 7's Interfaces + a new design note 0) so this doesn't
+ *  resurface for Task 9.
  */
 import type { ReactNode } from 'react'
 import type { Diagnosis } from '../domain/types'
@@ -82,7 +85,6 @@ import type { ServiceKey, SessionAction } from '../session/session'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { Split } from '../ui/Split'
 import { Button } from '../ui/Button'
-import { TrustDisclosure } from './TrustDisclosure'
 
 export interface NextMoveScreenProps {
   serviceLabel: string
@@ -93,20 +95,14 @@ export interface NextMoveScreenProps {
    *  2). Never rendered as text. */
   engineKey: ServiceKey
   d: Diagnosis
-  /** Composite "questionId:value" -> label map for TrustDisclosure; build
-   *  with `labelMap()` (src/screens/labels.ts). Defaults to `{}` (the
-   *  "You told us" row then falls back to its own honest not-enough-info
-   *  copy) so a caller that never opens the trust panel need not build one. */
-  answerLabels?: Record<string, string>
-  trustOpen?: boolean
-  onToggleTrust?: () => void
-  /** The Passport recovery echoes (design note 10 elsewhere in this plan),
-   *  forwarded to TrustDisclosure untouched. */
-  extraToldUs?: string
   /** True once a real prep plan exists for this rule
    *  (`Boolean(PREP[d.ruleId])`, C4's job to compute and pass). Defaults to
    *  `false`: every C3 state renders the locked no-prep branch. */
   hasPrepPlan?: boolean
+  /** Called when the primary "Prepare this for me" CTA is pressed
+   *  (only rendered when `hasPrepPlan` is `true`) — the seam C4 wires to
+   *  the real prep flow. */
+  onPrepare?: () => void
   /** Rendered first, matching the prototype's own `topbar(true,true)` at
    *  the top of `renderNextMove`, line 3664 — symmetric with
    *  `DiagnosisScreen`'s own `topbar` slot. */
@@ -120,11 +116,8 @@ export function NextMoveScreen({
   serviceLabel,
   engineKey: _engineKey,
   d,
-  answerLabels = {},
-  trustOpen = false,
-  onToggleTrust = () => {},
-  extraToldUs,
   hasPrepPlan = false,
+  onPrepare,
   topbar,
   dispatch,
 }: NextMoveScreenProps) {
@@ -172,16 +165,19 @@ export function NextMoveScreen({
                 <div className="nm-field">
                   <div className="nm-k">What you'll need</div>
                   <div className="nm-v">
-                    {/* needList beats need (design note 1) — never both. */}
+                    {/* Both render (design note 1): `need`'s lead-in text
+                        stays plain text, `needList`'s items are a real
+                        <ul>/<li> list underneath it — never markup-injected,
+                        never dropping the lead-in that gives the list its
+                        meaning (e.g. "Any ONE of these:"). */}
+                    {d.need}
                     {d.needList ? (
                       <ul className="need-list">
                         {d.needList.map(item => (
                           <li key={item}>{item}</li>
                         ))}
                       </ul>
-                    ) : (
-                      d.need
-                    )}
+                    ) : null}
                   </div>
                 </div>
                 {d.howLong ? (
@@ -198,9 +194,7 @@ export function NextMoveScreen({
                 ) : null}
               </div>
               {hasPrepPlan ? (
-                // The seam C4 fills (design note 2): no onClick wired here —
-                // its real target doesn't exist in ScreenId yet.
-                <Button block arrow>
+                <Button block arrow onClick={onPrepare}>
                   Prepare this for me
                 </Button>
               ) : (
@@ -208,13 +202,6 @@ export function NextMoveScreen({
                   Back to Home
                 </Button>
               )}
-              <TrustDisclosure
-                d={d}
-                answerLabels={answerLabels}
-                extraToldUs={extraToldUs}
-                open={trustOpen}
-                onToggle={onToggleTrust}
-              />
             </>
           }
         />
