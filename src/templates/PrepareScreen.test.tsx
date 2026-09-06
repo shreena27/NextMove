@@ -268,8 +268,15 @@ describe('the draft card', () => {
     )
     await user.click(screen.getByRole('button', { name: UI.prepare.copy }))
     unmount()
+    // React 18 removed the "state update on an unmounted component" console
+    // warning, and this repo is on React 19 — so `errorSpy` alone cannot
+    // fail here even if the cleanup is deleted (a post-unmount setState is
+    // just a silent no-op now, not a caught error). getTimerCount() is what
+    // actually distinguishes "cleaned up" from "not cleaned up": it's 1
+    // without the effect's clearTimeout, 0 with it.
+    expect(vi.getTimerCount()).toBe(0)
     await act(async () => { vi.advanceTimersByTime(3000) })
-    expect(errorSpy).not.toHaveBeenCalled()
+    expect(errorSpy).not.toHaveBeenCalled() // cheap secondary check
   })
 
   it('falls back to selecting the textarea when the clipboard rejects', async () => {
