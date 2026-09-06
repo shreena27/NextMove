@@ -5,19 +5,21 @@
 // design note 6 of the task brief. (JSX needs a .tsx file; screenCopy.ts's
 // own data module stays plain .ts, which is what the isolation scan
 // actually walks.)
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { render } from '@testing-library/react'
+import { render, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { guardrailFindings } from '../playbooks/guardrails/suite'
 import { extraCopy } from '../playbooks/guardrails/contentSafety'
 import { passportPlaybook, PASSPORT_STAGE_SHORT } from '../playbooks/passportPlaybook'
 import { voterPlaybook } from '../playbooks/voterPlaybook'
 import { sirPlaybook, SIR_STATES, SIR_PHASES, sirCopyExtras } from '../playbooks/sirPlaybook'
+import { PREP } from '../playbooks/prep'
 import { diagnose } from '../domain/engine'
-import { passportEngine } from '../playbooks/engines'
+import { passportEngine, sirEngine } from '../playbooks/engines'
 import { initialSession, type SessionState } from '../session/session'
 import * as LABELS from './labels'
 import { SCREEN_COPY, UI, PASSPORT_COPY, type CopyLocation } from './screenCopy'
@@ -33,6 +35,7 @@ import { Topbar } from '../ui/Topbar'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { DiagnosisScreen } from '../templates/DiagnosisScreen'
 import { NextMoveScreen } from '../templates/NextMoveScreen'
+import { PrepareScreen } from '../templates/PrepareScreen'
 import { SOURCES_VERIFIED } from '../templates/TrustDisclosure'
 import { LADDER_DEFS, LADDER_TAG } from '../templates/ladder'
 
@@ -240,6 +243,14 @@ const voterExplainState: SessionState = { ...initialSession, voterEntryExplain: 
 
 const classifiedDiagnosis = diagnose(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
 const unclassifiedDiagnosis = diagnose(passportEngine, { q1: 'not_sure' })
+// The prepare-screen fixtures (C4, design note 5): REAL data, no synthetic
+// `where` spread. state-5a is the one reachable rule whose where carries a
+// phone (passportPlaybook.ts:161-165, 1800-258-1800) — the draft-bearing
+// mount. s-notice is draft-less (one of the three SIR checklist-only
+// plans) but DOES carry a visit block — the visit-bearing, draft-less
+// mount design note 4 asks for.
+const helplineDiagnosis = diagnose(passportEngine, { q1: 'adverse', q2: 'informal' })          // state-5a
+const noticeDiagnosis = diagnose(sirEngine, { sirState: 'delhi', sirQ1: 'notice' })             // s-notice
 
 function PassportBucketScreens() {
   return (
@@ -293,6 +304,16 @@ function SirBucketScreens() {
   )
 }
 
+/** Matches App.tsx's own `topbar(showBack, showRestart)` closure — used
+ *  only for the two new PrepareScreen mounts below (design note 4: "Pass
+ *  topbar={topbar(true, true)} to both mounts, matching prototype 3762").
+ *  The pre-existing NextMoveScreen mounts below don't pass one; ui:topbar.*
+ *  copy is already covered by the two direct <Topbar/> mounts above, so
+ *  this is added only where design note 4 explicitly asks for it. */
+function topbar(showBack: boolean, showRestart: boolean) {
+  return <Topbar showBack={showBack} showRestart={showRestart} hasAnswers={false} restartConfirm={false} dispatch={noop} />
+}
+
 function UiChrome() {
   return (
     <>
@@ -321,20 +342,57 @@ function UiChrome() {
           for me") branches. */}
       <NextMoveScreen serviceLabel="X" engineKey="passport" d={classifiedDiagnosis} dispatch={noop} />
       <NextMoveScreen serviceLabel="X" engineKey="passport" d={classifiedDiagnosis} hasPrepPlan onPrepare={noop} />
+      {/* Prepare (C4): draft-bearing (real state-5a — channelPhone,
+          hintMany, stepsCount, copy and channelOpen all reach real,
+          substituted or verbatim text at FIRST RENDER, no interaction
+          needed) and visit-bearing/draft-less (s-notice — visitTitle,
+          visitCarry, visitExpect, visitThen, visitNote). Together the pair
+          this file's coverage sweep and CAPTION_TEMPLATES carve-out rely
+          on (design notes 4 and 5). */}
+      <PrepareScreen
+        serviceLabel="X" engineKey="passport" d={helplineDiagnosis} prep={PREP['state-5a']}
+        topbar={topbar(true, true)}
+      />
+      <PrepareScreen
+        serviceLabel="X" engineKey="sir" d={noticeDiagnosis} prep={PREP['s-notice']}
+        topbar={topbar(true, true)}
+      />
     </>
   )
 }
 
-/** The one documented carve-out (Open Question 3). The archived-copy
- *  caption is REGISTERED as a template —
- *    'Checked against NextMove's archived copy of this source on {date}.'
- *  — so the scanned string carries no date and the fail-closed numeric
- *  scan stays sharp. The RENDERED string interpolates SOURCES_VERIFIED, so
- *  it can never equal the registered one. TrustDisclosure.test.tsx pins the
- *  constant to the manifest's captured date instead. This set is the only
- *  legitimate reason an entry may be absent from rendered output; adding to
- *  it needs a recorded reason, exactly like this one. */
-const CAPTION_TEMPLATES = new Set(['ui:trust.verifiedOn'])
+/** The template carve-outs (Open Question 3, and C4's design note 4). Each
+ *  entry's REGISTERED string carries a `{…}` placeholder that gets
+ *  interpolated at render, so the rendered form can never equal the
+ *  registered one — the only legitimate reason an entry may be absent from
+ *  the literal-string sweep below. Adding to this set needs a recorded
+ *  reason, written next to the entry, exactly like these. */
+const CAPTION_TEMPLATES = new Set([
+  'ui:trust.verifiedOn', // interpolates SOURCES_VERIFIED for {date}
+  'ui:prepare.channelPhone', // interpolates d.where.phone for {phone}
+  'ui:prepare.hintOne', // interpolates the live singular blank count for {n}
+  'ui:prepare.hintMany', // interpolates the live plural blank count for {n}
+  'ui:prepare.copiedOne', // interpolates the blank count AT THE MOMENT OF COPYING (singular) for {n}
+  'ui:prepare.copiedMany', // interpolates the blank count AT THE MOMENT OF COPYING (plural) for {n}
+  'ui:prepare.stepsCount', // interpolates the tick count for {done} and the step total for {total}
+])
+
+/** Entries no STATIC mount can produce (design note 4a): each needs a user
+ *  interaction (a tick, a click) or a draft shape no shipped plan has —
+ *  `screenCopy.test.tsx`'s coverage test is `render(mount())` with no
+ *  interaction, and PrepareScreen's tick/draft state has no prop seam to
+ *  pre-seed for a test (adding one purely for a test would be a production
+ *  API existing for test convenience — the wrong trade). They are NOT
+ *  caption templates and must not be folded into CAPTION_TEMPLATES — their
+ *  coverage lives in PrepareScreen.test.tsx's interaction test, named below
+ *  so the two can never drift apart silently. */
+const INTERACTION_GATED = new Set([
+  'ui:prepare.copied',
+  'ui:prepare.copiedOne',
+  'ui:prepare.copiedMany',
+  'ui:prepare.hintReady',
+  'ui:prepare.doneNoteFallback',
+])
 
 const SCREENS: [keyof typeof SCREEN_COPY, () => ReactElement][] = [
   ['passport', PassportBucketScreens],
@@ -347,27 +405,112 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
   it.each(SCREENS)("every %s entry appears in its screen's rendered output", (bucket, mount) => {
     const { container } = render(mount())
     // `textContent` misses attribute-only text (the recovery textarea's
-    // `placeholder`), which is still real, visible, rendered copy — so it
-    // is checked too, not carved out.
+    // `placeholder`, the prep draft textarea's `aria-label`), which is
+    // still real, visible/accessible, rendered copy — so it is checked
+    // too, not carved out.
     const placeholders = Array.from(container.querySelectorAll('[placeholder]'))
       .map(el => el.getAttribute('placeholder') ?? '')
       .join(' ')
-    const text = `${container.textContent ?? ''} ${placeholders}`
+    const ariaLabels = Array.from(container.querySelectorAll('[aria-label]'))
+      .map(el => el.getAttribute('aria-label') ?? '')
+      .join(' ')
+    const text = `${container.textContent ?? ''} ${placeholders} ${ariaLabels}`
     for (const c of SCREEN_COPY[bucket]) {
-      if (CAPTION_TEMPLATES.has(c.at)) continue
+      if (CAPTION_TEMPLATES.has(c.at) || INTERACTION_GATED.has(c.at)) continue
       expect(text, c.at).toContain(c.text)
     }
   })
 
-  it('each carve-out entry still appears with its placeholder substituted', () => {
-    const t = SCREEN_COPY.ui.find(c => c.at === 'ui:trust.verifiedOn')!.text
-    expect(t).toContain('{date}')
-    const { container } = render(
+  // Every CAPTION_TEMPLATES entry's substituted form, keyed the same way —
+  // registering a carve-out FORCES supplying its substituted expectation
+  // (design note 6), so a future carve-out cannot be added without one.
+  // `channelPhone`, `hintMany` and `stepsCount` are reachable at the
+  // draft-bearing mount's FIRST RENDER (real state-5a data, design note 5:
+  // its shipped draft carries brackets, so this is hintMANY not hintOne,
+  // and 0-of-N is a legal stepsCount substitution before any tick). `hintOne`
+  // needs a draft edited down to exactly one bracket — no shipped draft has
+  // one (design note 4a) — which is a plain controlled-input change, not a
+  // click/tick interaction (the hint is computed from `draft` on every
+  // render, design note 2b), so it is not INTERACTION_GATED. `copiedOne`/
+  // `copiedMany` ARE also INTERACTION_GATED (a Copy click is the only way
+  // to reach either), so producing their substituted form here requires a
+  // real click, mocking navigator.clipboard exactly as PrepareScreen.test.tsx
+  // does.
+  const CAPTION_SUBSTITUTIONS: Record<string, string> = {
+    'ui:trust.verifiedOn': UI.trust.verifiedOn.replace('{date}', SOURCES_VERIFIED),
+    'ui:prepare.channelPhone': UI.prepare.channelPhone.replace('{phone}', helplineDiagnosis.where.phone!),
+    'ui:prepare.hintOne': UI.prepare.hintOne.replace('{n}', '1'),
+    'ui:prepare.hintMany': UI.prepare.hintMany.replace(
+      '{n}', String((PREP['state-5a'].draft!.match(/\[[^\]]*\]/g) ?? []).length),
+    ),
+    'ui:prepare.copiedOne': UI.prepare.copiedOne.replace('{n}', '1'),
+    'ui:prepare.copiedMany': UI.prepare.copiedMany.replace('{n}', '2'),
+    'ui:prepare.stepsCount': UI.prepare.stepsCount.replace('{done}', '0').replace(
+      '{total}', String(PREP['state-5a'].steps.length),
+    ),
+  }
+
+  it('CAPTION_SUBSTITUTIONS covers exactly CAPTION_TEMPLATES, and each substituted form actually renders', async () => {
+    expect(Object.keys(CAPTION_SUBSTITUTIONS).sort()).toEqual([...CAPTION_TEMPLATES].sort())
+
+    const { container: trustContainer } = render(
       <DiagnosisScreen
         serviceLabel="X" engineKey="passport" d={classifiedDiagnosis}
         answerLabels={{}} trustOpen onToggleTrust={noop}
       />,
     )
-    expect(container.textContent).toContain(t.replace('{date}', SOURCES_VERIFIED))
+    expect(trustContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:trust.verifiedOn'])
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true,
+    })
+    try {
+      const { container: prepContainer } = render(
+        <PrepareScreen serviceLabel="Passport" engineKey="passport" d={helplineDiagnosis} prep={PREP['state-5a']} />,
+      )
+      // channelPhone, hintMany, stepsCount — no interaction needed, the
+      // real state-5a draft ships with brackets and no step is ticked yet.
+      expect(prepContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:prepare.channelPhone'])
+      expect(prepContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:prepare.hintMany'])
+      expect(prepContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:prepare.stepsCount'])
+
+      // hintOne — a plain edit, not an interaction (design note 2b).
+      const ta = prepContainer.querySelector('.prep-draft') as HTMLTextAreaElement
+      fireEvent.change(ta, { target: { value: 'only [one] bracket left to fill' } })
+      expect(prepContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:prepare.hintOne'])
+
+      // copiedMany / copiedOne — genuinely interaction-gated: a real Copy
+      // click is the only way to reach either string at all.
+      const copyBtn = prepContainer.querySelector('.copy-btn') as HTMLButtonElement
+      fireEvent.change(ta, { target: { value: 'a [x] b [y]' } })
+      await userEvent.click(copyBtn)
+      await waitFor(() => expect(prepContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:prepare.copiedMany']))
+
+      fireEvent.change(ta, { target: { value: 'ready [x] set' } })
+      await userEvent.click(copyBtn)
+      await waitFor(() => expect(prepContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:prepare.copiedOne']))
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
+      else delete (navigator as { clipboard?: unknown }).clipboard
+    }
+  })
+
+  // Same treatment for INTERACTION_GATED (design note 6): pin its exact
+  // membership so a future addition or removal cannot slip through
+  // unnoticed. Cross-importing PrepareScreen.test.tsx's own list here would
+  // re-run that whole file's suite as a side effect of module evaluation
+  // (Vitest registers describe/it at import time) — so the two lists are
+  // kept in sync BY HAND, each independently pinned to the same five names,
+  // with PrepareScreen.test.tsx's interaction test independently asserting
+  // that it actually renders all five.
+  it('INTERACTION_GATED names exactly the five entries PrepareScreen.test.tsx\'s interaction test independently covers', () => {
+    expect([...INTERACTION_GATED].sort()).toEqual([
+      'ui:prepare.copied',
+      'ui:prepare.copiedMany',
+      'ui:prepare.copiedOne',
+      'ui:prepare.doneNoteFallback',
+      'ui:prepare.hintReady',
+    ])
   })
 })

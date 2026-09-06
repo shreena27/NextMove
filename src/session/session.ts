@@ -16,11 +16,15 @@ export type ScreenId =
   | 'home' | 'other-services'
   | 'passport-guardrail' | 'passport-outofscope' | 'passport-q1' | 'passport-q2'
   | 'passport-recovery' | 'passport-recovery-paste' | 'passport-recovery-show'
-  | 'passport-diagnosis' | 'passport-nextmove'
-  | 'voter-entry' | 'voter-q1' | 'voter-q2' | 'voter-diagnosis' | 'voter-nextmove'
-  | 'sir-state' | 'sir-unsupported' | 'sir-q1' | 'sir-diagnosis' | 'sir-nextmove'
+  | 'passport-diagnosis' | 'passport-nextmove' | 'passport-prepare'
+  | 'voter-entry' | 'voter-q1' | 'voter-q2' | 'voter-diagnosis' | 'voter-nextmove' | 'voter-prepare'
+  | 'sir-state' | 'sir-unsupported' | 'sir-q1' | 'sir-diagnosis' | 'sir-nextmove' | 'sir-prepare'
 // Transcribe the exact id list from the prototype's own switch (3910-3944),
 // taking only C3's screens; do not invent or normalise a name.
+// C4 adds the three '*-prepare' ids (also the prototype's own, same
+// switch) next to each service's existing block, per this union's own
+// anticipation above — nothing else in this file changes for C4 (no new
+// action, no new field, no reducer change; session.test.ts pins that).
 
 /** C3's slice of the prototype's `S`. Fields belonging to later chunks
  *  (savedCases, workingCase, user, ci*, prep*, describe*, interp) are

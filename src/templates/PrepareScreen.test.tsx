@@ -460,3 +460,92 @@ describe('the closing control', () => {
     expect(document.querySelector('.saved-next')).toBeNull()
   })
 })
+
+// screenCopy.test.tsx's coverage sweep (render(mount()), no interaction)
+// cannot produce these five SCREEN_COPY strings at all — design note 4a —
+// so it carves them into its own INTERACTION_GATED set and skips them
+// there. THIS test is the coverage substitute that set's own comment
+// promises: it drives the real tick/copy/edit interactions and asserts
+// each of the five actually renders, so a future reader deleting this test
+// knows exactly what coverage it was carrying.
+describe('INTERACTION_GATED coverage — the five SCREEN_COPY strings a static mount cannot produce (design note 4a)', () => {
+  it('drives the tick/copy/edit interactions that produce all five, and covers exactly that set', async () => {
+    // Named here, in sync BY HAND with screenCopy.test.tsx's own
+    // INTERACTION_GATED set (design note 6): cross-importing between
+    // *.test.tsx files would re-run the other file's whole suite as a
+    // side effect of module evaluation (Vitest registers describe/it at
+    // import time), so the two lists are independently pinned to the same
+    // five names instead of sharing one import.
+    const COVERED = new Set([
+      'ui:prepare.copied',
+      'ui:prepare.copiedOne',
+      'ui:prepare.copiedMany',
+      'ui:prepare.hintReady',
+      'ui:prepare.doneNoteFallback',
+    ])
+    expect([...COVERED].sort()).toEqual([
+      'ui:prepare.copied',
+      'ui:prepare.copiedMany',
+      'ui:prepare.copiedOne',
+      'ui:prepare.doneNoteFallback',
+      'ui:prepare.hintReady',
+    ])
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true,
+    })
+    try {
+      // doneNoteFallback — tick every step on a doneNote-less plan.
+      const noNote = PREP['state-4']
+      expect(noNote.doneNote).toBeUndefined()
+      const { unmount: unmountA } = render(
+        <PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={noNote} />,
+      )
+      await tickAll(noNote.steps.length)
+      expect(document.querySelector('.psteps-done')).toHaveTextContent(UI.prepare.doneNoteFallback)
+      unmountA()
+
+      // hintReady, then copied — a zero-bracket draft, then a Copy click.
+      const { unmount: unmountB } = render(
+        <PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
+        target: { value: 'nothing left to fill' },
+      })
+      expect(document.querySelector('.prep-hint')).toHaveTextContent(UI.prepare.hintReady)
+      await userEvent.click(screen.getByRole('button', { name: UI.prepare.copy }))
+      expect(await screen.findByRole('button', { name: UI.prepare.copied })).toBeInTheDocument()
+      unmountB()
+
+      // copiedOne — a Copy click with exactly one blank left.
+      const { unmount: unmountC } = render(
+        <PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
+        target: { value: 'ready [x] set' },
+      })
+      await userEvent.click(screen.getByRole('button', { name: UI.prepare.copy }))
+      expect(
+        await screen.findByRole('button', { name: UI.prepare.copiedOne.replace('{n}', '1') }),
+      ).toBeInTheDocument()
+      unmountC()
+
+      // copiedMany — a Copy click with two blanks left.
+      const { unmount: unmountD } = render(
+        <PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
+        target: { value: 'a [x] b [y]' },
+      })
+      await userEvent.click(screen.getByRole('button', { name: UI.prepare.copy }))
+      expect(
+        await screen.findByRole('button', { name: UI.prepare.copiedMany.replace('{n}', '2') }),
+      ).toBeInTheDocument()
+      unmountD()
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
+      else delete (navigator as { clipboard?: unknown }).clipboard
+    }
+  })
+})
