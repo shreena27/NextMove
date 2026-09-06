@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  CHECKIN, CHECKIN_META, DELIVERABLE_LABEL, DELIVERABLE_Q, CLOSED_TITLE,
+  CHECKIN, CHECKIN_META, DELIVERABLE_LABEL, DELIVERABLE_Q, CLOSED_TITLE, UNIVERSAL_LABELS,
   checkinOptionsFor, checkinCopyExtras,
   type CheckinKind,
 } from './checkinOptions'
@@ -29,105 +29,110 @@ const PLAYBOOKS = [passportPlaybook, voterPlaybook, sirPlaybook]
 // ---------------------------------------------------------------------------
 type ExpectedOption = { k: CheckinKind; label: string } & CheckinPatchOption
 
-const EXPECTED: Record<string, ExpectedOption[]> = {
-  'state-1': [
+/** Fix-round addition (review Important 1): prepAware now lives at the same
+ *  key level CHECKIN_META itself carries it at, so the pairing pin can
+ *  assert it alongside label/k/patch instead of leaving it unpinned. */
+type ExpectedConfig = { prepAware?: true; opts: ExpectedOption[] }
+
+const EXPECTED: Record<string, ExpectedConfig> = {
+  'state-1': { opts: [
     { k: 'event', label: 'Police contacted or visited me', patch: { q1: 'contacted_incomplete' } },
     { k: 'event', label: 'Verification seems done, but nothing has moved since', patch: { q1: 'verified_no_progress' } },
     { k: 'event', label: 'The portal shows an adverse or confusing status', patch: { q1: 'adverse' } },
-  ],
-  'state-2': [
+  ] },
+  'state-2': { opts: [
     { k: 'event', label: 'Verification finished, but nothing has moved since', patch: { q1: 'verified_no_progress' } },
     { k: 'event', label: 'The portal shows an adverse or confusing status', patch: { q1: 'adverse' } },
     { k: 'action', label: 'I asked the office what was pending (call, visit, or message)', patch: { q2: 'informal', fOutcome: 'pending' } },
-  ],
-  'state-3': [
+  ] },
+  'state-3': { prepAware: true, opts: [
     { k: 'action', label: 'I followed up with the Passport Office', patch: { q2: 'informal', fOutcome: 'pending' } },
     { k: 'event', label: 'The portal shows an adverse or confusing status', patch: { q1: 'adverse' } },
-  ],
-  'state-4': [
+  ] },
+  'state-4': { prepAware: true, opts: [
     { k: 'action', label: 'I contacted the office and asked for clarification', patch: { q2: 'informal', fOutcome: 'pending' } },
-  ],
-  'state-5a-p': [
+  ] },
+  'state-5a-p': { opts: [
     { k: 'resolved-rung', label: 'They responded and things are moving again', pendingPatch: { fOutcome: 'resolved' } },
     { k: 'event', label: 'They responded, but it did not help', patch: { fOutcome: 'unhelpful' } },
     { k: 'event', label: 'No response at all so far', patch: { fOutcome: 'no_response' } },
-  ],
-  'state-5a-r': [
+  ] },
+  'state-5a-r': { opts: [
     { k: 'event', label: 'It stalled again; nothing has moved since', patch: { fOutcome: null } },
-  ],
-  'state-5b-r': [
+  ] },
+  'state-5b-r': { opts: [
     { k: 'event', label: 'It stalled again; nothing has moved since', patch: { gOutcome: null } },
-  ],
-  'state-dpg-r': [
+  ] },
+  'state-dpg-r': { opts: [
     { k: 'deadend', label: "It stalled again after the DPG's response" },
-  ],
-  'state-5a': [
+  ] },
+  'state-5a': { prepAware: true, opts: [
     { k: 'action', label: 'I filed the formal grievance on CPGRAMS and have a number', patch: { q2: 'formal_grievance', gOutcome: 'pending' } },
-  ],
-  'state-5b-p': [
+  ] },
+  'state-5b-p': { opts: [
     { k: 'resolved-rung', label: 'They responded and things are moving again', pendingPatch: { gOutcome: 'resolved' } },
     { k: 'event', label: 'They responded, but it did not help', patch: { gOutcome: 'unhelpful' } },
     { k: 'event', label: 'No response at all so far', patch: { gOutcome: 'no_response' } },
-  ],
-  'state-5b': [
+  ] },
+  'state-5b': { prepAware: true, opts: [
     { k: 'action', label: 'I escalated to the DPG and have a reference number', patch: { dpgFiled: 'yes' } },
-  ],
-  'state-dpg-p': [
+  ] },
+  'state-dpg-p': { opts: [
     { k: 'resolved-rung', label: 'The DPG responded and things are moving again', pendingPatch: { dpgOutcome: 'resolved' } },
     { k: 'deadend', label: 'The DPG responded, but it did not resolve anything' },
-  ],
-  'v-1': [
+  ] },
+  'v-1': { opts: [
     { k: 'event', label: 'A BLO visited or contacted me', patch: { voterQ1: 'blo_visited' } },
     {
       k: 'valence', label: 'A decision arrived',
       rejectPatch: { voterQ1: 'decision', voterAppealedRaw: 'none', voterAppealed: 'none' },
       acceptPendingPatch: { voterQ1: 'decision', voterOutcome: 'accepted_pending' },
     },
-  ],
-  'v-2': [
+  ] },
+  'v-2': { opts: [
     {
       k: 'valence', label: 'A decision arrived',
       rejectPatch: { voterQ1: 'decision', voterAppealedRaw: 'none', voterAppealed: 'none' },
       acceptPendingPatch: { voterQ1: 'decision', voterOutcome: 'accepted_pending' },
     },
-  ],
-  'v-3': [
+  ] },
+  'v-3': { prepAware: true, opts: [
     { k: 'action', label: 'I filed the first appeal with the DEO/DM', patch: { voterAppealedRaw: 'pending', voterAppealed: 'pending' } },
     { k: 'closureq', label: 'I checked, and the decision was actually in my favour', pendingPatch: { voterOutcome: 'accepted_pending' } },
-  ],
-  'v-4': [
+  ] },
+  'v-4': { opts: [
     {
       k: 'valence', label: 'The appeal was decided',
       rejectPatch: { voterAppealedRaw: 'decided', voterAppealed: 'decided' },
       acceptPendingPatch: { voterOutcome: 'accepted_pending' },
     },
-  ],
-  'v-5': [
+  ] },
+  'v-5': { prepAware: true, opts: [
     { k: 'action', label: 'I filed the second appeal with the state CEO', patch: { ceoAppeal: 'filed' } },
-  ],
-  'v-5-p': [
+  ] },
+  'v-5-p': { opts: [
     { k: 'valence', label: 'The second appeal was decided', rejectDeadend: true, acceptPendingPatch: { voterOutcome: 'accepted_pending' } },
-  ],
-  'v-acc': [
+  ] },
+  'v-acc': { opts: [
     { k: 'event', label: "It's been a long time with no sign of it", patch: { voterOutcome: null } },
-  ],
-  'S-1': [
+  ] },
+  'S-1': { opts: [
     { k: 'event', label: 'I got a notice asking for documents', patch: { sirQ1: 'notice' } },
-  ],
-  'S-2': [
+  ] },
+  'S-2': { opts: [
     { k: 'event', label: 'I checked, and my name IS on the Draft Roll', patch: { sirQ1: 'roll_present' } },
     { k: 'event', label: 'I checked, and my name is NOT on the Draft Roll', patch: { sirQ1: 'roll_absent' } },
-  ],
-  'S-3': [
+  ] },
+  'S-3': { prepAware: true, opts: [
     { k: 'action', label: 'I filed Form 6 with the declaration and a document', patch: { form6Filed: 'yes' } },
-  ],
-  'S-4': [
+  ] },
+  'S-4': { prepAware: true, opts: [
     { k: 'action', label: 'I submitted the requested document to the BLO/ERO', patch: { sirDocsFiled: 'yes' } },
-  ],
-  'S-9': [
+  ] },
+  'S-9': { opts: [
     { k: 'event', label: 'I checked, and my name IS on the Final Roll', patch: { sirQ1: 'final_present' } },
     { k: 'event', label: 'I checked, and my name is NOT on the Final Roll', patch: { sirQ1: 'final_absent' } },
-  ],
+  ] },
 }
 
 describe('CHECKIN — the zipped table (design note 1)', () => {
@@ -139,8 +144,12 @@ describe('CHECKIN — the zipped table (design note 1)', () => {
     expect(Object.keys(CHECKIN).sort()).toEqual(Object.keys(CHECKIN_PATCHES).sort())
   })
 
-  for (const [key, opts] of Object.entries(EXPECTED)) {
-    it.each(opts.map((expected, i) => [i, expected] as const))(
+  for (const [key, config] of Object.entries(EXPECTED)) {
+    it(`${key} pins prepAware`, () => {
+      expect(CHECKIN[key]?.prepAware, `${key}.prepAware`).toBe(config.prepAware)
+    })
+
+    it.each(config.opts.map((expected, i) => [i, expected] as const))(
       `${key}[%i] pairs the expected label, kind and full patch, position by position`,
       (i, expected) => {
         const actual = CHECKIN[key]?.opts[i]
@@ -153,6 +162,13 @@ describe('CHECKIN — the zipped table (design note 1)', () => {
       },
     )
   }
+
+  it('exactly the 8 prepAware states are pinned true (prototype 2523/2540/2548/2562/2569/2585/2588)', () => {
+    const prepAwareKeys = Object.entries(EXPECTED).filter(([, c]) => c.prepAware === true).map(([k]) => k)
+    expect(prepAwareKeys.sort()).toEqual(
+      ['S-3', 'S-4', 'state-3', 'state-4', 'state-5a', 'state-5b', 'v-3', 'v-5'].sort(),
+    )
+  })
 })
 
 describe('CHECKIN shape', () => {
@@ -330,6 +346,14 @@ describe('per-service copy maps', () => {
     ['CLOSED_TITLE', CLOSED_TITLE],
   ] as const)('%s has exactly the three ServiceKey entries, no more, no fewer', (_name, map) => {
     expect(Object.keys(map).sort()).toEqual([...SERVICE_KEYS].sort())
+  })
+})
+
+describe('UNIVERSAL_LABELS literals', () => {
+  // Review Minor finding: notDone's exact text was previously pinned only
+  // via k === 'notdone', never via its own copy. Cheap to close.
+  it('notDone is pinned to its exact copy', () => {
+    expect(UNIVERSAL_LABELS.notDone).toBe("I haven't done this yet; take me back to the steps")
   })
 })
 
