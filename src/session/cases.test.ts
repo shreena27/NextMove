@@ -756,6 +756,15 @@ describe('"I haven\'t done this yet" (CI_CHOOSE notdone branch)', () => {
   })
 })
 
+describe('ciChoose with an out-of-range index (hardening beyond the prototype, which has the same unguarded hole)', () => {
+  it('returns null rather than throwing, matching every other precondition failure in this file', () => {
+    const answers: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+    const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers)
+    const s0 = sessionFor(c)
+    expect(ciChoose(s0, { index: 999, now: NOW + 1000 })).toBeNull()
+  })
+})
+
 describe('D1 RED — the Undo snapshot bug (deviation D1; the single most important test in this task)', () => {
   it('undo after a diagnosis-changing check-in restores answers, prepChecks AND the log to their pre-check-in state', () => {
     // state-2, prepChecks={0:true} seeded (state-2 has a real 4-step prep
@@ -895,7 +904,18 @@ describe('CI_CANCEL (design note 10 — previously declared and untested; a defe
   it('from ciStage "confirm": clears ciStage/ciPending/ciPendingIdx; log, answers, ciSnapshot, ciReassure and savedCases are unchanged BY IDENTITY', () => {
     const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', { q1: 'no_contact', q2: 'no_followup' })
     const opt: CheckinOption = { k: 'event', label: 'x', patch: { q1: 'adverse' } }
-    const s0: CiTestState = { ...sessionFor(c), ciStage: 'confirm', ciPending: opt, ciPendingIdx: 0 }
+    // ciReassure/ciSnapshot seeded to NON-default, truthy values (a prior
+    // "nothing yet" could easily have left both set on the very same
+    // interaction) — sessionFor()'s own defaults are already false/null, so
+    // asserting against those alone would pass even if ciCancel wrongly
+    // cleared them; seeding real values here is what makes the identity
+    // checks below an actual test of ciCancel's field scope, not a vacuous
+    // false===false / null===null check.
+    const priorSnapshot: CiSnapshot = { answers: { q1: 'no_contact', q2: 'no_followup' }, prepChecks: {}, casefile: c }
+    const s0: CiTestState = {
+      ...sessionFor(c), ciStage: 'confirm', ciPending: opt, ciPendingIdx: 0,
+      ciReassure: true, ciSnapshot: priorSnapshot,
+    }
 
     const f = ciCancel()
     const s1 = { ...s0, ...f }
@@ -906,14 +926,18 @@ describe('CI_CANCEL (design note 10 — previously declared and untested; a defe
     expect(s1.savedCases).toBe(s0.savedCases) // same array — not a copy
     expect(s1.savedCases[0]).toBe(c) // same case object — no log write
     expect(s1.answers).toBe(s0.answers)
-    expect(s1.ciSnapshot).toBe(s0.ciSnapshot)
-    expect(s1.ciReassure).toBe(s0.ciReassure)
+    expect(s1.ciSnapshot).toBe(priorSnapshot) // still THIS snapshot — not cleared, not replaced
+    expect(s1.ciReassure).toBe(true) // still true — not cleared
   })
 
   it('from ciStage "valence": the same guarantees — a cancel that quietly wrote a log entry would be the worst kind of bug here (the citizen said "no")', () => {
     const c = caseFor('voter', voterEngine, 'Voter roll', 'voter-nextmove', { voterQ1: 'decision', voterAppealed: 'pending' })
     const opt: CheckinOption = { k: 'valence', label: 'The appeal was decided', rejectPatch: { voterAppealedRaw: 'decided', voterAppealed: 'decided' } }
-    const s0: CiTestState = { ...sessionFor(c), ciStage: 'valence', ciPending: opt, ciPendingIdx: 0 }
+    const priorSnapshot: CiSnapshot = { answers: { voterQ1: 'decision', voterAppealed: 'pending' }, prepChecks: {}, casefile: c }
+    const s0: CiTestState = {
+      ...sessionFor(c), ciStage: 'valence', ciPending: opt, ciPendingIdx: 0,
+      ciReassure: true, ciSnapshot: priorSnapshot,
+    }
 
     const f = ciCancel()
     const s1 = { ...s0, ...f }
@@ -923,6 +947,8 @@ describe('CI_CANCEL (design note 10 — previously declared and untested; a defe
     expect(s1.ciPendingIdx).toBeNull()
     expect(s1.savedCases[0]).toBe(c)
     expect(s1.answers).toBe(s0.answers)
+    expect(s1.ciSnapshot).toBe(priorSnapshot)
+    expect(s1.ciReassure).toBe(true)
   })
 })
 

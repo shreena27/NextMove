@@ -453,6 +453,11 @@ export function ciChoose(state: CheckinCaseState, payload: { index: number; now:
   const d = diagnose(ENGINES[engineKey], state.answers)
   const options = checkinOptionsFor(d, state.prepChecks, engineKey)
   const opt = options[payload.index]
+  // Hardening beyond the prototype (which has the same hole, unguarded):
+  // an out-of-range index returns null, matching every other precondition
+  // failure in this file (activeCase/loadCase/openCheckin all return null
+  // rather than throw on a missing input).
+  if (!opt) return null
 
   const base = { ciPending: opt, ciPendingIdx: payload.index, ciReassure: false }
 
