@@ -27,6 +27,20 @@ describe('prep copy passes the same content-safety scan as rule copy (§7)', () 
     expect(visitExpectCopy('sir').length).toBe(VISIT_EXPECT.length)
   })
 
+  it('the flattener emits every PrepPlan field — no citizen-facing prep string escapes the scan', () => {
+    const ats = new Set(PLAYBOOKS.flatMap(prepCopyExtras).map(c => c.at))
+    let expected = 0
+    for (const [id, p] of Object.entries(PREP)) {
+      for (const suffix of [
+        ...(p.title ? ['.title'] : []), ...(p.draft ? ['.draft'] : []),
+        ...p.steps.map((_, i) => `.steps[${i}]`), ...(p.doneNote ? ['.doneNote'] : []),
+        ...(p.visit ? p.visit.carry.map((_, i) => `.visit.carry[${i}]`) : []),
+        ...(p.visit?.after ? ['.visit.after'] : []),
+      ]) { expected++; expect([...ats].some(a => a.endsWith(`PREP.${id}${suffix}`)), `${id}${suffix}`).toBe(true) }
+    }
+    expect(ats.size).toBe(expected)   // and nothing extra
+  })
+
   // NOTE: the whole-project stale-exemption sweep is NOT duplicated here.
   // engines.test.ts:175 is the single call site that sees every exemption
   // location; a copy in this file would lack ladderDefStrings and would

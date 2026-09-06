@@ -1,13 +1,14 @@
-// NOTE: the shared test-harness imports an earlier draft of this file's
-// plan wanted pre-imported for Tasks 4/5 (`vi`, `beforeEach`, `afterEach`,
-// `fireEvent`, `userEvent`, `VISIT_EXPECT`) are deliberately NOT imported
-// here unused — this repo's tsconfig.app.json has noUnusedLocals/
-// noUnusedParameters on, which is a real, correct compiler setting, not
-// something to relax or route around. The two testing-library gotchas that
-// pre-import was meant to flag (vi.useFakeTimers() + user-event v14 hang;
-// vi.restoreAllMocks() not restoring navigator.clipboard) are documented in
-// the plan's design notes instead, for whichever task first needs them.
-// Add each import at the task that actually uses it.
+// NOTE (history): Task 3 deliberately deferred importing the test-harness
+// utilities an earlier draft of this file's plan wanted pre-imported for
+// Tasks 4/5 (`vi`, `beforeEach`, `afterEach`, `fireEvent`, `userEvent`,
+// `VISIT_EXPECT`) — this repo's tsconfig.app.json has noUnusedLocals/
+// noUnusedParameters on, a real, correct compiler setting, not something to
+// relax or route around. The two testing-library gotchas that pre-import
+// was meant to flag (vi.useFakeTimers() + user-event v14 hang;
+// vi.restoreAllMocks() not restoring navigator.clipboard) were documented
+// in the plan's design notes instead, for whichever task first needed them.
+// Tasks 4 and 5 have since added each import below at the point it was
+// actually needed — the record of that deliberate deferral is kept here.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'

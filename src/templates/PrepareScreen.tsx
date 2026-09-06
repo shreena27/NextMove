@@ -96,10 +96,8 @@ export interface PrepareScreenProps {
    *  the top of `renderPrepare`, line 3762 — symmetric with
    *  `NextMoveScreen`'s and `DiagnosisScreen`'s own `topbar` slot. */
   topbar?: ReactNode
-  /** Dispatches session actions. Unused by this shell (Task 3 has no
-   *  button that dispatches); kept in the prop shape for parity with
-   *  `NextMoveScreen` and for the checklist/"Done, back to Home" controls
-   *  Task 5 adds. */
+  /** Dispatches session actions. Currently used by the closing "Done, back
+   *  to Home" control, which dispatches `RESTART` (prototype 3816). */
   dispatch?: (action: SessionAction) => void
 }
 
@@ -115,6 +113,12 @@ export function PrepareScreen({
   // here goes into SessionState: the prototype uses S.prepDraft/S.copied
   // because it has one global object and no components; C5 is the chunk
   // with a reason (persistence) to lift this.
+  // Precision on that: unlike the prototype (whose S.prepChecks/S.prepDraft
+  // survive navigating away and back within a session, cleared only by
+  // restart/answer-change), this local useState resets on unmount — so
+  // Back-then-return loses ticks/draft edits. Scope-justified (C4 cannot
+  // touch SessionState, see scope exclusion 2) but a real behaviour
+  // difference C5 should know about when it lifts this state.
   const [draft, setDraft] = useState(prep.draft ?? '')
   // null = idle. Any number (0 included) = "just copied, this many blanks
   // were left AT THE MOMENT OF COPYING" — frozen, not live (design note 2c).
