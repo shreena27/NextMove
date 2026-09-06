@@ -15,7 +15,7 @@ const rule = (id: string, condition: PlaybookRule['condition']): PlaybookRule =>
   whatToDo: 'Toy what to do.',
   where: { label: 'Toy channel' },
   need: 'Toy need.',
-  source: { title: 'Toy source' },
+  source: { docId: null, title: 'Toy source' },
 })
 
 const toy: Playbook = {
@@ -34,7 +34,7 @@ const toy: Playbook = {
     whatToDo: 'Toy check status.',
     where: { label: 'Toy portal' },
     need: 'Toy need.',
-    source: { title: 'Toy safety net' },
+    source: { docId: null, title: 'Toy safety net' },
   },
 }
 

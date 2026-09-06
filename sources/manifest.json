@@ -1,5 +1,5 @@
 {
-  "_readme": "Citation manifest for NextMove playbook rules. Every PlaybookRule.source.title must resolve to a rule entry here; every entry's quote must appear (verbatim or as the stated paraphrase) in the committed source file. Statuses: verified | verified_discrepancy (source checks out but prototype copy misstates it — see note) | honest_generic (rule self-declares no specific source) | dormant (rule retired from reachable set). Created 2026-09-05 during the grill-synthesis sources chunk.",
+  "_readme": "Citation manifest for NextMove playbook rules. Every PlaybookRule.source.docId must resolve to a rule entry here; every entry's quote must appear (verbatim or as the stated paraphrase) in the committed source file. Statuses: verified | verified_discrepancy (source checks out but prototype copy misstates it — see note) | honest_generic (rule self-declares no specific source) | dormant (rule retired from reachable set). Created 2026-09-05 during the grill-synthesis sources chunk.",
   "documents": {
     "FAQ_SIR2026.pdf": {
       "title": "CEO Delhi — Official SIR 2026 FAQ",
@@ -85,17 +85,18 @@
       "status": "verified"
     },
     "state-5b": {
-      "file": "Citizens_Charter.pdf",
-      "locator": "Grievance Redressal section",
-      "quote": "Any grievance or complaint arising out of any non-compliance of service standards, failure in delivery of service or in the functioning of a PIA may be logged online at (a) Centralised Public Grievance Redress and Monitoring System (CPGRAMS)",
-      "status": "verified"
-    },
-    "state-dpg": {
       "file": "web/grievance_page.txt",
       "locator": "Grievance page, DPG paragraph",
       "quote": "If your passport-related grievance has not been satisfactory redressed by the MEA/Passport issuing Authority within a reasonable period of time, you may lodge a grievance with the Directorate of Public Grievances (DPG), Cabinet Secretariat, Government of India",
       "status": "verified",
-      "note": "'Within a reasonable period of time' — supports the rule's verified-absence claim that no numeric deadline exists."
+      "note": "Repointed from Citizens_Charter.pdf 2026-09-05 (C2 Task 1): the rule's own design-locked citation is the grievance page's DPG paragraph (it escalates TO the DPG and quotes 'within a reasonable period of time'). The Charter's Grievance Redressal section backs state-5a's CPGRAMS channel, which state-5a already cites."
+    },
+    "state-dpg-p": {
+      "file": "web/grievance_page.txt",
+      "locator": "Grievance page, DPG paragraph",
+      "quote": "If your passport-related grievance has not been satisfactory redressed by the MEA/Passport issuing Authority within a reasonable period of time, you may lodge a grievance with the Directorate of Public Grievances (DPG), Cabinet Secretariat, Government of India",
+      "status": "verified",
+      "note": "'Within a reasonable period of time' — supports the rule's verified-absence claim that no numeric deadline exists. Renamed from 'state-dpg' 2026-09-05 (C2 Task 1): the DPG rung shipped as state-dpg-p/state-dpg-r in the tracking-loop surgery, leaving this entry orphaned under the old id."
     },
     "v-1": {
       "file": "Final-ER-FAQ.pdf",
@@ -126,8 +127,9 @@
     "v-5": {
       "file": "Final-ER-FAQ.pdf",
       "locator": "Q34",
-      "quote": "A further appeal against the order of the Appellate Authority will lie before the Chief Electoral Officer of the State.",
-      "status": "verified"
+      "quote": "A further appeal against the order of Appellate Authority will lie before the Chief Electoral Officer of the State.",
+      "status": "verified",
+      "note": "Quote corrected 2026-09-05 (C2 Task 1): the earlier transcription read 'the order of the Appellate Authority'; the committed extraction reads 'the order of Appellate Authority'. Rule copy does not quote the sentence and is unchanged."
     },
     "s-roll-present": {
       "file": "FAQ_SIR2026.pdf",
@@ -167,8 +169,8 @@
       "file": "FAQ_SIR2026.pdf",
       "locator": "Q32",
       "quote": "The applicant can file an appeal before the District Election Officer/District Magistrate of concerned District within 15 days.",
-      "status": "verified",
-      "note": "Dormant until Delhi's final_roll phase (04.11.2026). The playbook's sole sourced numeric interval."
+      "status": "dormant",
+      "note": "Dormant until Delhi's final_roll phase (04.11.2026). The playbook's sole sourced numeric interval. SUPERSEDED 2026-09-05 (C2 Task 1): the dormant S-5 was promoted into sirPlaybook as s-final-absent (and motivates s-final-unchecked), which carry this same Q32 file/locator/quote under their own ids. Status corrected from 'verified' to 'dormant' so this retired id is not a live orphan — no shipped rule uses it."
     },
     "state-5a-r": {
       "file": "Citizens_Charter.pdf",
@@ -218,6 +220,108 @@
       "quote": "within 15 days",
       "status": "verified",
       "note": "Check-now state (S-9); the only urgency claim is the sourced appeal window."
+    },
+    "state-5a-p": {
+      "file": "Citizens_Charter.pdf",
+      "locator": "Grievance Redressal section",
+      "quote": null,
+      "status": "honest_generic",
+      "note": "Follow-up-sent WAIT rung of state-5a. Makes only a verified-absence claim ('no official response timeline is published for informal follow-ups'); the Charter supports only that a grievance route exists. Added 2026-09-05 (C2 Task 1)."
+    },
+    "state-5b-p": {
+      "file": "web/grievance_page.txt",
+      "locator": "Grievance page, DPG paragraph",
+      "quote": null,
+      "status": "honest_generic",
+      "note": "Grievance-filed WAIT rung of state-5b. Its howLong rests on the same 'reasonable period of time' verified absence as state-dpg-p; no separate quote is claimed. Added 2026-09-05 (C2 Task 1)."
+    },
+    "v-5-p": {
+      "file": "Final-ER-FAQ.pdf",
+      "locator": "Q34",
+      "quote": null,
+      "status": "honest_generic",
+      "note": "Second-appeal-filed WAIT rung of v-5. Q34 establishes the second tier exists; no decision timeframe is stated anywhere, which is exactly what the rule says. Added 2026-09-05 (C2 Task 1)."
+    },
+    "s-3-p": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q4 (calendar)",
+      "quote": "Final Publication of Electoral Roll",
+      "status": "verified",
+      "note": "Form-6-filed WAIT rung of s-roll-absent. Its only factual claim is the next fixed milestone, Final Roll publication on 04.11.2026 (Q4 row 5). Added 2026-09-05 (C2 Task 1)."
+    },
+    "s-4-p": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q4 (calendar)",
+      "quote": "Final Publication of Electoral Roll",
+      "status": "verified",
+      "note": "Documents-submitted WAIT rung of s-notice. Same single factual claim as s-3-p: the 04.11.2026 Final Roll milestone. Added 2026-09-05 (C2 Task 1)."
+    }
+  },
+  "sourced_dates": {
+    "30 Jun": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q4 row 1 (house-to-house visit)",
+      "source_form": "30.06.2026",
+      "year": 2026,
+      "meaning": "House-to-house enumeration begins.",
+      "allowed_in": ["sir:SIR_PHASES.claims_notice.note"]
+    },
+    "17 Aug": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q4 row 1 (house-to-house visit)",
+      "source_form": "17.08.2026",
+      "year": 2026,
+      "meaning": "House-to-house enumeration ends. Enumeration-phase actions are retired from this date.",
+      "allowed_in": ["sir:SIR_PHASES.claims_notice.note"]
+    },
+    "31 Aug": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q4 row 2 (publication of draft electoral roll)",
+      "source_form": "31.08.2026",
+      "year": 2026,
+      "meaning": "Draft Electoral Roll published.",
+      "allowed_in": ["sir:SIR_PHASES.claims_notice.note"]
+    },
+    "30 Sep": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q4 row 3 (period of filing claims & objections)",
+      "source_form": "30.09.2026",
+      "year": 2026,
+      "meaning": "THE CITIZEN'S filing deadline: claims and objections must be filed by this date. Anything the citizen must file cites this, never 29 Oct.",
+      "allowed_in": ["sir:s-roll-absent.howLong", "sir:s-roll-unchecked.howLong", "sir:SIR_PHASES.claims_notice.note"]
+    },
+    "29 Oct": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q4 row 4 (notice phase and disposal of claims and objections)",
+      "source_form": "29.10.2026",
+      "year": 2026,
+      "meaning": "THE ERO'S disposal deadline, not the citizen's. May only describe the phase's own end; may never appear in an instruction to file.",
+      "allowed_in": ["sir:s-notice.howLong", "sir:SIR_PHASES.claims_notice.note"]
+    },
+    "4 Nov": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q4 row 5 / Q31 (final publication of electoral roll)",
+      "source_form": "04.11.2026",
+      "year": 2026,
+      "meaning": "Final Roll publication.",
+      "allowed_in": [
+        "sir:s-3-p.howLong", "sir:s-3-p.where.label", "sir:s-4-p.howLong",
+        "sir:s-roll-present.howLong", "sir:s-roll-present.where.label",
+        "sir:SIR_PHASES.claims_notice.note", "sir:SIR_PHASES.final_roll.note"
+      ]
+    }
+  },
+  "sourced_intervals": {
+    "15 day": {
+      "file": "FAQ_SIR2026.pdf",
+      "locator": "Q32",
+      "source_form": "within 15 days",
+      "meaning": "SIR appeal window, running from Final Roll publication.",
+      "allowed_in": [
+        "sir:s-final-absent.whatShort", "sir:s-final-absent.whatToDo", "sir:s-final-absent.howLong",
+        "sir:s-final-unchecked.explanation", "sir:s-final-unchecked.whatToDo", "sir:s-final-unchecked.howLong",
+        "sir:SIR_PHASES.final_roll.note"
+      ]
     }
   }
 }

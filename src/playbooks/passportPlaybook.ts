@@ -1,0 +1,281 @@
+// Passport playbook — 12 rules + the UNCLASSIFIED fallback.
+// TRANSCRIBED, not authored: design/nextmove-v1-prototype.html lines 1023-1169
+// (git tag v1-design-lock-2). Citations resolve against sources/manifest.json.
+// Rule ORDER is load-bearing: evaluate() is first-match-wins.
+import type { DependentKeys } from '../domain/answers'
+import type { Playbook } from '../domain/types'
+import { SAFETY_NET_TITLE } from './safetyNet'
+
+const CHARTER = 'Citizens_Charter.pdf'
+const GRIEVANCE = 'web/grievance_page.txt'
+const PV_FAQ = 'web/faq_police_verification_wayback.txt'
+
+const PO = { label: 'Passport Office (PO) concerned', url: 'https://www.passportindia.gov.in' }
+const DPG = { label: 'Directorate of Public Grievances (DPG)', url: 'https://dpg.gov.in' }
+
+export const passportPlaybook: Playbook = {
+  serviceId: 'passport',
+  rules: [
+    // "Moving again" states (retire, don't reset): when a rung's response gets
+    // things moving but the passport hasn't arrived, the rung is CONSUMED, not
+    // erased. If it stalls again, the check-in clears the resolved outcome and
+    // the case lands on the NEXT rung — the ladder never descends itself.
+    {
+      id: 'state-5a-r',
+      condition: a => a.fOutcome === 'resolved',
+      rec: 'WAIT',
+      state: '5a·R',
+      label: 'They responded, case moving again',
+      rungLabel: 'follow-up worked, case moving',
+      dependency: 'Passport Office (processing)',
+      explanation: "You've reported that their response got things moving. NextMove can't verify progress beyond your own report, so this rests on what you saw. The next milestone is the passport itself.",
+      whatShort: "Nothing to do; it's moving",
+      whatToDo: 'Nothing right now. Add an update if it stalls again, or when the passport arrives.',
+      where: PO,
+      need: 'Nothing. Keep the response you received safe with your case papers.',
+      howLong: "The Citizen's Charter's service standards apply to processing overall, but no verified timeline exists for a resumed case, so there's no countdown to show.",
+      source: { docId: CHARTER, title: "Citizen's Charter (MEA)" },
+      mustNot: 'Any promise that movement continues, or a date the passport "should" arrive.',
+    },
+    {
+      id: 'state-5b-r',
+      condition: a => a.gOutcome === 'resolved',
+      rec: 'WAIT',
+      state: '5b·R',
+      label: 'Grievance answered, case moving again',
+      rungLabel: 'grievance answered, case moving',
+      dependency: 'Passport Office (processing)',
+      explanation: "Your grievance got a response and you've reported that things are moving. The grievance rung did its job; the next milestone is the passport itself.",
+      whatShort: "Nothing to do; it's moving",
+      whatToDo: 'Nothing right now. Add an update if it stalls again, or when the passport arrives.',
+      where: PO,
+      need: 'Nothing. Keep the grievance response with your case papers.',
+      howLong: "No verified timeline exists for a case resumed after a grievance, so there's no countdown to show.",
+      source: { docId: CHARTER, title: "Citizen's Charter — Grievance Redressal section (MEA)" },
+      mustNot: 'Any promise that movement continues, or a predicted arrival date.',
+    },
+    {
+      id: 'state-dpg-r',
+      condition: a => a.dpgOutcome === 'resolved',
+      rec: 'WAIT',
+      state: 'DPG·R',
+      label: 'DPG responded, case moving again',
+      rungLabel: 'DPG responded, case moving',
+      dependency: 'Passport Office (processing)',
+      explanation: "The Directorate of Public Grievances responded and you've reported that things are moving. That's the top of the ladder doing its job; the next milestone is the passport itself.",
+      whatShort: "Nothing to do; it's moving",
+      whatToDo: 'Nothing right now. Add an update if it stalls again, or when the passport arrives.',
+      where: PO,
+      need: 'Nothing. Keep the DPG response with your case papers.',
+      howLong: "No verified timeline exists for a case resumed after a DPG response, so there's no countdown to show.",
+      source: { docId: GRIEVANCE, title: 'Grievance page — passportindia.gov.in' },
+      mustNot: 'Any promise that movement continues, or a predicted arrival date.',
+    },
+    // Check-in pending states: action-state answers (q2, dpgFiled) are only ever
+    // written by the user attesting "I did this"; outcome fields are written by
+    // check-ins. "Filed and waiting" is its own honest WAIT state, not
+    // "unresolved". Most-specific-first: these run before their parent rungs.
+    {
+      id: 'state-dpg-p',
+      condition: a => a.dpgFiled === 'yes',
+      rec: 'WAIT',
+      state: 'DPG·W',
+      label: 'Escalated to the DPG, response pending',
+      rungLabel: 'escalated to the DPG, response pending',
+      dependency: 'Directorate of Public Grievances',
+      explanation: 'Your escalation is with the Directorate of Public Grievances, the top of the verified ladder for passport grievances. Nothing further is needed from you while they review.',
+      whatShort: 'Nothing to do while the DPG reviews',
+      whatToDo: 'Nothing right now. Add an update to your casefile when the DPG responds.',
+      where: DPG,
+      need: 'Nothing. Keep your DPG reference number safe.',
+      howLong: "No official DPG response timeline exists in NextMove's verified sources, so there's no countdown here.",
+      source: { docId: GRIEVANCE, title: 'Grievance page — passportindia.gov.in' },
+      mustNot: 'Any prediction of the outcome or its timing.',
+    },
+    {
+      id: 'state-5b-p',
+      condition: a => a.q2 === 'formal_grievance' && a.gOutcome === 'pending',
+      rec: 'WAIT',
+      state: '5b·W',
+      label: 'Grievance filed, response pending',
+      rungLabel: 'grievance filed, response pending',
+      dependency: 'Grievance cell (CPGRAMS)',
+      explanation: "Your formal grievance is registered. It's with the grievance cell now. Your grievance number is the anchor for everything from here.",
+      whatShort: 'Your grievance is in. Nothing to do yet.',
+      whatToDo: 'Nothing further right now. Keep the grievance number safe and add an update when a response arrives.',
+      where: { label: 'CPGRAMS · passportindia.gov.in/psp/Grievance', url: 'https://www.passportindia.gov.in/psp/Grievance' },
+      need: 'Nothing. Just keep your grievance number safe.',
+      howLong: 'The official commitment is only "a reasonable period of time": no numeric deadline is published, so there is no countdown to show.',
+      source: { docId: GRIEVANCE, title: 'Grievance page — passportindia.gov.in' },
+      mustNot: 'Any number of days defining "reasonable."',
+    },
+    {
+      id: 'state-5a-p',
+      condition: a => a.q2 === 'informal' && a.fOutcome === 'pending',
+      rec: 'WAIT',
+      state: '5a·W',
+      label: 'Follow-up sent, awaiting their response',
+      rungLabel: 'follow-up sent, response pending',
+      dependency: 'Passport Office',
+      explanation: "You've sent your follow-up. The ball is with the Passport Office now, and nothing further is needed from you until they respond.",
+      whatShort: 'Nothing to do until they respond',
+      whatToDo: "Nothing is required from you right now. When a response arrives (or clearly doesn't), add an update to your casefile.",
+      where: PO,
+      need: 'Nothing. Keep the date and any ticket number of your follow-up safe.',
+      howLong: "No official response timeline is published for informal follow-ups, and NextMove won't invent one.",
+      source: { docId: CHARTER, title: "Citizen's Charter — Grievance Redressal section (MEA)" },
+      mustNot: 'Any claim about when the response "should" arrive.',
+    },
+    {
+      id: 'state-5b',
+      condition: a => a.q2 === 'formal_grievance',
+      rec: 'ESCALATE',
+      state: '5b',
+      label: 'Formal grievance raised, unresolved',
+      rungLabel: 'formal grievance unresolved',
+      dependency: 'Passport-issuing Authority / MEA',
+      explanation: "You've already raised a formal grievance and it isn't resolved. The right move now is to escalate beyond the Passport Office itself, to the body that oversees grievance redressal.",
+      whatShort: 'Escalate to the Directorate of Public Grievances',
+      whatToDo: 'Escalate to the Directorate of Public Grievances (DPG), Cabinet Secretariat, referencing your existing grievance number.',
+      where: DPG,
+      need: 'Your existing CPGRAMS grievance reference number, and the date you filed it.',
+      howLong: 'The official grievance page commits only to "a reasonable period of time": no numeric deadline is published, so NextMove won\'t invent one.',
+      source: {
+        docId: GRIEVANCE,
+        title: 'Grievance page — passportindia.gov.in',
+        quote: '"...within a reasonable period of time" — no numeric deadline is stated.',
+      },
+      mustNot: 'Any specific number of days defining "reasonable."',
+    },
+    {
+      id: 'state-5a',
+      condition: a => a.q2 === 'informal',
+      rec: 'FOLLOW_UP',
+      state: '5a',
+      label: 'Followed up informally, unresolved',
+      rungLabel: 'informal follow-up unresolved',
+      dependency: 'Passport Office',
+      explanation: "You've already tried following up informally and it hasn't moved things forward. The next verified step is to make it formal, so there's a record and a defined channel.",
+      whatShort: 'Move to a formal Grievance / CPGRAMS filing',
+      whatToDo: 'Move to the formal Grievance / CPGRAMS channel, referencing your earlier informal attempt.',
+      where: {
+        label: 'CPGRAMS · passportindia.gov.in/psp/Grievance',
+        url: 'https://www.passportindia.gov.in/psp/Grievance',
+        phone: '1800-258-1800',
+      },
+      need: 'Your application reference number and a short note on what you already tried informally.',
+      howLong: "No verified official timeline exists for grievance resolution, so there's no countdown here.",
+      source: { docId: CHARTER, title: "Citizen's Charter — Grievance Redressal section (MEA)" },
+      mustNot: 'That the informal follow-up "should" have worked by a given point.',
+    },
+    {
+      id: 'state-4',
+      condition: a => a.q1 === 'adverse' && a.q2 === 'no_followup',
+      rec: 'FOLLOW_UP',
+      state: '4',
+      label: 'Adverse or unclear outcome',
+      dependency: 'Applicant + Passport Office',
+      explanation: "Something you saw on the portal reads as negative or unclear. NextMove can't tell you why (only the Passport Office can), but the verified next step is to ask them directly.",
+      whatShort: 'Contact the Passport Office',
+      whatToDo: 'Contact the Passport Office to understand the reason, clarify if required, and request re-verification if applicable.',
+      where: PO,
+      need: 'Your application reference number.',
+      howLong: "No official timeline is published for clarifying an adverse status, and NextMove won't guess one.",
+      source: {
+        docId: PV_FAQ,
+        title: 'Official FAQ — passportindia.gov.in',
+        quote: 'Verbatim official guidance for adverse/unclear status.',
+      },
+      mustNot: 'The cause of the adverse finding, or that re-verification will succeed.',
+    },
+    {
+      id: 'state-3',
+      condition: a => a.q1 === 'verified_no_progress' && a.q2 === 'no_followup',
+      rec: 'FOLLOW_UP',
+      state: '3',
+      label: 'Verified, waiting on processing',
+      dependency: 'Passport Office',
+      explanation: 'You believe your verification is complete, but nothing has changed since. The verified next step is to confirm that status and prompt a follow-up on processing.',
+      whatShort: 'Follow up with the Passport Office',
+      whatToDo: 'Follow up with the Passport Office to confirm your verification is logged and ask about processing status.',
+      where: PO,
+      need: 'Your application reference number, and roughly when you believe verification was completed.',
+      howLong: "No official timeline is published for this processing step, and NextMove won't guess one.",
+      source: {
+        docId: PV_FAQ,
+        title: 'Official FAQ — passportindia.gov.in',
+        quote: 'General stuck-case guidance — no state-specific source found.',
+      },
+      mustNot: 'That "verification complete" is a confirmed system fact rather than your own belief.',
+    },
+    {
+      id: 'state-2',
+      condition: a => a.q1 === 'contacted_incomplete' && a.q2 === 'no_followup',
+      rec: 'FOLLOW_UP',
+      state: '2',
+      label: 'Verification in progress',
+      dependency: 'Police verification process',
+      explanation: "Police have contacted you, but verification doesn't appear complete yet. It's worth checking whether anything further is needed from you.",
+      whatShort: 'Check what else is needed from you',
+      whatToDo: 'Check with the Passport Office or local police whether anything more is required from you to complete verification.',
+      where: PO,
+      need: 'Your application reference number.',
+      howLong: "No official timeline is published for completing verification, and NextMove won't guess one.",
+      source: {
+        docId: PV_FAQ,
+        title: 'Official FAQ — passportindia.gov.in',
+        quote: 'General stuck-case guidance — no state-specific source found.',
+      },
+      mustNot: 'That contact implies a pending task for you, or that verification is close to finishing.',
+    },
+    {
+      id: 'state-1',
+      condition: a => a.q1 === 'no_contact' && a.q2 === 'no_followup',
+      rec: 'WAIT',
+      state: '1',
+      label: 'Waiting for police verification to begin',
+      dependency: 'Police verification process',
+      explanation: "This is the expected current stage: police verification hasn't started yet, and that's normal, not a sign your case is stuck. The official Citizen's Charter explicitly excludes this period from every service-timeline commitment, so there's no 'on track / overdue' line to measure against.",
+      whatShort: 'Nothing to do right now',
+      whatToDo: "Nothing is required from you right now. If you'd like, you can follow up anyway as a secondary, optional step.",
+      where: PO,
+      need: 'Nothing. This step needs no action or documents from you yet.',
+      howLong: "There is officially no clock running yet. The Citizen's Charter explicitly excludes police verification from every service timeline, so there's nothing to count down.",
+      expectNext: 'Police verification typically means a visit or a call from your local police station to confirm your identity and address. Keep a government photo ID, an address proof, and your ARN handy at home. Anyone genuinely doing verification will reference your application, and verification never requires paying anyone. (General guidance, not an official checklist.)',
+      source: {
+        docId: CHARTER,
+        title: "Citizen's Charter (MEA)",
+        quote: 'Police-verification period is explicitly excluded from every stated service timeline.',
+      },
+      mustNot: 'Any day count as "on track" or "overdue"; that PV is "supposed" to take a defined number of days.',
+    },
+  ],
+  fallback: {
+    rec: 'UNCLASSIFIED',
+    state: '6',
+    label: 'Status unclear',
+    dependency: 'Unknown',
+    explanation: "NextMove doesn't have enough evidence from your answers to safely place your case in a known stage. Rather than guess, it's safest to check your status directly.",
+    whatShort: 'Check your status directly',
+    whatToDo: 'Check your application status directly through the official portal, or call the helpline.',
+    where: { label: 'Passport Seva status portal', url: 'https://www.passportindia.gov.in', phone: '1800-258-1800' },
+    need: 'Your application reference number.',
+    source: { docId: null, title: SAFETY_NET_TITLE },
+    mustNot: 'Any WAIT / FOLLOW UP / ESCALATE claim.',
+  },
+}
+
+/** Stage·rung composite labels: the passport ladder's short stage names.
+ *  Consumed by C1's decorateStageRung via the passport engine's `decorate`.
+ *  No 'not_sure' entry on purpose — an unknown stage never decorates. */
+export const PASSPORT_STAGE_SHORT: Record<string, string> = {
+  no_contact: 'Awaiting verification',
+  contacted_incomplete: 'Verification in progress',
+  verified_no_progress: 'Verified, processing quiet',
+  adverse: 'Adverse outcome',
+}
+
+/** A genuinely changed Q1 clears the Q1-dependent Q2 answer (PRD FR-22/AC-8),
+ *  so a stale follow-up answer from a different case-stage can never carry
+ *  into a new diagnosis. Outcome keys are deliberately NOT dependents. */
+export const PASSPORT_DEPS: DependentKeys = { q1: ['q2'] }

@@ -25,7 +25,7 @@ const rule = (
   whatToDo: 'Toy what to do.',
   where: { label: 'Toy channel' },
   need: 'Toy need.',
-  source: { title: 'Toy source' },
+  source: { docId: null, title: 'Toy source' },
   ...extra,
 })
 
@@ -39,7 +39,7 @@ const toyFallback = {
   whatToDo: 'Toy check status.',
   where: { label: 'Toy portal' },
   need: 'Toy need.',
-  source: { title: 'Toy safety net' },
+  source: { docId: null, title: 'Toy safety net' },
 }
 
 describe('integration: diagnose() composed with decorateStageRung', () => {

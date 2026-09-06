@@ -14,7 +14,7 @@ const base = (over: Partial<Diagnosis>): Diagnosis => ({
   whatToDo: 'Toy what to do.',
   where: { label: 'Toy channel' },
   need: 'Toy need.',
-  source: { title: 'Toy source' },
+  source: { docId: null, title: 'Toy source' },
   ...over,
 })
 
