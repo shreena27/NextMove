@@ -1,8 +1,23 @@
 import { describe, it, expect } from 'vitest'
 import { initialSession, sessionReducer as r } from './session'
+import type { SessionState } from './session'
+import type { Casefile } from '../domain/casefile'
+import type { CheckinOption } from '../domain/checkinOptions'
 
 const seq = (...actions: Parameters<typeof r>[1][]) =>
   actions.reduce((s, a) => r(s, a), initialSession)
+
+// Minimal-but-real fixtures for the C5 fields — every field a Casefile /
+// CheckinOption requires, nothing invented beyond what those interfaces
+// declare (see casefile.ts / checkinOptions.ts).
+const FIXTURE_CASE: Casefile = {
+  engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+  answers: { q1: 'adverse' }, prepChecks: {}, savedAt: 1_725_000_000_000,
+  stateLabel: 'Escalate', rec: 'WAIT', whatShort: null,
+  stepsTotal: 0, stepsDone: 0, sirPhaseId: null,
+  id: 'c1', outcome: 'still_open', lastCheck: null, remindAt: null, log: [],
+}
+const FIXTURE_OPTION: CheckinOption = { k: 'event', label: 'A BLO visited or contacted me' }
 
 describe('navigation', () => {
   it('pushes history and lands on the new screen', () => {
@@ -124,10 +139,125 @@ describe('restart — AC-9 + PRD §15 inline confirmation', () => {
   })
 })
 
-describe('C4 scope exclusion 2', () => {
-  it('C4 added no prep* field to SessionState — step ticks and drafts stay component-local', () => {
+describe('C5 SessionState field list (was the C4 scope-exclusion pin — C4 said no prep* fields, C5 is where they land)', () => {
+  it('has exactly the fields this chunk ships — no fewer, no silent extra', () => {
     expect(Object.keys(initialSession).sort()).toEqual([
-      'answers', 'history', 'recoveryText', 'restartConfirm', 'screen', 'trustOpen', 'voterEntryExplain',
+      'activeCaseId', 'answers', 'ciAccepted', 'ciConsecutive', 'ciJustUpdated',
+      'ciPending', 'ciPendingIdx', 'ciReassure', 'ciSnapshot', 'ciStage',
+      'history', 'logOpen', 'pendingSave', 'phaseDrift', 'prepChecks', 'prepDraft',
+      'recoveryText', 'reminderCopied', 'removeConfirm', 'restartConfirm',
+      'savedCases', 'screen', 'trustOpen', 'voterEntryExplain', 'workingCase',
     ])
+  })
+})
+
+describe('RESTART preserves the persisted slice (Issue #7 / design note 3)', () => {
+  it('preserves savedCases and resets every other field to initialSession, field by field', () => {
+    const savedCases = [FIXTURE_CASE]
+    const dirty: SessionState = {
+      screen: 'passport-diagnosis',
+      history: ['home', 'passport-q1'],
+      answers: { q1: 'adverse' },
+      restartConfirm: true,
+      trustOpen: true,
+      recoveryText: 'pasted text',
+      voterEntryExplain: true,
+      savedCases,
+      workingCase: FIXTURE_CASE,
+      activeCaseId: 'c1',
+      prepChecks: { 0: true },
+      prepDraft: 'a draft',
+      ciPending: FIXTURE_OPTION,
+      ciPendingIdx: 1,
+      ciStage: 'valence',
+      ciReassure: true,
+      ciSnapshot: { answers: {}, prepChecks: {}, caseJson: '{}' },
+      ciJustUpdated: true,
+      ciConsecutive: true,
+      ciAccepted: true,
+      logOpen: { c1: true },
+      removeConfirm: 'c1',
+      reminderCopied: true,
+      phaseDrift: true,
+      pendingSave: { engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove' },
+    }
+
+    const s = r(dirty, { type: 'RESTART' })
+
+    expect(s).toEqual({ ...initialSession, savedCases })
+    expect(s.savedCases).toBe(savedCases) // the SAME array, not a copy
+    for (const key of Object.keys(initialSession) as (keyof SessionState)[]) {
+      if (key === 'savedCases') continue
+      expect(s[key], `RESTART must reset ${key} to initialSession's value`).toEqual(initialSession[key])
+    }
+  })
+})
+
+describe('BACK to Home preserves the persisted slice (design note 4)', () => {
+  it('preserves savedCases when the previous screen is home — the single most likely place to silently wipe a citizen\'s saved casefiles', () => {
+    const savedCases = [FIXTURE_CASE]
+    const dirty: SessionState = {
+      ...initialSession,
+      savedCases,
+      history: ['home'],
+      screen: 'passport-q1',
+      answers: { q1: 'adverse' },
+      trustOpen: true,
+    }
+
+    const s = r(dirty, { type: 'BACK' })
+
+    expect(s.screen).toBe('home')
+    expect(s.savedCases).toBe(savedCases) // the SAME array, not a copy
+    expect(s).toEqual({ ...initialSession, savedCases })
+  })
+})
+
+describe('NAVIGATE clears removeConfirm (design note 5)', () => {
+  it('clears an armed destructive remove-confirm on any navigation — without this, a citizen who arms it, navigates away, and returns finds a live delete one stray tap from firing', () => {
+    const armed: SessionState = { ...initialSession, removeConfirm: 'c123' }
+    const s = r(armed, { type: 'NAVIGATE', screen: 'passport-q1' })
+    expect(s.removeConfirm).toBeNull()
+  })
+})
+
+describe('ANSWER resets prepChecks/prepDraft unconditionally (answers.ts design note, design note 6)', () => {
+  it('clears prepChecks and prepDraft even when the written value is unchanged — never gated on `changed` — while answers stays the SAME object reference (C1\'s strict no-op is unchanged)', () => {
+    const seeded: SessionState = {
+      ...initialSession,
+      answers: { q1: 'adverse' },
+      prepChecks: { 0: true, 1: true },
+      prepDraft: 'in-progress draft',
+    }
+
+    const s = r(seeded, { type: 'ANSWER', service: 'passport', key: 'q1', value: 'adverse' })
+
+    expect(s.prepChecks).toEqual({})
+    expect(s.prepDraft).toBeNull()
+    expect(s.answers).toBe(seeded.answers)
+  })
+})
+
+describe('C5 ScreenId additions', () => {
+  it('checkin / dead-end / case-closed / save-done type-check in NAVIGATE', () => {
+    const s1 = seq({ type: 'NAVIGATE', screen: 'checkin' })
+    const s2 = seq({ type: 'NAVIGATE', screen: 'dead-end' })
+    const s3 = seq({ type: 'NAVIGATE', screen: 'case-closed' })
+    const s4 = seq({ type: 'NAVIGATE', screen: 'save-done' })
+    expect([s1.screen, s2.screen, s3.screen, s4.screen])
+      .toEqual(['checkin', 'dead-end', 'case-closed', 'save-done'])
+  })
+
+  it('C7/C6/C8 screen ids are NOT part of this union yet (negative type-check)', () => {
+    // @ts-expect-error 'save-case' is C7's — not on ScreenId until then
+    r(initialSession, { type: 'NAVIGATE', screen: 'save-case' })
+    // @ts-expect-error 'save-otp' is C7's — not on ScreenId until then
+    r(initialSession, { type: 'NAVIGATE', screen: 'save-otp' })
+    // @ts-expect-error 'save-name' is C7's — not on ScreenId until then
+    r(initialSession, { type: 'NAVIGATE', screen: 'save-name' })
+    // @ts-expect-error 'sir-reverifying' is C6's — not on ScreenId until then
+    r(initialSession, { type: 'NAVIGATE', screen: 'sir-reverifying' })
+    // @ts-expect-error 'interp-confirm' is C8's — not on ScreenId until then
+    r(initialSession, { type: 'NAVIGATE', screen: 'interp-confirm' })
   })
 })
