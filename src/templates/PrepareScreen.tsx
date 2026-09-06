@@ -74,18 +74,24 @@
  *  fields of the same names (`session.ts`), written through via
  *  `TOGGLE_PREP_STEP`/`SET_PREP_DRAFT`. This component still never reaches
  *  into the session itself: it takes `prepChecks`/`prepDraft` and the two
- *  matching callback props (`onTogglePrepStep`/`onSetPrepDraft`), exactly
- *  the same controlled-prop shape `DiagnosisScreen`'s `trustOpen`/
- *  `onToggleTrust` already uses — a parent (App.tsx, Task 13) supplies the
- *  value and re-renders with the reducer's new one after every dispatch.
- *  Both are OPTIONAL, with the value prop's own presence (not the
- *  callback's) deciding controlled-ness: when a caller does not pass
- *  `prepChecks`/`prepDraft` at all — every call site in this file's own
- *  test suite that predates this task, and App.tsx's three call sites
- *  until Task 13 wires them — this component falls back to owning the
- *  exact same local state C4 built, so none of that existing behaviour
- *  changes. `copied` is untouched either way (design note 2c above): a
- *  2200ms visual flash was never session state and still is not. */
+ *  matching callback props (`onTogglePrepStep`/`onSetPrepDraft`) and, when
+ *  a caller supplies them, is driven entirely by them — a parent (App.tsx,
+ *  Task 13) supplies the value and re-renders with the reducer's new one
+ *  after every dispatch. UNLIKE `DiagnosisScreen`'s `trustOpen`/
+ *  `onToggleTrust` (required, no fallback — `DiagnosisScreen.tsx:58-59`),
+ *  these four are all OPTIONAL, with the value prop's own presence (not
+ *  the callback's) deciding controlled-ness: when a caller does not pass
+ *  `prepChecks`/`prepDraft` at all — every one of the ~46 render calls in
+ *  this file's own test suite that predates this task, none of which this
+ *  task's brief permitted rewriting, and App.tsx's three call sites until
+ *  Task 13 wires them — this component falls back to owning the exact
+ *  same local state C4 built, so none of that existing behaviour changes.
+ *  This is an INTERIM shape, not a pattern to copy elsewhere: Task 13 is
+ *  expected to finish wiring App.tsx and then remove the local-state
+ *  fallback entirely, at which point these props should become required
+ *  like `DiagnosisScreen`'s own. `copied` is untouched either way (design
+ *  note 2c above): a 2200ms visual flash was never session state and
+ *  still is not. */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Diagnosis } from '../domain/types'
 import type { Casefile } from '../domain/casefile'

@@ -495,9 +495,10 @@ h2.headline{
    The user reviews, edits, copies, and submits the draft themselves —
    NextMove never files anything. Steps are a tick-off checklist
    (satisfying, visible progress — persisted in the session reducer as of
-   Task 12, so it survives navigating away and back; C4 built this
-   styling against a prototype-parity local-only checklist, which is why
-   this comment used to say otherwise). */
+   Task 12, and will survive navigating away and back once Task 13 wires
+   prepChecks/prepDraft/the two callback props into App.tsx; until then,
+   PrepareScreen's local-state fallback is what real usage takes, and it
+   still resets on unmount exactly like before this task). */
 .prep-card{
   background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
   box-shadow:var(--shadow-float); padding:20px 22px; margin-bottom:26px;
