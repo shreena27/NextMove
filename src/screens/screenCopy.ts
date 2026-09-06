@@ -182,6 +182,54 @@ export const UI = {
       "The carry list combines this case's verified requirements with common-sense basics. The tips are general practical guidance for any government office, not official rules.",
     doneBackHome: 'Done, back to Home',
   },
+  /** The casefile screen's own "Prepare steps" progress block (C5, Task 8).
+   *  Transcribed from the prototype's `case-progress` markup
+   *  (design/nextmove-v1-prototype.html, 2916-2919, tag v1-design-lock-2). */
+  casefile: {
+    prepareStepsK: 'Prepare steps',
+    prepareCount: '{done} of {total} done', // TEMPLATE
+  },
+  /** The compact Home casefile card (C5, Task 8) — port of `caseCard`
+   *  (prototype 3117-3135). `next`/`steps`/`lastUpdate`/`checkBack` are
+   *  TEMPLATES; `closedMark` is the mini closed stamp's literal text
+   *  (3127). */
+  card: {
+    savedPrefix: 'Saved {date}', // TEMPLATE
+    closedGotIt: 'Closed — got it',
+    closedUnresolved: 'Closed — unresolved',
+    next: 'Next: {what}', // TEMPLATE — the "→ " prefix is the CSS ::before, not part of this string.
+    steps: '{done} of {total} steps done', // TEMPLATE
+    lastUpdate: 'last update {ago}', // TEMPLATE
+    checkBack: 'check back {date}', // TEMPLATE
+    closedMark: 'CLOSED',
+  },
+  /** The journey log (C5, Task 8) — port of `renderLog` (prototype
+   *  2807-2829). `collapsedOne`/`collapsedMany` are two SEPARATE templates
+   *  (not one built by string concatenation) so the " – {to}" half only
+   *  ever exists in the plural form's own registered copy — see
+   *  JourneyLog.tsx's own header note. */
+  log: {
+    showAll: 'Show all {n} entries', // TEMPLATE
+    collapsedOne: 'Checked {n} time, {from} — no change reported', // TEMPLATE
+    collapsedMany: 'Checked {n} times, {from} – {to} — no change reported', // TEMPLATE
+    whoReported: 'You reported:',
+    whoDiagnosed: 'NextMove:',
+    whoOther: '—',
+    note: 'Your journey record, not an official document.',
+  },
+  /** `fmtDay`/`fmtRemind`/`daysAgo`'s (src/ui/dates.ts) own chrome —
+   *  `daysAgo`'s three branches (prototype 2739). `daysAgo` renders, at
+   *  runtime, a real day-count ("3 days ago"); the registered TEMPLATE
+   *  carries no digit, so the numeric content-safety scan (numericFindings)
+   *  never sees one to flag — this is arithmetic over the citizen's own
+   *  journey log, not a claim about a government process, the same
+   *  reasoning ui:trust.verifiedOn's own comment gives. No sources/
+   *  manifest.json allowlist entry is needed or wanted here. */
+  time: {
+    today: 'today',
+    yesterday: 'yesterday',
+    daysAgo: '{n} days ago', // TEMPLATE
+  },
 } as const
 
 /** Passport-specific authored copy: the guardrail/out-of-scope/Q1/Q2/

@@ -21,6 +21,8 @@ import { PREP } from '../playbooks/prep'
 import { diagnose } from '../domain/engine'
 import { passportEngine, sirEngine } from '../playbooks/engines'
 import { initialSession, type SessionState } from '../session/session'
+import { caseSnapshot, LOG_COPY, type Casefile } from '../domain/casefile'
+import { fmtDay } from '../ui/dates'
 import * as LABELS from './labels'
 import { SCREEN_COPY, UI, PASSPORT_COPY, type CopyLocation } from './screenCopy'
 import { INTERACTION_GATED } from './interactionGated'
@@ -39,6 +41,9 @@ import { NextMoveScreen } from '../templates/NextMoveScreen'
 import { PrepareScreen } from '../templates/PrepareScreen'
 import { SOURCES_VERIFIED } from '../templates/TrustDisclosure'
 import { LADDER_DEFS, LADDER_TAG } from '../templates/ladder'
+import { CaseProgress } from '../templates/CaseProgress'
+import { JourneyLog } from '../templates/JourneyLog'
+import { CaseCard } from '../templates/CaseCard'
 
 const noop = () => {}
 
@@ -253,6 +258,48 @@ const unclassifiedDiagnosis = diagnose(passportEngine, { q1: 'not_sure' })
 const helplineDiagnosis = diagnose(passportEngine, { q1: 'adverse', q2: 'informal' })          // state-5a
 const noticeDiagnosis = diagnose(sirEngine, { sirState: 'delhi', sirQ1: 'notice' })             // s-notice
 
+// C5 Task 8 fixtures: CaseProgress/JourneyLog/CaseCard reuse helplineDiagnosis
+// (state-5a — a real whatShort and a real PREP['state-5a'] plan), so their
+// own new ui: entries get swept off REAL data, not a synthetic case.
+const CASE_NOW = 1_760_000_000_000
+const CASE_DAY = 86400000
+const caseSnap = caseSnapshot(
+  'passport', UI.serviceLabel.passport, 'passport-nextmove', helplineDiagnosis, { q1: 'adverse', q2: 'informal' }, {}, CASE_NOW,
+)
+const openCase: Casefile = {
+  ...caseSnap, id: 'ui-case-open', outcome: 'still_open',
+  lastCheck: CASE_NOW, remindAt: '2026-10-12', log: [],
+}
+const yesterdayCase: Casefile = { ...openCase, id: 'ui-case-yesterday', lastCheck: CASE_NOW - CASE_DAY, remindAt: null }
+const daysAgoCase: Casefile = { ...openCase, id: 'ui-case-days-ago', lastCheck: CASE_NOW - 3 * CASE_DAY, remindAt: null }
+const closedGotItCase: Casefile = {
+  ...caseSnap, id: 'ui-case-closed-got-it', outcome: 'deliverable_received',
+  lastCheck: null, remindAt: null, closedAt: CASE_NOW, log: [],
+}
+const closedUnresolvedCase: Casefile = {
+  ...caseSnap, id: 'ui-case-closed-unresolved', outcome: 'closed_unresolved',
+  lastCheck: null, remindAt: null, closedAt: CASE_NOW, log: [],
+}
+
+const journeyLogA: Casefile = {
+  ...caseSnap, id: 'ui-log-a', outcome: 'still_open', lastCheck: null, remindAt: null,
+  log: [
+    { t: CASE_NOW, kind: 'diagnosed', text: 'Diagnosed A' },
+    { t: CASE_NOW + CASE_DAY, kind: 'reported', text: 'Reported A' },
+    { t: CASE_NOW + 2 * CASE_DAY, kind: 'checked', text: LOG_COPY.checkedNoChange, noChange: true },
+    { t: CASE_NOW + 3 * CASE_DAY, kind: 'checked', text: LOG_COPY.checkedNoChange, noChange: true },
+    { t: CASE_NOW + 4 * CASE_DAY, kind: 'checked', text: LOG_COPY.checkedNoChange, noChange: true },
+    { t: CASE_NOW + 5 * CASE_DAY, kind: 'checked', text: LOG_COPY.elseReDiagnose },
+  ],
+}
+const journeyLogB: Casefile = {
+  ...caseSnap, id: 'ui-log-b', outcome: 'still_open', lastCheck: null, remindAt: null,
+  log: [
+    { t: CASE_NOW, kind: 'diagnosed', text: 'Diagnosed B' },
+    { t: CASE_NOW + CASE_DAY, kind: 'checked', text: LOG_COPY.checkedNoChange, noChange: true },
+  ],
+}
+
 function PassportBucketScreens() {
   return (
     <>
@@ -358,6 +405,19 @@ function UiChrome() {
         serviceLabel="X" engineKey="sir" d={noticeDiagnosis} prep={PREP['s-notice']}
         topbar={topbar(true, true)}
       />
+      {/* C5 Task 8: CaseProgress (prepareStepsK, prepareCount), JourneyLog
+          (whoReported/whoDiagnosed/whoOther/note, showAll, collapsedOne/
+          Many — split across two mounts, see the fixtures' own comment) and
+          CaseCard (savedPrefix/closedGotIt/closedUnresolved/next/steps/
+          lastUpdate/checkBack/closedMark, time.today/yesterday/daysAgo). */}
+      <CaseProgress prep={PREP['state-5a']} prepChecks={{ 0: true }} />
+      <JourneyLog case={journeyLogA} logOpen={{}} onShowAll={noop} />
+      <JourneyLog case={journeyLogB} logOpen={{}} onShowAll={noop} />
+      <CaseCard case={openCase} onOpen={noop} now={CASE_NOW} />
+      <CaseCard case={yesterdayCase} onOpen={noop} now={CASE_NOW} />
+      <CaseCard case={daysAgoCase} onOpen={noop} now={CASE_NOW} />
+      <CaseCard case={closedGotItCase} onOpen={noop} now={CASE_NOW} />
+      <CaseCard case={closedUnresolvedCase} onOpen={noop} now={CASE_NOW} />
     </>
   )
 }
@@ -376,6 +436,21 @@ const CAPTION_TEMPLATES = new Set([
   'ui:prepare.copiedOne', // interpolates the blank count AT THE MOMENT OF COPYING (singular) for {n}
   'ui:prepare.copiedMany', // interpolates the blank count AT THE MOMENT OF COPYING (plural) for {n}
   'ui:prepare.stepsCount', // interpolates the tick count for {done} and the step total for {total}
+  // C5 Task 8 (CaseProgress/JourneyLog/CaseCard). Each interpolates a
+  // number computed from the citizen's OWN saved casefile at render time —
+  // day counts and calendar dates over their own journey log, not a claim
+  // about a government process (the same category ui:trust.verifiedOn's
+  // own comment already carves out). See dates.ts / CaseCard.tsx / JourneyLog.tsx.
+  'ui:casefile.prepareCount', // interpolates the tick count for {done} and the plan's step total for {total}
+  'ui:card.savedPrefix', // interpolates fmtDay(savedAt) for {date}
+  'ui:card.next', // interpolates the diagnosis's own whatShort for {what}
+  'ui:card.steps', // interpolates the tick count for {done} and the plan's step total for {total}
+  'ui:card.lastUpdate', // interpolates daysAgo(lastCheck, now) for {ago}
+  'ui:card.checkBack', // interpolates fmtRemind(remindAt) for {date}
+  'ui:log.showAll', // interpolates the collapsed entry count for {n}
+  'ui:log.collapsedOne', // interpolates the run's day count (always 1) for {n} and fmtDay(from) for {from}
+  'ui:log.collapsedMany', // interpolates the run's day count for {n} and fmtDay(from)/fmtDay(to) for {from}/{to}
+  'ui:time.daysAgo', // interpolates the live day count for {n}
 ])
 
 // `INTERACTION_GATED` itself (design note 4a: entries no STATIC mount can
@@ -447,6 +522,24 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     'ui:prepare.stepsCount': UI.prepare.stepsCount.replace('{done}', '0').replace(
       '{total}', String(PREP['state-5a'].steps.length),
     ),
+    // C5 Task 8 — derived from the SAME fixtures the UiChrome mounts above
+    // use (openCase/journeyLogA/journeyLogB/PREP['state-5a']), so these
+    // strings cannot drift from what actually renders.
+    'ui:casefile.prepareCount': UI.casefile.prepareCount.replace('{done}', '1').replace(
+      '{total}', String(PREP['state-5a'].steps.length),
+    ),
+    'ui:card.savedPrefix': UI.card.savedPrefix.replace('{date}', fmtDay(CASE_NOW)),
+    'ui:card.next': UI.card.next.replace('{what}', helplineDiagnosis.whatShort),
+    'ui:card.steps': UI.card.steps.replace('{done}', String(openCase.stepsDone)).replace(
+      '{total}', String(openCase.stepsTotal),
+    ),
+    'ui:card.lastUpdate': UI.card.lastUpdate.replace('{ago}', UI.time.today),
+    'ui:card.checkBack': UI.card.checkBack.replace('{date}', '12 Oct'),
+    'ui:log.showAll': UI.log.showAll.replace('{n}', '4'),
+    'ui:log.collapsedOne': UI.log.collapsedOne.replace('{n}', '1').replace('{from}', fmtDay(CASE_NOW + CASE_DAY)),
+    'ui:log.collapsedMany': UI.log.collapsedMany.replace('{n}', '3')
+      .replace('{from}', fmtDay(CASE_NOW + 2 * CASE_DAY)).replace('{to}', fmtDay(CASE_NOW + 4 * CASE_DAY)),
+    'ui:time.daysAgo': UI.time.daysAgo.replace('{n}', '3'),
   }
 
   it('CAPTION_SUBSTITUTIONS covers exactly CAPTION_TEMPLATES, and each substituted form actually renders', async () => {
@@ -493,6 +586,22 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
       if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
       else delete (navigator as { clipboard?: unknown }).clipboard
     }
+
+    // C5 Task 8 — all reachable at FIRST RENDER, no interaction needed
+    // (CaseProgress/JourneyLog/CaseCard are static, prop-driven views).
+    // Reuses UiChrome's own mounts (the fixtures above) rather than
+    // duplicating them, so there is only one place these fixtures live.
+    const { container: uiContainer } = render(UiChrome())
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:casefile.prepareCount'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:card.savedPrefix'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:card.next'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:card.steps'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:card.lastUpdate'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:card.checkBack'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:log.showAll'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:log.collapsedOne'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:log.collapsedMany'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:time.daysAgo'])
   })
 
   // `INTERACTION_GATED` needs no membership pin here (fix-round review
