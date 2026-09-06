@@ -6,10 +6,29 @@ import { sirPlaybook, sirCopyExtras, SIR_STATES } from './sirPlaybook'
 import { diagnose } from '../domain/engine'
 import { applyEvent } from '../domain/answers'
 import { orphanFindings } from './guardrails/citations'
-import { copyStrings, staleExemptionFindings } from './guardrails/contentSafety'
+import { copyStrings, staleExemptionFindings, extraCopy, type CopyString } from './guardrails/contentSafety'
 import { guardrailFindings } from './guardrails/suite'
+import { LADDER_DEFS } from '../templates/ladder'
 
 const ALL = [passportPlaybook, voterPlaybook, sirPlaybook]
+
+// C3 Task 9 review fix round 1: LADDER_DEFS' title/caption/rungs are now
+// swept by screenCopy.test.tsx's guardrail assertions (design note 5 names
+// them an unconditional scan input), which added two SAFETY_EXEMPTIONS
+// entries for the two captions' shared "as far as your case needs" false
+// positive on the causal pattern (same shape as sir:s-notice.whatToDo,
+// above). Those two `at` locations must appear here too, or the
+// comprehensive "every exemption still earns its place" check below would
+// flag them as stale simply because THIS test's own copy-string universe
+// predates ladder.ts — not because the exemptions are actually dead.
+function ladderDefStrings(bucket: 'passport' | 'voter'): CopyString[] {
+  const def = LADDER_DEFS[bucket]
+  return [
+    extraCopy(`${bucket}:LADDER_DEFS.${bucket}.title`, def.title),
+    extraCopy(`${bucket}:LADDER_DEFS.${bucket}.caption`, def.caption),
+    ...def.rungs.map((r, i) => extraCopy(`${bucket}:LADDER_DEFS.${bucket}.rungs[${i}]`, r)),
+  ]
+}
 
 describe('engine wiring', () => {
   it('registers one engine per service, keyed for routing and storage', () => {
@@ -154,7 +173,10 @@ describe('cross-playbook guardrail sweep', () => {
   })
 
   it('every safety exemption still earns its place across all three playbooks', () => {
-    const all = ALL.flatMap(p => copyStrings(p)).concat(sirCopyExtras())
+    const all = ALL.flatMap(p => copyStrings(p))
+      .concat(sirCopyExtras())
+      .concat(ladderDefStrings('passport'))
+      .concat(ladderDefStrings('voter'))
     expect(staleExemptionFindings(all)).toEqual([])
   })
 

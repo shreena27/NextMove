@@ -92,6 +92,27 @@ export const SAFETY_EXEMPTIONS: { at: string; pattern: BannedPatternId; reason: 
     pattern: 'deadline-plural',
     reason: 'Refers to its OWN verified, sourced 15-day appeal window as "one of the few sourced numeric deadlines in this playbook" — the opposite of an invented deadline. The 15-day interval itself is separately validated by numericFindings against sourced_intervals; "deadlines" here is meta-commentary on how few of this playbook\'s claims are numeric deadlines at all, not an additional unsourced claim (manifest s-final-absent, CEO Delhi FAQ Q32).',
   },
+  // C3 Task 9 review fix round 1 (Important): design note 5 names
+  // LADDER_DEFS' titles/captions/rung-labels as an unconditional guardrail-
+  // sweep input, so screenCopy.test.tsx now feeds LADDER_DEFS through this
+  // scan for the first time since Task 8 shipped it — neither ladder.ts nor
+  // ladder.test.ts ran it through contentSafety before. Both captions'
+  // "as far as your case needs" trips the causal pattern the same way
+  // sir:s-notice.whatToDo's "as your notice directs" does, above: it
+  // describes how much of the ladder a citizen needs to climb, deferring to
+  // their own situation, not asserting a cause for anything. LADDER_DEFS
+  // itself is untouched (rewording locked Task 8 copy to dodge a scanner is
+  // not the fix); this exemption is.
+  {
+    at: 'passport:LADDER_DEFS.passport.caption',
+    pattern: 'causal',
+    reason: 'Same false positive as sir:s-notice.whatToDo: "...Used only as far as your case needs..." describes how much of the ladder applies to this citizen, not a cause.',
+  },
+  {
+    at: 'voter:LADDER_DEFS.voter.caption',
+    pattern: 'causal',
+    reason: 'Same false positive as passport:LADDER_DEFS.passport.caption and sir:s-notice.whatToDo: "...Used only as far as your case needs" describes how much of the ladder applies to this citizen, not a cause.',
+  },
 ]
 
 /** Action nouns belonging to an SIR phase that has already ended. Scanned

@@ -1,24 +1,459 @@
-@import "tailwindcss";
+/** LIFTED VERBATIM from commit 91ff7a1 (v1-design-lock-2), design/nextmove-v1-
+ *  prototype.html — the <style> block's lines 105-144 (:root token block,
+ *  including its closing brace at 144, one past the brief's stated 105-143 —
+ *  the 105-143 range as literally stated omits the block's closing `}`,
+ *  which would leave every subsequent rule nested inside :root; see Task 1
+ *  report), 145-531 (reset through .inline-explain-actions button), and
+ *  996-1008 (#app.settled animation suppression + reduced-motion collapse).
+ *  Every value, comment, keyframe, nth-child stagger and ::after marker
+ *  stroke below is transcribed, not re-authored — see src/ui/tokens.ts and
+ *  tokens.test.ts for why (no Tailwind import, no apply-directives, no
+ *  preflight reset).
+ *
+ *  Deliberately NOT lifted (later chunks own them): 532-650 (.prep-*,
+ *  .channel-*, .visit-* -> C4), 651-800 (.btn-ghost, auth, .saved-*,
+ *  .home-cases, .case-*, .cp-* -> C5/C7), 801-826 (the ladder -> C5),
+ *  827-995 (.update-mod, .ci-*, .journey, .describe-*, .read-*,
+ *  .fill-review -> C5/C8). */
 
-:root {
-  color-scheme: light;
+:root{
+  --paper:#FAF7EF;
+  --card:#FFFFFF;
+  --ink:#3D241C;
+  --ink-soft:#5C5044; /* darkened from #6E6152 (5.6:1) — subtitles/support tier read faint; ~7:1 on paper keeps AA headroom without flattening the ink hierarchy */
+  /* darkened from #7A7264 (4.44:1 on paper — an AA fail on the small
+     text this token carries) to 4.77:1, kept a step lighter than
+     ink-soft so the two secondary grays stay distinguishable */
+  --ink-faint:#756D5F;
+  --line:#EAE4D6;
+  --line-strong:#DCD4C2;
+  --butter:#F5D848;
+  --butter-deep:#E8C51F;
+  /* butter-soft repositioned off the amber axis (2026-09-05 polish):
+     the old #FBF0C4 was visually identical to --follow-bg #FBEFC9,
+     putting the FOLLOW UP status tint on decorative surfaces — the
+     exact defect the reserved-status-colors rule forbids. #FDF8E3 is
+     measurably whiter/lighter; production adds a ΔE floor test between
+     every non-status token and all four status fills. */
+  --butter-soft:#FDF8E3;
+  --sq-green:#2FA866;
+  /* completion green (user request: done = green). Deliberately the
+     marker-green family, NOT the reserved WAIT status pair — status
+     colors stay structurally reserved for classification. */
+  --done:#2FA866;
+  --done-bg:#DFF3E6;
+  --done-deep:#20714A;
+  --sq-pink:#F0679E;
+  --sq-blue:#5FA8E8;
+  --wait:#1F6B3D;
+  --wait-bg:#D9F2DF;
+  --follow:#8A5A0F;
+  --follow-bg:#FBEFC9;
+  --escalate:#9E2F1F;
+  --escalate-bg:#FBDFD6;
+  --unclassified:#6B6257;
+  --unclassified-bg:#EFEAE0;
+  --shadow-float:0 10px 30px rgba(61,36,28,0.08), 0 2px 6px rgba(61,36,28,0.05);
+  --ease:cubic-bezier(0.16,1,0.3,1);
+}
+*{box-sizing:border-box;}
+::selection{background:var(--butter); color:var(--ink);}
+html{scrollbar-color:var(--line-strong) var(--paper);}
+body{
+  margin:0; background-color:var(--paper); color:var(--ink);
+  /* the drafting-grid paper — the casefile's own material */
+  background-image:
+    linear-gradient(to right, rgba(61,36,28,0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(61,36,28,0.035) 1px, transparent 1px);
+  background-size:34px 34px;
+}
+.app{
+  font-family:'Work Sans',system-ui,sans-serif;
+  min-height:100vh;
+  color:var(--ink);
+}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace;}
+
+/* ---------- shell: full-width site chrome, not an app card ---------- */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 40px; border-bottom:1px solid var(--line);
+  background:var(--paper);
+  position:sticky; top:0; z-index:10;
+}
+.brand{
+  font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:19px;
+  letter-spacing:-0.01em; color:var(--ink); text-decoration:none; cursor:pointer;
+  background:none; border:none; padding:0;
+  display:inline-flex; align-items:center; gap:8px;
+}
+.brand .brand-mark{display:inline-flex; transition:transform 300ms var(--ease);}
+.brand:hover .brand-mark{transform:rotate(90deg);}
+.topctrls{display:flex; align-items:center; gap:14px;}
+.ctrl-link{
+  font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.04em;
+  color:var(--ink-soft); background:var(--card); cursor:pointer;
+  border:1px solid var(--line-strong); border-radius:999px; padding:7px 14px;
+  transition:border-color 150ms ease, color 150ms ease, transform 150ms var(--ease);
+}
+.ctrl-link:hover{color:var(--ink); border-color:var(--ink); transform:translateY(-1px);}
+/* Focus rings are ink, not butter: butter-deep measured 1.58:1 against
+   the paper ground — a nearly invisible focus indicator (WCAG needs 3:1).
+   Ink clears 10:1 on every surface including the butter CTA itself. */
+.ctrl-link:focus-visible, a:focus-visible, button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible{
+  outline:2.5px solid var(--ink); outline-offset:3px; border-radius:4px;
+}
+.restart-confirm{
+  display:flex; align-items:center; gap:10px; font-size:13px; color:var(--ink-soft);
+}
+.restart-confirm button{font-family:'Work Sans',sans-serif;}
+.restart-confirm .yes{color:var(--escalate); font-weight:600; background:none; border:none; cursor:pointer;}
+.restart-confirm .no{color:var(--ink-soft); background:none; border:none; cursor:pointer; text-decoration:underline;}
+
+.stage{
+  max-width:1460px; margin:0 auto; padding:56px 48px 90px; position:relative;
+}
+@media (max-width:600px){
+  .topbar{padding:14px 18px;}
+  .stage{padding:24px 18px 70px;}
 }
 
-body {
-  @apply bg-white text-slate-900 antialiased;
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    Helvetica,
-    Arial,
-    sans-serif;
+/* ---------- desktop split: context left, action right ----------
+   The website layout. Question screens read like an editorial spread —
+   the big Fraunces question holds the left, the answer list works on
+   the right — instead of a mobile card floating in whitespace. */
+.split{display:block;}
+.narrow{max-width:640px;}
+@media (min-width:960px){
+  .split{display:grid; grid-template-columns:minmax(0,6fr) minmax(0,7fr); gap:110px; align-items:start;}
+  .split-r .answers{margin-top:6px;}
+  .split-r .list-lead{margin-top:2px;}
 }
 
-/* Visible focus state for every interactive control (FR: accessible focus) */
-:focus-visible {
-  outline: 2px solid #1e3a8a;
-  outline-offset: 2px;
+/* screen transition */
+.screen{animation:enter 260ms var(--ease);}
+@keyframes enter{
+  from{opacity:0; transform:translateY(10px);}
+  to{opacity:1; transform:translateY(0);}
+}
+
+/* ---------- confetti gems — Teak's floating shapes, at the two
+     emotional peaks only (Home hero, Diagnosis reveal). Decorative,
+     aria-hidden, never in the reading column. ---------- */
+.gems{position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:0;}
+.split-l{position:relative;}
+.split-l > *:not(.gems), .split-r > *, .stage > *:not(.gems):not(.split){position:relative; z-index:1;}
+.gem{position:absolute; animation:drift 7s ease-in-out infinite alternate;}
+.gem:nth-child(2){animation-duration:9s; animation-delay:-2s;}
+.gem:nth-child(3){animation-duration:8s; animation-delay:-4s;}
+.gem:nth-child(4){animation-duration:10s; animation-delay:-1s;}
+.gem:nth-child(5){animation-duration:11s; animation-delay:-3s;}
+@keyframes drift{
+  from{transform:translateY(0) rotate(0deg);}
+  to{transform:translateY(-14px) rotate(14deg);}
+}
+@media (max-width:600px){.gems{display:none;}}
+
+/* ---------- footer disclaimer ---------- */
+.protofooter{
+  max-width:1180px; margin:40px auto 0; padding:16px 40px 40px; border-top:1px solid var(--line);
+  font-size:11.5px; color:var(--ink-faint); line-height:1.6;
+}
+
+/* ---------- crumbs: Teak's marker-square device carrying the
+     service/phase context (replaces the old floating mono eyebrows —
+     same information, now a designed component) ---------- */
+.crumbs{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 18px;}
+.crumb{
+  font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.05em;
+  color:var(--ink); background:var(--card); border:1px solid var(--line-strong);
+  border-radius:6px; padding:5px 10px; display:inline-flex; align-items:center; gap:7px;
+}
+.crumb.soft{color:var(--ink-soft); background:transparent; border-style:dashed;}
+.crumb-sq{width:8px; height:8px; border-radius:2px; flex:0 0 auto;}
+.sq-passport{background:var(--sq-green);}
+.sq-voter{background:var(--sq-pink);}
+.sq-income{background:var(--sq-blue);}
+.sq-butter{background:var(--butter);}
+
+/* ---------- typography ---------- */
+h1.headline{
+  font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:44px; line-height:1.06;
+  letter-spacing:-0.015em; margin:0 0 16px; color:var(--ink);
+  text-wrap:balance;
+}
+h2.headline{
+  font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:33px; line-height:1.12;
+  letter-spacing:-0.012em; margin:0 0 14px; color:var(--ink); text-wrap:balance;
+}
+.hero-h1{
+  font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:40px; line-height:1.08;
+  letter-spacing:-0.013em; margin:0 0 16px; color:var(--ink); text-wrap:balance;
+}
+/* The Diagnosis reveal — the signature screenshot moment. */
+.reveal-headline{
+  font-family:'Fraunces',Georgia,serif; font-weight:800; font-size:40px; line-height:1.05;
+  letter-spacing:-0.015em; margin:2px 0 22px; color:var(--ink); text-wrap:balance;
+}
+@media (max-width:600px){
+  h1.headline{font-size:33px;} h2.headline{font-size:26px;} .hero-h1{font-size:30px;}
+  .reveal-headline{font-size:30px;}
+}
+/* Desktop website scale — must sit AFTER the base typography rules so it
+   wins the cascade (the split-layout block above is before them). */
+@media (min-width:960px){
+  .hero-h1{font-size:58px;}
+  h1.headline{font-size:48px;}
+  h2.headline{font-size:38px;}
+  .reveal-headline{font-size:48px;}
+  .lede{font-size:17px; max-width:56ch;}
+  .hero-promise{font-size:18px;}
+  .nm-lead{font-size:38px;}
+  .svc{padding:26px 8px;}
+  .svc-title{font-size:22px;}
+  .arow{padding:21px 8px;}
+  .arow-label{font-size:16.5px;}
+}
+/* highlighter swipe — butter, drawn in like a marker stroke */
+.mark{position:relative; white-space:nowrap;}
+.mark::after{
+  content:""; position:absolute; left:-3px; right:-3px; bottom:1px; height:0.42em;
+  background:var(--butter); z-index:-1; border-radius:3px;
+  transform:skewX(-6deg); transform-origin:left;
+  animation:draw 480ms var(--ease) 240ms both;
+}
+@keyframes draw{from{scale:0 1;} to{scale:1 1;}}
+.lede{font-size:15.5px; color:var(--ink-soft); line-height:1.6; margin:0 0 26px; max-width:52ch;}
+.small{font-size:13px; color:var(--ink-soft); line-height:1.6;}
+
+/* ---------- home ---------- */
+.hero-promise{font-size:16px; color:var(--ink-soft); margin:6px 0 30px; max-width:46ch; line-height:1.6;}
+.list-lead{
+  font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:20px; margin:0 0 4px;
+}
+.services{display:flex; flex-direction:column; gap:2px; border-top:1px solid var(--line); margin-top:12px;}
+.svc{
+  display:flex; align-items:center; gap:16px; padding:20px 4px; border-bottom:1px solid var(--line);
+  background:none; border-left:none; border-right:none; border-top:none; width:100%; text-align:left;
+  cursor:pointer; font-family:inherit; color:inherit;
+  transition:background 160ms ease;
+}
+.svc:hover:not(.disabled){background:var(--butter-soft);}
+.svc:hover:not(.disabled) .svc-icon{transform:rotate(-6deg) scale(1.06);}
+.svc:hover:not(.disabled) .svc-chevron{transform:translateX(4px); color:var(--ink);}
+.svc.disabled{cursor:default;}
+.svc.disabled .svc-icon, .svc.disabled .svc-title, .svc.disabled .svc-sub{opacity:0.5;}
+.svc-icon{
+  flex:0 0 auto; width:40px; height:40px; display:flex; align-items:center; justify-content:center;
+  border-radius:11px; transition:transform 250ms var(--ease);
+}
+.svc-icon.ic-passport{background:#DFF3E6; color:#1F6B3D;}
+.svc-icon.ic-voter{background:#FBE3EE; color:#B03A6E;}
+.svc-icon.ic-income{background:#E1EEFA; color:#2E6CA8;}
+/* butter-family pastel at sibling-tile strength (butter-soft read washed
+   out next to the green/pink tiles). #FAEEAD is butter mixed toward
+   white — visibly yellower than the reserved FOLLOW-UP tint #FBEFC9 —
+   and the icon carries ink, not amber, so nothing echoes status ink. */
+.svc-icon.ic-other{background:#FAEEAD; color:var(--ink);}
+.svc-body{flex:1;}
+.svc-title{font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:20px; margin-bottom:2px;}
+.svc-sub{font-size:13.5px; color:var(--ink-soft);}
+.svc-tag{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase;
+  color:var(--ink-soft); border:1px solid var(--line-strong); background:var(--card); border-radius:999px; padding:4px 9px; flex:0 0 auto;
+}
+.svc-chevron{color:var(--ink-faint); flex:0 0 auto; transition:transform 200ms var(--ease), color 150ms ease;}
+
+/* ---------- answer rows: same divided-list anatomy as Home ---------- */
+.answers{margin-top:20px; border-top:1px solid var(--line);}
+.arow{
+  display:flex; align-items:center; gap:14px; text-align:left; width:100%;
+  padding:18px 4px; border:none; border-bottom:1px solid var(--line); background:none;
+  cursor:pointer; font-family:'Work Sans',sans-serif; color:var(--ink); border-radius:0;
+  transition:background 160ms ease;
+  animation:rowin 320ms var(--ease) both;
+}
+.arow:nth-child(1){animation-delay:40ms;} .arow:nth-child(2){animation-delay:90ms;}
+.arow:nth-child(3){animation-delay:140ms;} .arow:nth-child(4){animation-delay:190ms;}
+.arow:nth-child(5){animation-delay:240ms;} .arow:nth-child(6){animation-delay:290ms;}
+@keyframes rowin{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);}}
+.arow:hover{background:var(--butter-soft);}
+.arow:hover .arow-chevron{transform:translateX(4px); color:var(--ink);}
+.arow.selected{background:var(--butter-soft);}
+.arow-check{
+  flex:0 0 auto; width:20px; height:20px; border-radius:50%; border:1.5px solid var(--line-strong);
+  display:flex; align-items:center; justify-content:center; background:var(--card);
+  transition:transform 250ms var(--ease), background 150ms ease, border-color 150ms ease;
+}
+.arow.selected .arow-check{border-color:var(--ink); background:var(--ink); transform:scale(1.12);}
+.arow-check svg{opacity:0; transition:opacity 120ms ease;}
+.arow.selected .arow-check svg{opacity:1;}
+.arow-body{flex:1;}
+.arow-label{font-size:15.5px; line-height:1.4; font-weight:500;}
+.arow-sub{font-size:12.5px; color:var(--ink-soft); margin-top:2px;}
+.arow-chevron{flex:0 0 auto; color:var(--ink-faint); transition:transform 200ms var(--ease), color 150ms ease;}
+
+/* ---------- buttons: butter pill primary (Teak's own CTA), espresso secondary ---------- */
+.btn{
+  font-family:'Work Sans',sans-serif; font-weight:600; font-size:15px; cursor:pointer;
+  border-radius:999px; padding:14px 26px; border:1.5px solid transparent;
+  transition:transform 180ms var(--ease), box-shadow 180ms ease, background 150ms ease, border-color 150ms ease;
+  display:inline-flex; align-items:center; gap:8px;
+}
+.btn .btn-arrow{display:inline-flex; transition:transform 200ms var(--ease);}
+.btn:hover .btn-arrow{transform:translateX(4px);}
+.btn:active{transform:scale(0.97);}
+.btn-primary{
+  background:var(--butter); color:var(--ink); border-color:var(--butter);
+  width:100%; justify-content:center; box-shadow:0 2px 0 rgba(61,36,28,0.14);
+}
+.btn-primary:hover{background:var(--butter-deep); border-color:var(--butter-deep); transform:translateY(-2px); box-shadow:0 5px 14px rgba(61,36,28,0.16);}
+.btn-secondary{background:var(--card); color:var(--ink); border:1.5px solid var(--line-strong);}
+.btn-secondary:hover{border-color:var(--ink); transform:translateY(-1px);}
+.btn-block{width:100%; justify-content:center; margin-top:22px;}
+
+/* ---------- status stamp: the rubber-stamp moment ---------- */
+.stamp-row{margin:4px 0 18px;}
+.stamp{
+  font-family:'IBM Plex Mono',monospace; font-size:12.5px; letter-spacing:0.08em; font-weight:600;
+  padding:8px 14px 8px 12px; border-radius:8px; text-transform:uppercase;
+  display:inline-flex; align-items:center; gap:7px;
+  animation:stampin 450ms var(--ease) 200ms both;
+}
+@keyframes stampin{
+  0%{opacity:0; transform:scale(1.5) rotate(-5deg);}
+  60%{opacity:1; transform:scale(0.96) rotate(1deg);}
+  100%{opacity:1; transform:scale(1) rotate(-1deg);}
+}
+.stamp-icon{display:inline-flex; flex:0 0 auto;}
+.stamp.wait{color:var(--wait); background:var(--wait-bg);}
+.stamp.follow{color:var(--follow); background:var(--follow-bg);}
+.stamp.escalate{color:var(--escalate); background:var(--escalate-bg);}
+.stamp.unclassified{color:var(--unclassified); background:var(--unclassified-bg); border:1.5px dashed var(--unclassified); animation-name:stampin-flat;}
+@keyframes stampin-flat{from{opacity:0; transform:scale(1.2);} to{opacity:1; transform:scale(1);}}
+
+/* "Waiting on" — its own emphasized block, so the dependency reads
+   at a glance (the product's core differentiator). */
+.dep-block{
+  background:var(--butter-soft); border:1px solid var(--butter);
+  border-radius:14px;
+  padding:16px 20px; margin:22px 0 24px;
+  animation:enter 300ms var(--ease) 340ms both;
+}
+.dep-k{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--ink-soft); margin:0 0 5px;
+}
+.dep-v{font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:20px; color:var(--ink); line-height:1.25;}
+@media (min-width:760px){
+  .dep-v{font-size:26px;}
+}
+
+.explain{font-size:15.5px; line-height:1.65; color:var(--ink); margin:0 0 22px; max-width:58ch;}
+
+/* ---------- case trail ----------
+   Only where a real, verified process sequence exists (Passport's
+   4-step flow); never invented for Voter/SIR. Dots pop in sequence. */
+.case-trail{display:flex; align-items:flex-start; gap:0; margin:8px 0 30px;}
+.ct-step{flex:1; display:flex; flex-direction:column; align-items:center; text-align:center; position:relative; animation:rowin 300ms var(--ease) both;}
+.ct-step:nth-child(1){animation-delay:380ms;} .ct-step:nth-child(2){animation-delay:460ms;}
+.ct-step:nth-child(3){animation-delay:540ms;} .ct-step:nth-child(4){animation-delay:620ms;}
+.ct-step:not(:last-child)::after{
+  content:""; position:absolute; top:11px; left:calc(50% + 16px); right:calc(-50% + 16px); height:1.5px; background:var(--line-strong);
+}
+.ct-step.done:not(:last-child)::after{background:var(--ink);}
+.ct-dot{width:22px; height:22px; border-radius:50%; border:1.5px solid var(--line-strong); background:var(--card); z-index:1; display:flex; align-items:center; justify-content:center;}
+.ct-step.done .ct-dot{background:var(--ink); border-color:var(--ink);}
+.ct-step.current .ct-dot{
+  width:26px; height:26px; border:2px solid var(--ink); background:var(--butter);
+  box-shadow:0 0 0 4px var(--butter-soft);
+}
+.ct-step.current .ct-dot::after{content:""; width:9px; height:9px; border-radius:50%; background:var(--ink);}
+.ct-label{font-size:11px; margin-top:10px; color:var(--ink-faint); line-height:1.3; max-width:80px;}
+.ct-step.current .ct-label{color:var(--ink); font-weight:600;}
+.ct-step.done .ct-label{color:var(--ink-soft);}
+.ct-here{
+  font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.08em; text-transform:uppercase;
+  color:var(--ink); background:var(--butter); border-radius:4px; padding:2px 6px;
+  font-weight:600; margin-top:5px;
+}
+@media (max-width:600px){.ct-label{font-size:10px; max-width:64px;}}
+
+/* ---------- next move: lead statement + divided fields ---------- */
+.nm-lead{
+  font-family:'Fraunces',Georgia,serif; font-weight:800; font-size:30px; line-height:1.15;
+  letter-spacing:-0.01em; color:var(--ink); margin:0 0 10px; text-wrap:balance;
+}
+.nm-lead-detail{font-size:15px; color:var(--ink-soft); line-height:1.6; margin:0 0 30px; max-width:54ch;}
+@media (max-width:600px){.nm-lead{font-size:24px;}}
+.nm-fields{border-top:1px solid var(--line-strong); margin-bottom:6px;}
+.nm-field{border-top:1px solid var(--line); padding:20px 0;}
+.nm-field:first-child{border-top:none; padding-top:0;}
+.nm-k{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--ink-faint); margin:0 0 8px;
+}
+.nm-v{font-size:15px; line-height:1.6; color:var(--ink);}
+.nm-v a{color:var(--ink); text-decoration-color:var(--butter-deep); text-decoration-thickness:2px; text-underline-offset:3px; transition:background 150ms ease;}
+.nm-v a:hover{background:var(--butter-soft);}
+.nm-v .phone{font-family:'IBM Plex Mono',monospace; font-size:13.5px;}
+.handoff-note{font-size:12.5px; color:var(--ink-faint); margin-top:6px; line-height:1.5;}
+.need-list{margin:6px 0 0; padding:0 0 0 20px;}
+.need-list li{margin:0 0 7px; line-height:1.5;}
+
+/* ---------- trust disclosure ---------- */
+.trust-toggle{
+  background:none; border:none; color:var(--ink-soft); font-family:'Work Sans',sans-serif; font-size:13.5px;
+  cursor:pointer; display:flex; align-items:center; gap:6px; padding:4px 0; margin-top:18px;
+  border-bottom:1px solid transparent; transition:color 150ms ease, border-color 150ms ease;
+}
+.trust-toggle:hover{color:var(--ink); border-color:var(--line-strong);}
+.trust-panel{
+  margin-top:14px; padding:20px 22px; background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  box-shadow:var(--shadow-float);
+  animation:enter 240ms var(--ease);
+}
+.trust-row{margin-bottom:14px;}
+.trust-row:last-child{margin-bottom:0;}
+.trust-row .nm-k{margin-bottom:6px;}
+.trust-row .nm-v{font-size:13.5px;}
+.source-quote{
+  font-style:italic; color:var(--ink-soft); font-size:13px; border-left:2px solid var(--butter);
+  padding-left:12px; margin-top:6px;
+}
+
+/* ---------- unclassified / recovery banners ---------- */
+.banner{border:1px solid var(--line-strong); border-radius:14px; padding:18px 20px; background:var(--card); margin-bottom:20px;}
+
+/* ---------- text input ---------- */
+.field-input{
+  width:100%; border:1.5px solid var(--line-strong); border-radius:14px; padding:14px 16px; font-family:'Work Sans',sans-serif;
+  font-size:14.5px; color:var(--ink); background:var(--card); resize:vertical; min-height:88px;
+  caret-color:var(--ink);
+  transition:border-color 150ms ease;
+}
+.field-input::placeholder{color:var(--ink-faint);}
+.field-input:hover{border-color:var(--ink-faint);}
+.field-input:focus-visible{outline:2.5px solid var(--ink); outline-offset:2px; border-color:var(--ink);}
+
+/* ---------- inline explainer ---------- */
+.inline-explain{
+  margin-top:14px; padding:16px 18px; border:1.5px dashed var(--line-strong); border-radius:14px; font-size:13.5px;
+  color:var(--ink-soft); line-height:1.6; background:var(--card); animation:enter 220ms var(--ease);
+}
+.inline-explain-actions{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
+.inline-explain-actions button{font-size:13px; padding:9px 16px;}
+
+/* Same-screen re-renders (trust toggle, selection highlight, inline
+   explainers) must not replay the entrance choreography — the stamp
+   slams once per arrival, not once per interaction. */
+#app.settled .screen, #app.settled .arow, #app.settled .stamp,
+#app.settled .dep-block, #app.settled .ct-step, #app.settled .mark::after{
+  animation:none;
+}
+
+/* ---------- reduced motion: fewer + gentler, feedback stays ---------- */
+@media (prefers-reduced-motion:reduce){
+  .screen,.arow,.stamp,.dep-block,.ct-step,.gem,.mark::after{animation:none;}
+  *{transition-duration:1ms !important; animation-duration:1ms !important;}
 }
