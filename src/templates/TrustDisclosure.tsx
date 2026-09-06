@@ -12,11 +12,15 @@
  *  restart-clears-trust are the session reducer's job, already covered by
  *  session.test.ts; nothing here duplicates that.
  *
- *  MUST NOT import anything under src/playbooks/guardrails/ — enforced by
- *  playbooks/guardrails/isolation.test.ts's scan of non-test application
- *  files. The SOURCES_VERIFIED-vs-manifest comparison (Open Question 3)
- *  lives in this component's own *.test.tsx file instead, which the scan
- *  exempts.
+ *  MUST NOT import anything under src/playbooks/guardrails/. NOTE (fix
+ *  round 1, Minor #7): playbooks/guardrails/isolation.test.ts's scan is
+ *  `.ts`-only by its own explicit design comment, so it does not actually
+ *  cover this `.tsx` file mechanically — the rule still applies here, it is
+ *  just verified by inspection rather than enforced by that test. Widening
+ *  the scan to `.tsx` files is a broader, repo-wide guardrail change and is
+ *  out of this file's scope. The SOURCES_VERIFIED-vs-manifest comparison
+ *  (Open Question 3) lives in this component's own *.test.tsx file, which
+ *  the existing scan does exempt regardless.
  */
 import type { Diagnosis } from '../domain/types'
 

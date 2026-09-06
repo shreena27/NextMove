@@ -6,12 +6,19 @@ import { diagnose, type ServiceEngine } from '../domain/engine'
 import { passportEngine, voterEngine, sirEngine } from '../playbooks/engines'
 import { SIR_STATES } from '../playbooks/sirPlaybook'
 import type { AnswerRecord } from '../domain/types'
+import type { ServiceKey } from '../session/session'
 
 // DiagnosisScreen composes <TrustDisclosure>, which is fully controlled
 // (design note 7) — so the screen takes trustOpen/onToggleTrust and passes
 // them straight through. Default closed, matching the prototype.
+//
+// `engine.key` is typed `string` on `ServiceEngine` (Task 1's domain type,
+// not narrowed here); DiagnosisScreen's `engineKey` prop is `ServiceKey`
+// (fix round 1, Minor #4) — the cast is safe because every engine this
+// helper is ever called with (passportEngine/voterEngine/sirEngine) really
+// does carry one of the three literal values.
 const renderFor = (engine: ServiceEngine, answers: AnswerRecord, extra: Partial<DiagnosisScreenProps> = {}) =>
-  render(<DiagnosisScreen serviceLabel="Passport" engineKey={engine.key}
+  render(<DiagnosisScreen serviceLabel="Passport" engineKey={engine.key as ServiceKey}
            d={diagnose(engine, answers)} answerLabels={{}}
            trustOpen={false} onToggleTrust={vi.fn()} {...extra} />)
 
@@ -68,11 +75,51 @@ describe('the case trail — Passport only (FR-V-10)', () => {
     expect(document.querySelector('.case-trail')).toBeNull()
   })
 
+  it('a passport UNCLASSIFIED case whose stray q1 collides with STAGE_INDEX still renders no trail (fix round 1, Important #2 — pins CaseTrail\'s d.state===\'6\' guard, which no prior fixture actually exercised)', () => {
+    // {q1:'adverse'} alone matches no rule (state-4 needs q2==='no_followup'
+    // too), so this falls through to the UNCLASSIFIED fallback, state '6'.
+    // 'adverse' IS a STAGE_INDEX entry (CaseTrail.tsx) — without the
+    // state==='6' guard running first, this would incorrectly render a
+    // trail on a "we don't know" screen.
+    const d = diagnose(passportEngine, { q1: 'adverse' })
+    expect(d.rec).toBe('UNCLASSIFIED')
+    expect(d.state).toBe('6') // guard: this fixture really hits the branch under test
+    renderFor(passportEngine, { q1: 'adverse' })
+    expect(document.querySelector('.case-trail')).toBeNull()
+  })
+
+  it('a stray Passport q1 left over from earlier in the session never leaks a trail onto a Voter diagnosis (fix round 1, Important #1)', () => {
+    // Simulates the real scenario: BACK/NAVIGATE never clear session
+    // answers (only RESTART does — session.ts), so a citizen who touched
+    // Passport's q1 earlier, then completed a real Voter diagnosis, ends up
+    // with a Diagnosis.matchedAnswers that still carries the stale q1
+    // alongside the real voterQ1. 'no_contact' IS a STAGE_INDEX entry
+    // (CaseTrail.tsx) — without gating on engineKey, DiagnosisScreen would
+    // render a Passport case trail on this Voter diagnosis.
+    const d = diagnose(voterEngine, { voterQ1: 'no_word', q1: 'no_contact' })
+    expect(d.matchedAnswers.q1).toBe('no_contact') // guard: the stale key really is present
+    renderFor(voterEngine, { voterQ1: 'no_word', q1: 'no_contact' })
+    expect(document.querySelector('.case-trail')).toBeNull()
+  })
+
   it.each([['voter', voterEngine, { voterQ1: 'no_word' }],
            ['sir', sirEngine, { sirState: 'delhi', sirQ1: 'roll_present' }]])(
     '%s never renders a trail — no official linear sequence exists to represent', (_, e, a) => {
       renderFor(e, a); expect(document.querySelector('.case-trail')).toBeNull()
     })
+})
+
+describe('the topbar slot (fix round 1, Important #3)', () => {
+  it('renders the given topbar first, ahead of the diagnosis content', () => {
+    renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' },
+      { topbar: <div data-testid="fake-topbar">TOPBAR</div> })
+    expect(screen.getByTestId('fake-topbar')).toBeInTheDocument()
+  })
+
+  it('renders nothing extra when omitted, so every pre-existing test (which never passes it) is unaffected', () => {
+    renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    expect(screen.queryByTestId('fake-topbar')).toBeNull()
+  })
 })
 
 describe('the shared template renders every service unmodified (impl plan §1)', () => {

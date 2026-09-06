@@ -1,13 +1,23 @@
 /** Ports the prototype's `PASSPORT_STEPS_FOR` (design/nextmove-v1-
  *  prototype.html, lines 3366-3378) and `renderTimeline` (3612-3620).
  *
- *  The case trail is Passport-only (FR-V-10). `passportTrailFor` enforces
- *  that structurally, not by naming a service: Voter's and SIR's diagnoses
- *  carry state ids (e.g. 'V-1', 'S-4') and `matchedAnswers` keys (voterQ1,
- *  sirQ1 — never `q1`) that simply never intersect this file's maps, so
- *  calling it unconditionally on every diagnosis already returns `null` for
- *  them. DiagnosisScreen.tsx therefore never checks a service name to decide
- *  whether a trail exists.
+ *  The case trail is Passport-only (FR-V-10). Voter's and SIR's diagnoses
+ *  carry state ids (e.g. 'V-1', 'S-4') that never collide with `STATE_INDEX`
+ *  below, so the direct-state lookup alone is safe for any service. The
+ *  STAGE fallback (`d.matchedAnswers.q1`) is NOT safe on its own, though:
+ *  `matchedAnswers` is a snapshot of the whole session answer record (see
+ *  `evaluate.ts`), not just the current service's, and session answers are
+ *  cleared only by RESTART — not BACK or NAVIGATE. A citizen who touches
+ *  Passport's `q1` earlier in the same session, then completes a Voter or
+ *  SIR diagnosis, produces a `matchedAnswers` that still carries that stale
+ *  `q1`, which this file's own maps cannot tell apart from a real Passport
+ *  answer. FIX ROUND 1 (Important #1): the caller (DiagnosisScreen.tsx)
+ *  now gates the call to `passportTrailFor` on `engineKey === 'passport'`
+ *  as the actual safeguard — structural branching the plan's Global
+ *  Constraints already permit ("does this service have a case trail?"),
+ *  not a new exception. `passportTrailFor` itself is written defensively
+ *  (the state-id check is self-sufficient; the stage fallback is not) but
+ *  must not be relied on alone to keep the trail off a non-Passport screen.
  */
 import type { Diagnosis } from '../domain/types'
 
@@ -31,7 +41,10 @@ const STAGE_INDEX: Record<string, number> = {
 }
 
 /** `null` -> no trail: the fallback state ('6'), or a state/stage this map
- *  has no entry for (every non-Passport diagnosis). */
+ *  has no entry for. Callers outside Passport must gate on `engineKey`
+ *  themselves before calling this (see the file header) — the stage
+ *  fallback here cannot distinguish a real Passport answer from a stale one
+ *  left over from earlier in the same session. */
 export function passportTrailFor(d: Diagnosis): CaseTrailData | null {
   if (d.state === '6') return null
   const byState = STATE_INDEX[d.state]

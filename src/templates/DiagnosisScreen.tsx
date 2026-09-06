@@ -13,15 +13,23 @@
  *  structural: `d.dependency !== 'Unknown'` decides whether the "Waiting on"
  *  block shows (all three C2 UNCLASSIFIED fallbacks carry `dependency:
  *  'Unknown'`, so there is no separate UNCLASSIFIED branch), and
- *  `passportTrailFor(d)` decides whether a case trail exists — it returns
- *  `null` for every non-Passport diagnosis on its own (see CaseTrail.tsx),
- *  so this file never compares a service name to decide that either.
- *  `preNote` is a generic ReactNode slot: SIR's phase banner and any future
- *  per-service context note both arrive through it exactly the same way, so
- *  there is no `if (service === 'sir')` anywhere in this file.
+ *  `engineKey === 'passport'` decides whether a case trail is even computed
+ *  (FR-V-10: fix-round-1 finding — `d.matchedAnswers` is a snapshot of the
+ *  WHOLE session answer record, not just the current service's, since
+ *  session answers are only cleared by RESTART, not by BACK/NAVIGATE; a
+ *  stale `q1` left over from an earlier Passport attempt in the same
+ *  session can otherwise satisfy `passportTrailFor`'s stage fallback for a
+ *  Voter/SIR diagnosis that happens to carry it too). This is the same
+ *  *structural* branching the plan's Global Constraints already permit
+ *  ("does this service have a case trail?" vs. "what does this state
+ *  mean?") — not a new exception. `preNote` is a generic ReactNode slot:
+ *  SIR's phase banner and any future per-service context note both arrive
+ *  through it exactly the same way, so there is no `if (service ===
+ *  'sir')` anywhere in this file.
  */
 import type { ReactNode } from 'react'
 import type { Diagnosis } from '../domain/types'
+import type { ServiceKey, ScreenId } from '../session/session'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { StatusStamp } from '../ui/StatusStamp'
 import { Gems } from '../ui/Gems'
@@ -32,15 +40,22 @@ import { CaseTrail, passportTrailFor } from './CaseTrail'
 
 export interface DiagnosisScreenProps {
   serviceLabel: string
-  /** The routing/storage prefix (ServiceEngine.key) — used only to build the
-   *  CTA's next-move navigation target. Never rendered as text. */
-  engineKey: string
+  /** The routing/storage prefix (ServiceEngine.key). Used to gate the case
+   *  trail (Passport only — FR-V-10) and to build the CTA's next-move
+   *  navigation target. Never rendered as text. */
+  engineKey: ServiceKey
   d: Diagnosis
   /** Composite "questionId:value" -> label map for TrustDisclosure; build
    *  with `labelMap()` (src/screens/labels.ts). */
   answerLabels: Record<string, string>
   trustOpen: boolean
   onToggleTrust: () => void
+  /** Rendered first, ahead of the diagnosis content (matching the
+   *  prototype's own `topbar(true,true)` at the top of `renderDiagnosis`,
+   *  line 3589). Optional and untyped further than `ReactNode`, symmetric
+   *  with `preNote` — Task 7 supplies the real `<Topbar>` wired to session
+   *  dispatch; this template has no `state`/`dispatch` of its own. */
+  topbar?: ReactNode
   /** Generic per-service context note shown above the "Waiting on" block
    *  (design note 4) — e.g. SIR's phase banner. Passport and Voter pass
    *  nothing. */
@@ -51,7 +66,7 @@ export interface DiagnosisScreenProps {
   /** Called with the engineKey-derived next-move screen id
    *  (`${engineKey}-nextmove`) when the CTA is pressed. Wiring this to an
    *  actual navigation dispatch is Task 7's job. */
-  onNavigate?: (screen: string) => void
+  onNavigate?: (screen: ScreenId) => void
 }
 
 export function DiagnosisScreen({
@@ -61,6 +76,7 @@ export function DiagnosisScreen({
   answerLabels,
   trustOpen,
   onToggleTrust,
+  topbar,
   preNote,
   extraToldUs,
   onNavigate,
@@ -74,45 +90,53 @@ export function DiagnosisScreen({
     ) : (
       <>We found where this is <span className="mark">waiting</span>.</>
     )
-  const trail = passportTrailFor(d)
+  // Passport-only (FR-V-10) — gated on engineKey, not just on
+  // passportTrailFor's own state-shape check, because d.matchedAnswers can
+  // carry a stale q1 from an earlier Passport attempt in the same session
+  // (see the file header note). Structural branching, not a
+  // government-process one: "does this service have a case trail?"
+  const trail = engineKey === 'passport' ? passportTrailFor(d) : null
 
   return (
-    <div className="stage screen">
-      <Split
-        left={
-          <>
-            {d.rec !== 'UNCLASSIFIED' ? <Gems placement="reveal" /> : null}
-            <PhaseEyebrow service={serviceLabel} phase="Diagnosis" />
-            <h2 className="reveal-headline">{headline}</h2>
-            <div className="stamp-row">
-              <StatusStamp rec={d.rec} />
-            </div>
-            <p className="explain">{d.explanation}</p>
-          </>
-        }
-        right={
-          <>
-            {preNote}
-            {d.dependency && d.dependency !== 'Unknown' ? (
-              <div className="dep-block">
-                <div className="dep-k">Waiting on</div>
-                <div className="dep-v">{d.dependency}</div>
+    <>
+      {topbar}
+      <div className="stage screen">
+        <Split
+          left={
+            <>
+              {d.rec !== 'UNCLASSIFIED' ? <Gems placement="reveal" /> : null}
+              <PhaseEyebrow service={serviceLabel} phase="Diagnosis" />
+              <h2 className="reveal-headline">{headline}</h2>
+              <div className="stamp-row">
+                <StatusStamp rec={d.rec} />
               </div>
-            ) : null}
-            {trail ? <CaseTrail trail={trail} /> : null}
-            <Button block arrow onClick={() => onNavigate?.(`${engineKey}-nextmove`)}>
-              See my next move
-            </Button>
-            <TrustDisclosure
-              d={d}
-              answerLabels={answerLabels}
-              extraToldUs={extraToldUs}
-              open={trustOpen}
-              onToggle={onToggleTrust}
-            />
-          </>
-        }
-      />
-    </div>
+              <p className="explain">{d.explanation}</p>
+            </>
+          }
+          right={
+            <>
+              {preNote}
+              {d.dependency && d.dependency !== 'Unknown' ? (
+                <div className="dep-block">
+                  <div className="dep-k">Waiting on</div>
+                  <div className="dep-v">{d.dependency}</div>
+                </div>
+              ) : null}
+              {trail ? <CaseTrail trail={trail} /> : null}
+              <Button block arrow onClick={() => onNavigate?.(`${engineKey}-nextmove`)}>
+                See my next move
+              </Button>
+              <TrustDisclosure
+                d={d}
+                answerLabels={answerLabels}
+                extraToldUs={extraToldUs}
+                open={trustOpen}
+                onToggle={onToggleTrust}
+              />
+            </>
+          }
+        />
+      </div>
+    </>
   )
 }
