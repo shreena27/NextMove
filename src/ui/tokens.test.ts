@@ -168,6 +168,12 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
   })
 
   it('carries the casefile/ladder/check-in/journey CSS (prototype 562-568, 651-661, 744-878)', () => {
+    // Scoped to the CSS body (past the header) — the rewritten provenance
+    // header names most of these classes in its own prose (the lifted-range
+    // table and the "lifted but unused" callout), so a whole-file `css`
+    // search can't tell "documented as lifted" from "actually shipped".
+    // Same reasoning as the presence/absence/ordering tests around this one.
+    const body = css.slice(css.indexOf(':root{'))
     for (const cls of [
       '.saved-card', '.saved-next', '.saved-steps', '.saved-meta',
       '.btn-ghost', '.saved-note',
@@ -178,7 +184,7 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
       '.stamp.mini', '.closedmark', '.saved-card.closed',
       '.ci-panel', '.remind-row', '.remind-input',
       '.journey', '.log-e', '.log-mile', '.log-d', '.log-who', '.log-note',
-    ]) expect(css, cls).toContain(cls)
+    ]) expect(body, cls).toContain(cls)
   })
 
   it('ships the C5 casefile styles that used to sit inside the same prototype range', () => {
@@ -208,12 +214,6 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
       '.auth-input', '.btn-google', '.otp-input', '.acct-chip', '.acct-pop',
       '.demo-hint', '.fill-list', '.fill-review', '.describe-ta', '.fchip',
     ]) expect(body, cls).not.toContain(cls)
-  })
-
-  it('does NOT ship the C8 describe-it fills-review styles', () => {
-    // Scoped to the body — see the C5 test above for why.
-    const body = css.slice(css.indexOf(':root{'))
-    for (const cls of ['.fill-list', '.fill-review']) expect(body, cls).not.toContain(cls)
   })
 
   it('keeps the prototype ordering: prepare CSS precedes the settled/reduced-motion tail', () => {
