@@ -22,7 +22,7 @@ export function guardrailFindings(playbook: Playbook, options: SuiteOptions = {}
     ...citationFindings(playbook),
     ...bannedFindings(strings),
     ...numericFindings(strings),
-    ...retiredActionFindings(playbook, options.currentPhaseId ?? 'none'),
+    ...retiredActionFindings(playbook, options.currentPhaseId ?? 'none', options.extra ?? []),
     ...causeStateFindings(playbook),
   ]
 }

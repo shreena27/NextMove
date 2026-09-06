@@ -9,6 +9,7 @@ import { orphanFindings } from './guardrails/citations'
 import { copyStrings, staleExemptionFindings, extraCopy, type CopyString } from './guardrails/contentSafety'
 import { guardrailFindings } from './guardrails/suite'
 import { LADDER_DEFS } from '../templates/ladder'
+import { prepCopyExtras, visitExpectCopy } from './prep'
 
 const ALL = [passportPlaybook, voterPlaybook, sirPlaybook]
 
@@ -177,6 +178,8 @@ describe('cross-playbook guardrail sweep', () => {
       .concat(sirCopyExtras())
       .concat(ladderDefStrings('passport'))
       .concat(ladderDefStrings('voter'))
+      .concat(ALL.flatMap(prepCopyExtras))
+      .concat(visitExpectCopy('sir'))
     expect(staleExemptionFindings(all)).toEqual([])
   })
 

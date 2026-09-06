@@ -288,15 +288,15 @@
       "source_form": "30.09.2026",
       "year": 2026,
       "meaning": "THE CITIZEN'S filing deadline: claims and objections must be filed by this date. Anything the citizen must file cites this, never 29 Oct.",
-      "allowed_in": ["sir:s-roll-absent.howLong", "sir:s-roll-unchecked.howLong", "sir:SIR_PHASES.claims_notice.note"]
+      "allowed_in": ["sir:s-roll-absent.howLong", "sir:s-roll-unchecked.howLong", "sir:SIR_PHASES.claims_notice.note", "sir:PREP.s-roll-absent.steps[2]", "sir:PREP.s-roll-unchecked.steps[3]"]
     },
     "29 Oct": {
       "file": "FAQ_SIR2026.pdf",
       "locator": "Q4 row 4 (notice phase and disposal of claims and objections)",
       "source_form": "29.10.2026",
       "year": 2026,
-      "meaning": "THE ERO'S disposal deadline, not the citizen's. May only describe the phase's own end; may never appear in an instruction to file.",
-      "allowed_in": ["sir:s-notice.howLong", "sir:SIR_PHASES.claims_notice.note"]
+      "meaning": "THE ERO'S disposal deadline, not the citizen's. May only describe the phase's own end; may never appear in an instruction to file. One prep location is allow-listed — `sir:PREP.s-notice.steps[3]` — where the step's own instruction defers to the citizen's notice and the date names only the phase's own end. This is the form grill A11 sanctioned and commit `2958d37` applied. Any other prep location needs the same review.",
+      "allowed_in": ["sir:s-notice.howLong", "sir:SIR_PHASES.claims_notice.note", "sir:PREP.s-notice.steps[3]"]
     },
     "4 Nov": {
       "file": "FAQ_SIR2026.pdf",
@@ -307,7 +307,8 @@
       "allowed_in": [
         "sir:s-3-p.howLong", "sir:s-3-p.where.label", "sir:s-4-p.howLong",
         "sir:s-roll-present.howLong", "sir:s-roll-present.where.label",
-        "sir:SIR_PHASES.claims_notice.note", "sir:SIR_PHASES.final_roll.note"
+        "sir:SIR_PHASES.claims_notice.note", "sir:SIR_PHASES.final_roll.note",
+        "sir:PREP.s-roll-absent.visit.after", "sir:PREP.s-roll-unchecked.steps[2]"
       ]
     }
   },
