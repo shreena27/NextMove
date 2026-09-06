@@ -53,7 +53,15 @@
  *  between this task's 651-661 and 744-878 ranges and must be skipped, not
  *  swallowed into one contiguous append), and 881-995 (.describe-*,
  *  .youwrote, .read-*, .span-quote, .ropt*, .fact-chips, .fchip*,
- *  .interp-frame, .unplace-panel, .fill-list, .fill-review -> C8). */
+ *  .interp-frame, .unplace-panel, .fill-list, .fill-review -> C8) — WITH ONE
+ *  SCOPED CORRECTION (Task 9, from Task 8's review): `.read-change` (939-944)
+ *  physically sits inside this range but is NOT describe-it-specific — it is
+ *  a small, generic, reusable text-link-styled button utility (JourneyLog's
+ *  "Show all N entries", Task 8; CasefileScreen's "Copy reminder"/"Undo this
+ *  check-in", Task 9) that happened to be swept into the blanket exclusion.
+ *  It is lifted on its own, next to the Task 1 casefile block, with its own
+ *  comment — its `.read-*` neighbours (.read-q, .read-pick, .read-opts, plus
+ *  .span-quote/.ropt*) stay excluded, still C8's. */
 
 :root{
   --paper:#FAF7EF;
@@ -746,6 +754,22 @@ h2.headline{
 .log-note{
   font-size:10.5px; color:var(--ink-faint); margin-top:8px; font-family:'IBM Plex Mono',monospace;
 }
+
+/* .read-change (prototype 939-944) — a SCOPED CORRECTION to the "881-995 is
+   all C8" exclusion below, caught during Task 8's review. It physically
+   sits among C8's describe-it rules (930-945: .read-q, .read-pick,
+   .span-quote, .read-opts, .ropt...), which is why an earlier pass swept it
+   into that blanket exclusion — but it is not describe-it-specific: it is a
+   small, generic, reusable text-link-styled button utility, already used by
+   JourneyLog's "Show all N entries" button (Task 8) and by CasefileScreen's
+   "Copy reminder" and "Undo this check-in" buttons (Task 9). Lifted here,
+   on its own, verbatim — its describe-it neighbours stay excluded below. */
+.read-change{
+  background:none; border:none; cursor:pointer; padding:4px 0; margin-top:10px;
+  font-family:'Work Sans',sans-serif; font-size:13px; color:var(--ink-soft);
+  text-decoration:underline; text-underline-offset:3px;
+}
+.read-change:hover{color:var(--ink);}
 
 /* Same-screen re-renders (trust toggle, selection highlight, inline
    explainers) must not replay the entrance choreography — the stamp

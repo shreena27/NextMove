@@ -19,10 +19,11 @@ import { voterPlaybook } from '../playbooks/voterPlaybook'
 import { sirPlaybook, SIR_STATES, SIR_PHASES, sirCopyExtras } from '../playbooks/sirPlaybook'
 import { PREP } from '../playbooks/prep'
 import { diagnose } from '../domain/engine'
-import { passportEngine, sirEngine } from '../playbooks/engines'
+import { passportEngine, voterEngine, sirEngine } from '../playbooks/engines'
 import { initialSession, type SessionState } from '../session/session'
 import { caseSnapshot, LOG_COPY, type Casefile } from '../domain/casefile'
-import { fmtDay } from '../ui/dates'
+import { checkinOptionsFor } from '../domain/checkinOptions'
+import { fmtDay, fmtRemind } from '../ui/dates'
 import * as LABELS from './labels'
 import { SCREEN_COPY, UI, PASSPORT_COPY, type CopyLocation } from './screenCopy'
 import { INTERACTION_GATED } from './interactionGated'
@@ -44,6 +45,8 @@ import { LADDER_DEFS, LADDER_TAG } from '../templates/ladder'
 import { CaseProgress } from '../templates/CaseProgress'
 import { JourneyLog } from '../templates/JourneyLog'
 import { CaseCard } from '../templates/CaseCard'
+import { CasefileScreen } from '../templates/CasefileScreen'
+import { SaveControl } from '../templates/SaveControl'
 
 const noop = () => {}
 
@@ -300,6 +303,58 @@ const journeyLogB: Casefile = {
   ],
 }
 
+// C5 Task 9 fixtures: CasefileScreen/SaveControl. Reuses helplineDiagnosis
+// (state-5a — real prep + ladder + one 'action' + one 'deliverable' option)
+// and adds one real voter diagnosis (v-1) for the one panel kind state-5a's
+// own config doesn't carry: 'valence'.
+const voterDecisionDiagnosis = diagnose(voterEngine, { voterQ1: 'no_word' }) // v-1
+const helplineOptions = checkinOptionsFor(helplineDiagnosis, {}, 'passport')
+const helplineActionOpt = helplineOptions.find(o => o.k === 'action')!
+const helplineDeliverableOpt = helplineOptions.find(o => o.k === 'deliverable')!
+const voterOptions = checkinOptionsFor(voterDecisionDiagnosis, {}, 'voter')
+const voterValenceOpt = voterOptions.find(o => o.k === 'valence')!
+
+const voterCaseSnap = caseSnapshot(
+  'voter', UI.serviceLabel.voterServices, 'voter-nextmove', voterDecisionDiagnosis, { voterQ1: 'no_word' }, {}, CASE_NOW,
+)
+
+const cfWorking: Casefile = {
+  ...caseSnap, id: 'ui-cf-working', outcome: 'still_open', unsaved: true,
+  lastCheck: null, remindAt: '2026-10-12', log: [{ t: CASE_NOW, kind: 'diagnosed', text: 'x' }],
+}
+const cfSavedValence: Casefile = {
+  ...voterCaseSnap, id: 'ui-cf-saved-valence', outcome: 'still_open',
+  lastCheck: null, remindAt: null, log: [{ t: CASE_NOW, kind: 'diagnosed', text: 'x' }],
+}
+const cfSavedClosureq: Casefile = {
+  ...caseSnap, id: 'ui-cf-saved-closureq', outcome: 'still_open',
+  lastCheck: null, remindAt: null,
+  log: [
+    { t: CASE_NOW, kind: 'diagnosed', text: 'a' },
+    { t: CASE_NOW + CASE_DAY, kind: 'reported', text: 'b' },
+    { t: CASE_NOW + 2 * CASE_DAY, kind: 'checked', text: 'c' },
+  ],
+}
+const cfReassure: Casefile = {
+  ...caseSnap, id: 'ui-cf-reassure', outcome: 'still_open',
+  lastCheck: null, remindAt: null, log: [{ t: CASE_NOW, kind: 'diagnosed', text: 'x' }],
+}
+const cfClosedGotIt: Casefile = {
+  ...caseSnap, id: 'ui-cf-closed-gotit', outcome: 'deliverable_received',
+  lastCheck: null, remindAt: null, closedAt: CASE_NOW, log: [{ t: CASE_NOW, kind: 'diagnosed', text: 'x' }],
+}
+const cfClosedUnresolved: Casefile = {
+  ...caseSnap, id: 'ui-cf-closed-unresolved', outcome: 'closed_unresolved',
+  lastCheck: null, remindAt: null, closedAt: CASE_NOW, log: [{ t: CASE_NOW, kind: 'diagnosed', text: 'x' }],
+}
+
+const casefileBaseProps = {
+  prepChecks: {}, savedCases: [] as Casefile[], now: CASE_NOW,
+  ciPending: null, ciPendingIdx: null, ciStage: null, ciReassure: false,
+  ciSnapshot: null, ciConsecutive: false, reminderCopied: false,
+  logOpen: {}, removeConfirm: null, dispatch: noop,
+}
+
 function PassportBucketScreens() {
   return (
     <>
@@ -418,6 +473,41 @@ function UiChrome() {
       <CaseCard case={daysAgoCase} onOpen={noop} now={CASE_NOW} />
       <CaseCard case={closedGotItCase} onOpen={noop} now={CASE_NOW} />
       <CaseCard case={closedUnresolvedCase} onOpen={noop} now={CASE_NOW} />
+      {/* C5 Task 9: CasefileScreen — open (working + confirm panel),
+          (saved + valence panel), (saved + closureq panel + remove-confirm),
+          (reassure panel), and both closed headline branches. Together with
+          the SaveControl mounts below, every new ui:casefile and
+          ui:saveControl string reaches real, production component output. */}
+      <CasefileScreen
+        case={cfWorking} d={helplineDiagnosis} {...casefileBaseProps}
+        ciStage="confirm" ciPending={helplineActionOpt} ciPendingIdx={helplineOptions.indexOf(helplineActionOpt)}
+      />
+      <CasefileScreen
+        case={cfSavedValence} d={voterDecisionDiagnosis} {...casefileBaseProps}
+        ciStage="valence" ciPending={voterValenceOpt} ciPendingIdx={voterOptions.indexOf(voterValenceOpt)}
+      />
+      <CasefileScreen
+        case={cfSavedClosureq} d={helplineDiagnosis} {...casefileBaseProps}
+        removeConfirm="ui-cf-saved-closureq"
+        ciStage="closureq" ciPending={helplineDeliverableOpt} ciPendingIdx={helplineOptions.indexOf(helplineDeliverableOpt)}
+      />
+      <CasefileScreen
+        case={cfReassure} d={helplineDiagnosis} {...casefileBaseProps}
+        ciReassure ciConsecutive
+        ciSnapshot={{ answers: { q1: 'adverse', q2: 'informal' }, prepChecks: {}, casefile: cfReassure }}
+      />
+      <CasefileScreen case={cfClosedGotIt} d={helplineDiagnosis} {...casefileBaseProps} />
+      <CasefileScreen case={cfClosedUnresolved} d={helplineDiagnosis} {...casefileBaseProps} />
+      {/* copiedLabel ("Copied") only renders once reminderCopied is true —
+          no click needed to reach it (props-driven, unlike PrepareScreen's
+          own internal copy state), just its own static mount. */}
+      <CasefileScreen case={cfWorking} d={helplineDiagnosis} {...casefileBaseProps} reminderCopied />
+      <SaveControl engineKey="passport" stepsDone={0} savedCases={[]} answers={caseSnap.answers} onSave={noop} />
+      <SaveControl engineKey="passport" stepsDone={2} savedCases={[]} answers={caseSnap.answers} onSave={noop} />
+      <SaveControl
+        engineKey="passport" stepsDone={0} answers={caseSnap.answers} onSave={noop}
+        savedCases={[{ ...caseSnap, id: 'ui-sc-saved', outcome: 'still_open', lastCheck: null, remindAt: null, log: [] }]}
+      />
     </>
   )
 }
@@ -451,6 +541,16 @@ const CAPTION_TEMPLATES = new Set([
   'ui:log.collapsedOne', // interpolates the run's day count (always 1) for {n} and fmtDay(from) for {from}
   'ui:log.collapsedMany', // interpolates the run's day count for {n} and fmtDay(from)/fmtDay(to) for {from}/{to}
   'ui:time.daysAgo', // interpolates the live day count for {n}
+  // C5 Task 9 (CasefileScreen). Same category as Task 8's own entries above
+  // — arithmetic/dates over the citizen's own casefile, never a government-
+  // process claim.
+  'ui:casefile.metaStarted', // interpolates fmtDay(savedAt) for {day}
+  'ui:casefile.metaSaved', // interpolates fmtDay(savedAt) for {day}
+  'ui:casefile.metaCheckBackSuffix', // interpolates fmtRemind(remindAt) for {date}
+  'ui:casefile.metaClosedSuffix', // interpolates fmtDay(closedAt) for {date}
+  'ui:casefile.journeyOne', // interpolates the entry count (always 1) for {n}
+  'ui:casefile.journeyMany', // interpolates the entry count for {n}
+  'ui:casefile.reminderText', // interpolates fmtRemind(remindAt) for {date}
 ])
 
 // `INTERACTION_GATED` itself (design note 4a: entries no STATIC mount can
@@ -540,6 +640,15 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     'ui:log.collapsedMany': UI.log.collapsedMany.replace('{n}', '3')
       .replace('{from}', fmtDay(CASE_NOW + 2 * CASE_DAY)).replace('{to}', fmtDay(CASE_NOW + 4 * CASE_DAY)),
     'ui:time.daysAgo': UI.time.daysAgo.replace('{n}', '3'),
+    // C5 Task 9 — derived from the SAME fixtures the UiChrome mounts above
+    // use (cfWorking/cfSavedClosureq/cfClosedGotIt, all stamped CASE_NOW).
+    'ui:casefile.metaStarted': UI.casefile.metaStarted.replace('{day}', fmtDay(CASE_NOW)),
+    'ui:casefile.metaSaved': UI.casefile.metaSaved.replace('{day}', fmtDay(CASE_NOW)),
+    'ui:casefile.metaCheckBackSuffix': UI.casefile.metaCheckBackSuffix.replace('{date}', fmtRemind('2026-10-12')),
+    'ui:casefile.metaClosedSuffix': UI.casefile.metaClosedSuffix.replace('{date}', fmtDay(CASE_NOW)),
+    'ui:casefile.journeyOne': UI.casefile.journeyOne.replace('{n}', '1'),
+    'ui:casefile.journeyMany': UI.casefile.journeyMany.replace('{n}', '3'),
+    'ui:casefile.reminderText': UI.casefile.reminderText.replace('{date}', fmtRemind('2026-10-12')),
   }
 
   it('CAPTION_SUBSTITUTIONS covers exactly CAPTION_TEMPLATES, and each substituted form actually renders', async () => {
@@ -602,6 +711,15 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:log.collapsedOne'])
     expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:log.collapsedMany'])
     expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:time.daysAgo'])
+    // C5 Task 9 — CasefileScreen, all reachable at FIRST RENDER (props-driven,
+    // no interaction needed) off the SAME uiContainer mount above.
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:casefile.metaStarted'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:casefile.metaSaved'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:casefile.metaCheckBackSuffix'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:casefile.metaClosedSuffix'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:casefile.journeyOne'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:casefile.journeyMany'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:casefile.reminderText'])
   })
 
   // `INTERACTION_GATED` needs no membership pin here (fix-round review

@@ -182,12 +182,91 @@ export const UI = {
       "The carry list combines this case's verified requirements with common-sense basics. The tips are general practical guidance for any government office, not official rules.",
     doneBackHome: 'Done, back to Home',
   },
-  /** The casefile screen's own "Prepare steps" progress block (C5, Task 8).
-   *  Transcribed from the prototype's `case-progress` markup
-   *  (design/nextmove-v1-prototype.html, 2916-2919, tag v1-design-lock-2). */
+  /** The casefile screen — port of `renderCheckin` (design/nextmove-v1-
+   *  prototype.html, 2830-2970, tag v1-design-lock-2). Per the compact-card
+   *  spec, this screen IS the case's home ("there is no fifth surface").
+   *  `prepareStepsK`/`prepareCount` are Task 8's (the `.case-progress`
+   *  block); everything else is Task 9's.
+   *
+   *  `journeyOne`/`journeyMany` are TWO separate full templates, not one
+   *  built by concatenating a shared prefix with a conditionally-appended
+   *  plural suffix — a mechanism deviation from the prototype's own inline
+   *  ternary (`` `Journey · ${n} entr${n===1?'y':'ies'}` ``), for the exact
+   *  reason JourneyLog.tsx's own header note gives for `collapsedOne`/
+   *  `collapsedMany`: the singular form can then never accidentally grow a
+   *  suffix it shouldn't have. Same rendered output either way. */
   casefile: {
     prepareStepsK: 'Prepare steps',
     prepareCount: '{done} of {total} done', // TEMPLATE
+
+    yourCasefile: 'Your casefile',
+    // The meta-line templates (2914, 2888). `metaSaved` is reused for BOTH
+    // the open-and-saved branch and the closed variant's "Saved {day}"
+    // prefix — the prototype composes the identical literal in both places.
+    metaStarted: 'Started {day}', // TEMPLATE
+    metaSaved: 'Saved {day}', // TEMPLATE
+    metaCheckBackSuffix: ' · check back {date}', // TEMPLATE
+    metaClosedSuffix: ' · closed {date}', // TEMPLATE
+    journeyOne: 'Journey · {n} entry', // TEMPLATE
+    journeyMany: 'Journey · {n} entries', // TEMPLATE
+
+    // The closed variant (2884-2901).
+    closedGotItHeadline: 'Case closed: you got it.',
+    closedUnresolvedHeadline: 'Case closed. The record stays.',
+    closedLede: "Nothing further is tracked on a closed case. The journey record stays yours. It's the paper trail any future step would start from.",
+    reopen: 'This came back; reopen it',
+
+    // The "Add an update" module head + lede (2932-2937).
+    addUpdateKicker: 'Add an update',
+    whatsHappenedTitle: "What's happened since?",
+    addUpdateLede: 'Pick what actually happened, and your casefile and diagnosis update from it. If none of these fit, "Something else happened" re-checks your case properly.',
+
+    // The four follow-up panels (2836-2876). `cancel` is ONE registered
+    // string reused at its three literal "Cancel" sites within this same
+    // render function (the confirm panel's `.btn-secondary`, the valence
+    // panel's `.btn-ghost`, and the remove control's inline confirm) — the
+    // prototype's own source has the same bare word at all three.
+    pickedEcho: 'You picked:',
+    confirmQ: 'Record this?',
+    confirmBody: 'It updates your casefile',
+    confirmDiagnosisClause: ' and may change your diagnosis',
+    confirmYes: 'Yes, record it',
+    cancel: 'Cancel',
+    valenceQ: 'Which way did it go?',
+    favour: 'In my favour',
+    against: 'Against me / rejected',
+    closureYes: "Yes, it's done",
+    closureNotYet: 'Not yet',
+    reassureLead: 'Nothing changing is not a bad sign here.',
+    reassureConsecutive: "This stage doesn't change day to day, so checking more often won't move it.",
+    undoButton: 'Undo this check-in',
+
+    // The remind row + copyable reminder line (2953-2958).
+    remindPrompt: 'Want to check back on a date of your choosing?',
+    checkBackAria: 'Check-back date',
+    remindLead: 'Your own reminder (copy it to your phone):',
+    reminderText: 'Check NextMove case: {date}', // TEMPLATE — also copyReminder's own argument text.
+    copyLabel: 'Copy',
+    copiedLabel: 'Copied',
+
+    // .case-links (2960-2963, 2895-2897) and the tail (2879-2883, 2964-2967).
+    diagnosisLink: 'See my diagnosis',
+    prepareLink: 'Continue preparing',
+    livesOnlyNote: 'This casefile lives only in this tab until you save it.',
+    removePrompt: 'Remove this case and its history?',
+    removeYes: 'Yes',
+    removeButton: 'Remove this case and its history',
+  },
+  /** `saveControl` (prototype 2292-2298) — the one save entry point, shared
+   *  by Next Move, Prepare (both Task 11) and the casefile screen's own
+   *  unsaved-case tail (Task 9, 2966). Built here, ahead of Task 11's own
+   *  file-list entry, because the casefile screen's tail already needs it
+   *  (design note 8) — Task 11 wires it into the other two call sites and
+   *  Home, it does not rebuild it. */
+  saveControl: {
+    savedNote: 'Saved. Find it on Home whenever you come back',
+    save: 'Save this case, and NextMove keeps walking with you',
+    saveWithSteps: 'Save this case (your ticked steps come with it)',
   },
   /** The compact Home casefile card (C5, Task 8) — port of `caseCard`
    *  (prototype 3117-3135). `next`/`steps`/`lastUpdate`/`checkBack` are

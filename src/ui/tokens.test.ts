@@ -184,6 +184,17 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
       '.stamp.mini', '.closedmark', '.saved-card.closed',
       '.ci-panel', '.remind-row', '.remind-input',
       '.journey', '.log-e', '.log-mile', '.log-d', '.log-who', '.log-note',
+      // Task 8 review follow-up, addressed by Task 9: `.read-change` was
+      // originally swept into the blanket "881-995 = all C8" exclusion
+      // below, but it is a small, generic, reusable text-link-styled
+      // button utility — used by JourneyLog's "Show all N entries" (Task
+      // 8) AND CasefileScreen's "Copy reminder"/"Undo this check-in"
+      // buttons (Task 9) — not describe-it-specific. It physically sits
+      // among C8's describe-it rules (prototype 930-945) but is not one of
+      // them, so it is lifted on its own, scoped and documented, while its
+      // neighbours (.read-q, .read-pick, .span-quote, .read-opts, .ropt)
+      // stay excluded. See index.css's own provenance comment.
+      '.read-change',
     ]) expect(body, cls).toContain(cls)
   })
 
