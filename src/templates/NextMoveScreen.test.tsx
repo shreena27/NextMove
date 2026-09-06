@@ -19,6 +19,19 @@ const cases = [
   ['passport-unclassified', passportEngine, { q1: 'not_sure' }],
 ] as const
 
+describe('PRE-CHANGE PIN (Task 11): extend, never restructure', () => {
+  // See DiagnosisScreen.test.tsx's own identically-named describe block for
+  // the full mechanism note: this is a regression pin, not a RED test, run
+  // and committed against the UNMODIFIED component before Task 11 touches
+  // NextMoveScreen.tsx — the artefact the "extend, don't restructure"
+  // guarantee rests on.
+  it('renders byte-identical output when the Task 11 props are absent', () => {
+    const d = diagnose(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    const { container } = render(<NextMoveScreen serviceLabel="Passport" engineKey="passport" d={d} />)
+    expect(container.innerHTML).toMatchSnapshot()
+  })
+})
+
 describe("AC-11: What / Why / Where / What-you'll-need all populated, never blank", () => {
   it.each(cases)('%s', (_, engine, answers) => {
     const d = diagnose(engine, answers)

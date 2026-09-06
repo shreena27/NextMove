@@ -95,6 +95,14 @@ export const UI = {
       voter: { title: 'Voter Services', sub: 'Registration, correction, verification, or SIR' },
       other: { title: 'Other services', sub: 'Income, caste, EWS and more' },
     },
+    // The casefiles section (Task 11; prototype renderHome, 3137-3142).
+    // `casefilesOne`/`casefilesMany` are TWO SEPARATE templates, not one
+    // built by string concatenation — the same JourneyLog.tsx-precedented
+    // reason casefile.journeyOne/journeyMany already give: the singular
+    // form can then never accidentally grow a suffix it shouldn't have.
+    casefilesOne: 'Your casefile · {n}', // TEMPLATE
+    casefilesMany: 'Your casefiles · {n}', // TEMPLATE
+    closedLead: 'Closed',
   },
   otherServices: {
     crumb: 'Other services',
@@ -116,6 +124,19 @@ export const UI = {
     headlineUnclassified: "We don't have enough information to call this safely.",
     waitingOn: 'Waiting on',
     cta: 'See my next move',
+    /** The ciJustUpdated undo banner (Task 11, design note 3.1; prototype
+     *  renderDiagnosis, 3598) — `updateRecorded` is the banner's own text,
+     *  `undoUpdate` its `.read-change` button label. */
+    updateRecorded: 'Update recorded. This is where it leaves your case.',
+    undoUpdate: 'Undo that update',
+  },
+  /** `updateEntry` (prototype 2284-2289) — the tracking entry point shared
+   *  by Diagnosis (Task 11's own design note 3.5) and Next Move (design
+   *  note 4). Only one string: the component itself makes no routing
+   *  decision (design note 1 — that logic already lives in the reducer's
+   *  BEGIN_WORKING_CHECKIN arm, Task 5). */
+  updateEntry: {
+    label: "Add an update: what's happened since?",
   },
   nextMove: {
     why: 'Why',

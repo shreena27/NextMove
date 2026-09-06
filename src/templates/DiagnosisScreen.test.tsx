@@ -122,6 +122,24 @@ describe('the topbar slot (fix round 1, Important #3)', () => {
   })
 })
 
+describe('PRE-CHANGE PIN (Task 11): extend, never restructure', () => {
+  // NOT a RED test (see the task brief's own PRE-CHANGE PIN section):
+  // toMatchSnapshot() writes its baseline on first run and passes green
+  // immediately, so it cannot "fail first" the way a real RED test does.
+  // This is run, and its generated snapshot committed, AGAINST THE
+  // UNMODIFIED component — before Task 11 touches DiagnosisScreen.tsx at
+  // all. After the Task 11 changes land, re-running this SAME test (still
+  // passing none of the new ciJustUpdated/ciSnapshot/onUndo/onUpdate props)
+  // must still match this baseline exactly — that is the guarantee that
+  // Task 11 only ADDED behind new optional props and never restructured an
+  // existing branch. A second, separate snapshot (below) pins the
+  // WITH-new-props case once those props exist.
+  it('renders byte-identical output when the Task 11 props are absent', () => {
+    const { container } = renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    expect(container.innerHTML).toMatchSnapshot()
+  })
+})
+
 describe('the shared template renders every service unmodified (impl plan §1)', () => {
   it.each([
     ['passport', passportEngine, { q1: 'adverse', q2: 'no_followup' }, null],
