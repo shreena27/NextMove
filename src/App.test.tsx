@@ -1,10 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { diagnose } from './domain/engine'
 import { passportEngine, voterEngine, sirEngine } from './playbooks/engines'
 import { SIR_STATES } from './playbooks/sirPlaybook'
+import * as evaluateModule from './domain/evaluate'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('Passport, end to end — the flow is real, not just unit-tested components', () => {
   it('Home -> guardrail -> Q1 -> Q2 -> Diagnosis -> Next Move', async () => {
@@ -118,11 +123,17 @@ describe('Voter and SIR, end to end', () => {
   })
 
   it('AC-S-5: SIR Bihar -> the coverage screen, and no diagnosis screen is ever rendered', async () => {
+    // Spy on the real evaluate() export, same pattern as sirFlow.test.tsx's
+    // own AC-S-5 spy test — so the "the SIR playbook is never evaluated for
+    // an unsupported state" guarantee holds through the real <App> router,
+    // not just through the lower-level SirState/SirUnsupported screens.
+    const spy = vi.spyOn(evaluateModule, 'evaluate')
     render(<App />)
     await userEvent.click(screen.getByRole('button', { name: /Voter Services/ }))
     await userEvent.click(screen.getByRole('button', { name: /^This is about SIR/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Bihar' }))
 
+    expect(spy).not.toHaveBeenCalled()
     expect(screen.getByText(/isn't available in NextMove yet/)).toBeInTheDocument()
     expect(document.querySelector('.stamp')).toBeNull()
     expect(screen.queryByRole('heading', { name: /SIR situation/ })).toBeNull()

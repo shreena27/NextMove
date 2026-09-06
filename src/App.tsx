@@ -56,6 +56,13 @@ export default function App() {
   const [state, dispatch] = useReducer(sessionReducer, initialSession)
 
   const lastScreen = useRef<ScreenId | null>(null)
+  // Deliberate ref-during-render read (see header comment): this is what
+  // makes `settled` reflect "the screen that was actually painted," not
+  // "the screen as of the last screen change." Safe because the effect
+  // below has no dependency array, so it always runs after this read and
+  // keeps `lastScreen.current` in sync; StrictMode's double-render reads
+  // the same value on both passes (the effect hasn't run between them yet).
+  // oxlint-disable-next-line react/refs
   const settled = lastScreen.current === state.screen
   useEffect(() => {
     lastScreen.current = state.screen

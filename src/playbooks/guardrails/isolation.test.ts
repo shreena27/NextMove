@@ -7,8 +7,9 @@
 //
 // Files inside src/playbooks/guardrails/ itself are exempt: they are the
 // harness, so they are allowed to import each other and node:fs/node:url —
-// that is their whole job. Every OTHER .ts file under src/ (application,
-// domain and playbook-data code, excluding *.test.ts files) must never:
+// that is their whole job. Every OTHER .ts/.tsx file under src/ (application,
+// domain and playbook-data code, excluding *.test.ts/*.test.tsx files) must
+// never:
 //   1. import anything under guardrails/, or
 //   2. import node:fs, node:path, node:url or vitest directly — those are
 //      guardrail-harness-only dependencies that application/domain/
@@ -30,12 +31,12 @@ const srcRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..') // -> 
 
 const DISALLOWED_BARE_IMPORTS = ['node:fs', 'node:path', 'node:url', 'vitest']
 
-/** Every .ts file under src/, excluding *.test.ts files and anything inside
- *  playbooks/guardrails/ (the harness itself, which is allowed to use these
- *  dependencies — that's its entire purpose). Deliberately `.ts` only, not
- *  `.tsx`: the plan's isolation constraint is about the harness's fs/vitest
- *  dependencies leaking into logic modules, and the two current `.tsx`
- *  files (App.tsx, main.tsx) carry no such imports today. */
+/** Every .ts/.tsx file under src/, excluding *.test.ts/*.test.tsx files and
+ *  anything inside playbooks/guardrails/ (the harness itself, which is
+ *  allowed to use these dependencies — that's its entire purpose). Used to
+ *  cover `.ts` only, on the theory that App.tsx/main.tsx were the only
+ *  `.tsx` files and carried no such imports — C3 added ~30 more `.tsx`
+ *  screen/template files, so the extension filter now covers both. */
 function applicationTsFiles(dir: string): string[] {
   const out: string[] = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -46,8 +47,8 @@ function applicationTsFiles(dir: string): string[] {
       continue
     }
     if (!entry.isFile()) continue
-    if (!entry.name.endsWith('.ts')) continue
-    if (entry.name.endsWith('.test.ts')) continue
+    if (!/\.tsx?$/.test(entry.name)) continue
+    if (/\.test\.tsx?$/.test(entry.name)) continue
     out.push(full)
   }
   return out

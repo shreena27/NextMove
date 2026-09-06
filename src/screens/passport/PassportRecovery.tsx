@@ -77,6 +77,11 @@ export function PassportRecovery({ state, dispatch }: ScreenProps) {
           </>}
           right={
             <div className="answers">
+              {/* `state.answers.recovery` is intentionally dead: nothing in
+                  this file (or anywhere else) ever writes a 'recovery' key
+                  to answers, so these `selected` checks never match. Kept
+                  as a faithful transcription of the same dead check in the
+                  locked prototype — not a bug to wire up. */}
               <AnswerRow value="paste" label={PASSPORT_COPY.recovery.paste} sub={PASSPORT_COPY.recovery.pasteSub} selected={state.answers.recovery === 'paste'} onSelect={choose} />
               <AnswerRow value="show" label={PASSPORT_COPY.recovery.show} selected={state.answers.recovery === 'show'} onSelect={choose} />
               <AnswerRow value="safest" label={PASSPORT_COPY.recovery.safest} selected={state.answers.recovery === 'safest'} onSelect={choose} />

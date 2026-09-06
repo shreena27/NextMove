@@ -15,7 +15,7 @@ import { guardrailFindings } from '../playbooks/guardrails/suite'
 import { extraCopy } from '../playbooks/guardrails/contentSafety'
 import { passportPlaybook, PASSPORT_STAGE_SHORT } from '../playbooks/passportPlaybook'
 import { voterPlaybook } from '../playbooks/voterPlaybook'
-import { sirPlaybook, SIR_STATES, sirCopyExtras } from '../playbooks/sirPlaybook'
+import { sirPlaybook, SIR_STATES, SIR_PHASES, sirCopyExtras } from '../playbooks/sirPlaybook'
 import { diagnose } from '../domain/engine'
 import { passportEngine } from '../playbooks/engines'
 import { initialSession, type SessionState } from '../session/session'
@@ -139,6 +139,37 @@ describe('C3 screen copy passes the same content-safety scan as rule copy (§7)'
         ...Object.values(SIR_STATES).map(s => extraCopy(`sir:SIR_STATES.${s.id}.name`, s.name)),
       ],
     })).toEqual([])
+  })
+
+  it('unsupported.lede\'s "Delhi only" claim is pinned to the actually-supported states', () => {
+    // SIR_COPY.unsupported.lede says "Right now, that's Delhi only." — true
+    // only because SIR_STATES currently marks exactly one state supported.
+    // Nothing enforces that if a second state is later marked supported, so
+    // pin it here: adding one fails this test loudly, forcing the copy to
+    // be revisited rather than silently going stale.
+    expect(Object.values(SIR_STATES).filter(s => s.supported).map(s => s.name)).toEqual(['Delhi'])
+  })
+
+  it('q1.ledeTail\'s "already behind us" claim is pinned to the phases it actually holds for', () => {
+    // SIR_COPY.q1.ledeTail says "Enumeration and the Draft Roll are both
+    // already behind us, so that's what these options reflect." That's true
+    // for claims_notice (which starts only once both have happened) and for
+    // final_roll (later still), but would stop being true if an earlier
+    // phase — one covering enumeration itself — were added to SIR_PHASES and
+    // a state moved into it. Pin the claim to exactly the phase ids it is
+    // actually true for (not "whatever SIR_PHASES currently contains"), so
+    // such an addition fails here instead of shipping stale copy.
+    const phasesWhereEnumerationAndDraftRollAreBehindUs = ['claims_notice', 'final_roll']
+    // Sanity: the ids above must be real SIR_PHASES entries, not typos.
+    expect(phasesWhereEnumerationAndDraftRollAreBehindUs.every(id => id in SIR_PHASES)).toBe(true)
+
+    const phaseIdsInUse = Object.values(SIR_STATES)
+      .map(s => s.phase?.id)
+      .filter((id): id is string => id !== undefined)
+    expect(phaseIdsInUse.length).toBeGreaterThan(0) // the check below isn't vacuous
+    for (const id of phaseIdsInUse) {
+      expect(phasesWhereEnumerationAndDraftRollAreBehindUs).toContain(id)
+    }
   })
 
   it('the ui: bucket is scanned too, not just declared', () => {
