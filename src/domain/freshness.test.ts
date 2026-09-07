@@ -74,14 +74,26 @@ describe('changedOnFor', () => {
     expect(changedOnFor(rules, okData)).toBeNull()
   })
 
-  it('returns the single changed document\'s date', () => {
+  it('returns the single changed document\'s date, formatted "d Mon yyyy" — NOT the raw ISO string check_freshness.py writes', () => {
     const rules = [rule('r1', 'doc-a.pdf'), rule('r2', 'doc-b.pdf')]
-    expect(changedOnFor(rules, changedData)).toBe('2026-09-06')
+    expect(changedOnFor(rules, changedData)).toBe('6 Sep 2026')
   })
 
-  it('returns the EARLIEST date when multiple cited documents are changed — never a fabricated aggregate', () => {
+  it('returns the EARLIEST date when multiple cited documents are changed — never a fabricated aggregate — sorted on the ISO form, THEN formatted', () => {
     const rules = [rule('r1', 'doc-b.pdf'), rule('r2', 'doc-c.pdf')]
-    expect(changedOnFor(rules, changedData)).toBe('2026-09-01')
+    expect(changedOnFor(rules, changedData)).toBe('1 Sep 2026')
+  })
+
+  it('sorts correctly across a month boundary — a raw-ISO lexical sort done AFTER formatting would get this wrong', () => {
+    const crossMonth: FreshnessFile = {
+      checkedAt: '2026-09-07T00:00:00Z',
+      documents: {
+        'doc-late.pdf': { status: 'changed', changedOn: '2026-10-01', checkedFrom: 'ci' },
+        'doc-early.pdf': { status: 'changed', changedOn: '2026-09-30', checkedFrom: 'ci' },
+      },
+    }
+    const rules = [rule('r1', 'doc-late.pdf'), rule('r2', 'doc-early.pdf')]
+    expect(changedOnFor(rules, crossMonth)).toBe('30 Sep 2026')
   })
 })
 

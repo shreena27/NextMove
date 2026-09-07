@@ -62,19 +62,25 @@ export function degradedFor(rules: PlaybookRule[], data: FreshnessFile = freshne
  *  changedOn — never emitted by check_freshness.py, but this function does
  *  not assume its caller's data is well-formed). */
 export function changedOnFor(rules: PlaybookRule[], data: FreshnessFile = freshness): string | null {
+  // Sort on the raw ISO strings — lexical order is chronological order for
+  // "YYYY-MM-DD" — and format ONLY the winner. Formatting before sorting
+  // would sort "5 Sep 2026" before "6 Sep 2026" lexically by coincidence
+  // today, but break the moment a month/year boundary is crossed.
   const dates = rules
     .map(rule => (rule.source.docId !== null ? data.documents[rule.source.docId] : undefined))
     .filter((doc): doc is FreshnessDocument => doc?.status === 'changed' && Boolean(doc.changedOn))
     .map(doc => doc.changedOn as string)
     .sort()
-  return dates[0] ?? null
+  return dates[0] ? formatDate(dates[0]) : null
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** "d Mon yyyy", matching TrustDisclosure's existing SOURCES_VERIFIED
  *  convention exactly (same format, same fixed-3-letter month table) so
- *  the two never visibly disagree in style where they appear side by side. */
+ *  the two never visibly disagree in style where they appear side by side.
+ *  Accepts either a bare "YYYY-MM-DD" date (changedOnFor's input) or a full
+ *  ISO datetime (verifiedDateFor's input) — `new Date()` parses both. */
 function formatDate(iso: string): string {
   const d = new Date(iso)
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`
