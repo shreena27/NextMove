@@ -1,0 +1,21 @@
+name: Freshness spike (reachability check only)
+
+# Manual-only, temporary: confirms a GitHub-hosted runner can actually
+# reach the 4 auto-checked government PDF sources in sources/manifest.json
+# before the real scheduled freshness job (C6) gets built. Not scheduled,
+# does not commit or degrade anything — just runs check_freshness.py and
+# surfaces its exit code/log. Delete once the real workflow replaces it.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  spike:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Run check_freshness.py (report only, never fails the job)
+        working-directory: sources
+        run: python check_freshness.py; echo "exit code: $?"
