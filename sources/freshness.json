@@ -1,20 +1,20 @@
 {
-  "checkedAt": "2026-09-07T06:41:46Z",
+  "checkedAt": "2026-09-07T06:43:28Z",
   "documents": {
     "FAQ_SIR2026.pdf": {
       "status": "ok",
-      "lastChecked": "2026-09-07T06:34:02Z",
+      "lastChecked": "2026-09-07T06:43:27Z",
       "checkedFrom": "local"
     },
     "Final-ER-FAQ.pdf": {
       "status": "ok",
-      "lastChecked": "2026-09-07T06:34:02Z",
+      "lastChecked": "2026-09-07T06:43:27Z",
       "checkedFrom": "local"
     },
     "Citizens_Charter.pdf": {
       "status": "ok",
-      "lastChecked": "2026-09-07T06:41:46Z",
-      "checkedFrom": "ci"
+      "lastChecked": "2026-09-07T06:43:28Z",
+      "checkedFrom": "local"
     }
   }
 }

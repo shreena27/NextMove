@@ -17,11 +17,6 @@ on:
     # documented delay/drop risk for crowded cron slots.
     - cron: '17 21 * * *'
   workflow_dispatch: {}
-  # TEMPORARY, for testing this workflow before it merges — remove before
-  # opening the PR. workflow_dispatch only fires from the default branch's
-  # copy of this file; this isn't being merged just to test it.
-  push:
-    branches: [c6-freshness]
 
 permissions:
   contents: write
