@@ -25,4 +25,6 @@ jobs:
           python-version: '3.x'
       - name: Run check_freshness.py (report only, never fails the job)
         working-directory: sources
-        run: python check_freshness.py; echo "exit code: $?"
+        run: |
+          python check_freshness.py
+          echo "exit code: $?"
