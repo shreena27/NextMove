@@ -3,6 +3,7 @@ import { initialSession, sessionReducer as r } from './session'
 import type { SessionState } from './session'
 import type { Casefile } from '../domain/casefile'
 import type { CheckinOption } from '../domain/checkinOptions'
+import type { AppUser } from './auth'
 
 const seq = (...actions: Parameters<typeof r>[1][]) =>
   actions.reduce((s, a) => r(s, a), initialSession)
@@ -18,6 +19,9 @@ const FIXTURE_CASE: Casefile = {
   id: 'c1', outcome: 'still_open', lastCheck: null, remindAt: null, log: [],
 }
 const FIXTURE_OPTION: CheckinOption = { k: 'event', label: 'A BLO visited or contacted me' }
+// C7 fixture: a signed-in phone-method user with a display name — every
+// field AppUser declares (session/auth.ts), nothing invented beyond it.
+const FIXTURE_USER: AppUser = { method: 'phone', id: '+919876543210', name: 'Ananya' }
 
 describe('navigation', () => {
   it('pushes history and lands on the new screen', () => {
@@ -139,20 +143,24 @@ describe('restart — AC-9 + PRD §15 inline confirmation', () => {
   })
 })
 
-describe('C5 SessionState field list (was the C4 scope-exclusion pin — C4 said no prep* fields, C5 is where they land)', () => {
+describe('SessionState field list (C5\'s pin, was the C4 scope-exclusion pin before that — C7 adds the auth-flow fields below)', () => {
   it('has exactly the fields this chunk ships — no fewer, no silent extra', () => {
     expect(Object.keys(initialSession).sort()).toEqual([
-      'activeCaseId', 'answers', 'ciAccepted', 'ciConsecutive', 'ciJustUpdated',
+      'acctOpen', 'activeCaseId', 'answers', 'authBusy', 'authErr', 'authId', 'authMethod',
+      'ciAccepted', 'ciConsecutive', 'ciJustUpdated',
       'ciPending', 'ciPendingIdx', 'ciReassure', 'ciSnapshot', 'ciStage',
-      'history', 'logOpen', 'pendingSave', 'phaseDrift', 'prepChecks', 'prepDraft',
+      'history', 'logOpen', 'migration',
+      'otp', 'otpCooldownUntil', 'otpResent',
+      'pendingName', 'pendingSave', 'phaseDrift', 'prepChecks', 'prepDraft',
       'recoveryText', 'reminderCopied', 'removeConfirm', 'restartConfirm',
-      'savedCases', 'screen', 'trustOpen', 'voterEntryExplain', 'workingCase',
+      'savedCases', 'screen', 'signOutConfirm',
+      'trustOpen', 'user', 'voterEntryExplain', 'workingCase',
     ])
   })
 })
 
-describe('RESTART preserves the persisted slice (Issue #7 / design note 3)', () => {
-  it('preserves savedCases and resets every other field to initialSession, field by field', () => {
+describe('RESTART preserves the persisted slice AND the signed-in user (Issue #7 / design note 3; C7 design note 6)', () => {
+  it('preserves savedCases and user, and resets every other field to initialSession, field by field', () => {
     const savedCases = [FIXTURE_CASE]
     const dirty: SessionState = {
       screen: 'passport-diagnosis',
@@ -180,25 +188,39 @@ describe('RESTART preserves the persisted slice (Issue #7 / design note 3)', () 
       reminderCopied: true,
       phaseDrift: true,
       pendingSave: { engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove' },
+      user: FIXTURE_USER,
+      authMethod: 'email',
+      authId: 'someone@example.com',
+      otp: '123456',
+      authErr: 'That doesn\'t look like a full mobile number yet.',
+      otpResent: true,
+      signOutConfirm: true,
+      acctOpen: true,
+      pendingName: 'Draft Name',
+      authBusy: true,
+      otpCooldownUntil: 1_726_000_000_000,
+      migration: 'running',
     }
 
     const s = r(dirty, { type: 'RESTART' })
 
-    expect(s).toEqual({ ...initialSession, savedCases })
+    expect(s).toEqual({ ...initialSession, savedCases, user: FIXTURE_USER })
     expect(s.savedCases).toBe(savedCases) // the SAME array, not a copy
+    expect(s.user, 'the topbar brand button dispatches RESTART; without this, tapping the logo signs the citizen out').toBe(FIXTURE_USER)
     for (const key of Object.keys(initialSession) as (keyof SessionState)[]) {
-      if (key === 'savedCases') continue
+      if (key === 'savedCases' || key === 'user') continue
       expect(s[key], `RESTART must reset ${key} to initialSession's value`).toEqual(initialSession[key])
     }
   })
 })
 
-describe('BACK to Home preserves the persisted slice (design note 4)', () => {
-  it('preserves savedCases when the previous screen is home — the single most likely place to silently wipe a citizen\'s saved casefiles', () => {
+describe('BACK to Home preserves the persisted slice AND the signed-in user (design note 4; C7 design note 6)', () => {
+  it('preserves savedCases and user when the previous screen is home — the single most likely place to silently wipe a citizen\'s saved casefiles', () => {
     const savedCases = [FIXTURE_CASE]
     const dirty: SessionState = {
       ...initialSession,
       savedCases,
+      user: FIXTURE_USER,
       history: ['home'],
       screen: 'passport-q1',
       answers: { q1: 'adverse' },
@@ -209,7 +231,8 @@ describe('BACK to Home preserves the persisted slice (design note 4)', () => {
 
     expect(s.screen).toBe('home')
     expect(s.savedCases).toBe(savedCases) // the SAME array, not a copy
-    expect(s).toEqual({ ...initialSession, savedCases })
+    expect(s.user, 'the topbar brand button dispatches RESTART; without this, tapping the logo signs the citizen out').toBe(FIXTURE_USER)
+    expect(s).toEqual({ ...initialSession, savedCases, user: FIXTURE_USER })
   })
 })
 
@@ -248,18 +271,21 @@ describe('C5 ScreenId additions', () => {
       .toEqual(['checkin', 'dead-end', 'case-closed', 'save-done'])
   })
 
-  it('C7/C8 screen ids are NOT part of this union yet (negative type-check)', () => {
-    // @ts-expect-error 'save-case' is C7's — not on ScreenId until then
-    r(initialSession, { type: 'NAVIGATE', screen: 'save-case' })
-    // @ts-expect-error 'save-otp' is C7's — not on ScreenId until then
-    r(initialSession, { type: 'NAVIGATE', screen: 'save-otp' })
-    // @ts-expect-error 'save-name' is C7's — not on ScreenId until then
-    r(initialSession, { type: 'NAVIGATE', screen: 'save-name' })
+  it('C8\'s interp-confirm is still NOT part of this union (negative type-check, narrowed from C5\'s four-id pin now that C7 lands three of them)', () => {
     // @ts-expect-error 'interp-confirm' is C8's — not on ScreenId until then
     r(initialSession, { type: 'NAVIGATE', screen: 'interp-confirm' })
   })
   // 'sir-reverifying' (C6) moved out of this negative check — it is a real
-  // ScreenId now (this chunk); routing coverage lives in sirFlow.test.tsx.
+  // ScreenId now; routing coverage lives in sirFlow.test.tsx.
+})
+
+describe('C7 ScreenId additions', () => {
+  it('save-case / save-otp / save-name type-check in NAVIGATE (prototype router, 3937-3939)', () => {
+    const s1 = seq({ type: 'NAVIGATE', screen: 'save-case' })
+    const s2 = seq({ type: 'NAVIGATE', screen: 'save-otp' })
+    const s3 = seq({ type: 'NAVIGATE', screen: 'save-name' })
+    expect([s1.screen, s2.screen, s3.screen]).toEqual(['save-case', 'save-otp', 'save-name'])
+  })
 })
 
 describe('BEGIN_WORKING_CHECKIN / OPEN_CHECKIN reducer wiring (thin arms over cases.ts, design notes 3 and 8)', () => {
@@ -655,5 +681,297 @@ describe('BEGIN_WORKING_CHECKIN leaves phaseDrift false for a freshly built/reus
     })
     expect(s.screen).toBe('checkin')
     expect(s.phaseDrift).toBe(false)
+  })
+})
+
+// =============================================================================
+// Task 4 (C7) — the user, the auth-flow fields, the three screen ids.
+// TRANSCRIBED, not authored: design/nextmove-v1-prototype.html (git tag
+// v1-design-lock-2) — S (1946-1951), nav() (2027-2031), back() (2035-2040),
+// restart() (2043-2045), authSubmitId (2104-2113), authVerifyOtp (2119-2128),
+// signOut (2155-2159), acctPopover (2246-2261), topbar's acct-chip (2262-
+// 2274), the Escape handler (3948-3949).
+// =============================================================================
+
+describe('NAVIGATE clears authErr and acctOpen (C7 design note 5 — prototype nav(), 2029)', () => {
+  it('clears a stale auth error and a floating account popover on navigation — a stale authErr would put "That doesn\'t look like a full mobile number yet." on a screen the citizen just arrived at, and a stale acctOpen would leave the popover floating over an unrelated screen', () => {
+    const dirty: SessionState = {
+      ...initialSession, authErr: 'That doesn\'t look like a full mobile number yet.', acctOpen: true,
+    }
+    const s = r(dirty, { type: 'NAVIGATE', screen: 'passport-q1' })
+    expect(s.authErr).toBeNull()
+    expect(s.acctOpen).toBe(false)
+  })
+})
+
+describe('Every other navigating arm applies the SAME authErr/acctOpen clears as NAVIGATE (C7 design note 5 — C5\'s own design note 5 records this exact family of clears was missed once already)', () => {
+  const NOW = 1_725_000_000_000
+  const withStaleAuthUi = (extra: Partial<SessionState> = {}): SessionState => ({
+    ...initialSession, authErr: 'stale error', acctOpen: true, ...extra,
+  })
+
+  const cases: Array<{ name: string; run: () => SessionState }> = [
+    {
+      name: 'BEGIN_WORKING_CHECKIN',
+      run: () => r(withStaleAuthUi(), {
+        type: 'BEGIN_WORKING_CHECKIN', engineKey: 'passport', serviceLabel: 'Passport',
+        returnScreen: 'passport-nextmove', now: NOW,
+      }),
+    },
+    {
+      name: 'OPEN_CHECKIN',
+      run: () => r(withStaleAuthUi({ savedCases: [FIXTURE_CASE] }), { type: 'OPEN_CHECKIN', id: 'c1' }),
+    },
+    {
+      name: 'BEGIN_SAVE',
+      run: () => r(withStaleAuthUi(), {
+        type: 'BEGIN_SAVE', engineKey: 'passport', serviceLabel: 'Passport',
+        returnScreen: 'passport-nextmove', now: NOW,
+      }),
+    },
+    {
+      name: 'REOPEN_CASE',
+      run: () => r(
+        withStaleAuthUi({ savedCases: [{ ...FIXTURE_CASE, outcome: 'closed_unresolved', closedAt: NOW - 5000 }] }),
+        { type: 'REOPEN_CASE', id: 'c1', now: NOW },
+      ),
+    },
+    {
+      name: 'REMOVE_SAVED',
+      run: () => r(withStaleAuthUi({ savedCases: [FIXTURE_CASE] }), { type: 'REMOVE_SAVED', id: 'c1' }),
+    },
+    {
+      name: 'PHASE_DRIFT_RECHECK',
+      run: () => r(withStaleAuthUi({ screen: 'checkin' }), { type: 'PHASE_DRIFT_RECHECK' }),
+    },
+    {
+      name: "applyCiFragment's navigating branch (exercised via CI_CHOOSE then CI_CONFIRM)",
+      run: () => {
+        const afterChoose = seq(
+          { type: 'ANSWER', service: 'passport', key: 'q1', value: 'no_contact' },
+          { type: 'ANSWER', service: 'passport', key: 'q2', value: 'no_followup' },
+          { type: 'BEGIN_WORKING_CHECKIN', engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove', now: NOW },
+          { type: 'CI_CHOOSE', index: 0, now: NOW + 1000 },
+        )
+        return r({ ...afterChoose, authErr: 'stale error', acctOpen: true }, { type: 'CI_CONFIRM', now: NOW + 2000 })
+      },
+    },
+    {
+      // DEVIATION from the prototype's back() (2035-2040), which clears
+      // neither acctOpen nor restartConfirm — this codebase already
+      // diverges on restartConfirm (C3, 257-258), so adding acctOpen here
+      // follows that same established local precedent rather than
+      // inventing a new one. removeConfirm is deliberately NOT asserted
+      // here: back() does not clear it, matching the prototype.
+      name: "BACK to a non-Home screen — deliberate divergence from the prototype's back(), matching C3's existing restartConfirm divergence",
+      run: () => r(withStaleAuthUi({ screen: 'passport-q2', history: ['home', 'passport-q1'] }), { type: 'BACK' }),
+    },
+  ]
+
+  it.each(cases)('$name clears authErr and acctOpen', ({ run }) => {
+    const s = run()
+    expect(s.authErr).toBeNull()
+    expect(s.acctOpen).toBe(false)
+  })
+})
+
+describe('SET_AUTH_METHOD (prototype 3841)', () => {
+  it('switching to email clears authId and authErr', () => {
+    const dirty: SessionState = { ...initialSession, authMethod: 'phone', authId: '9876543210', authErr: 'some error' }
+    const s = r(dirty, { type: 'SET_AUTH_METHOD', method: 'email' })
+    expect(s.authMethod).toBe('email')
+    expect(s.authId).toBe('')
+    expect(s.authErr).toBeNull()
+  })
+})
+
+describe('Auth-flow field setters — thin arms, prototype-mirrored', () => {
+  it('SET_AUTH_ID stores the raw input verbatim', () => {
+    const s = r(initialSession, { type: 'SET_AUTH_ID', value: '98765' })
+    expect(s.authId).toBe('98765')
+  })
+
+  it('SET_OTP stores the raw input verbatim', () => {
+    const s = r(initialSession, { type: 'SET_OTP', value: '123' })
+    expect(s.otp).toBe('123')
+  })
+
+  it('SET_AUTH_ERR sets and clears the error', () => {
+    const s1 = r(initialSession, { type: 'SET_AUTH_ERR', error: 'bad input' })
+    expect(s1.authErr).toBe('bad input')
+    const s2 = r(s1, { type: 'SET_AUTH_ERR', error: null })
+    expect(s2.authErr).toBeNull()
+  })
+
+  it('SET_PENDING_NAME stores the draft name verbatim', () => {
+    const s = r(initialSession, { type: 'SET_PENDING_NAME', value: 'Ananya' })
+    expect(s.pendingName).toBe('Ananya')
+  })
+
+  it('SET_AUTH_BUSY sets and clears the in-flight flag — a citizen who taps "Send me a code" twice must not start two flows', () => {
+    const s1 = r(initialSession, { type: 'SET_AUTH_BUSY', value: true })
+    expect(s1.authBusy).toBe(true)
+    const s2 = r(s1, { type: 'SET_AUTH_BUSY', value: false })
+    expect(s2.authBusy).toBe(false)
+  })
+
+  it('SET_OTP_RESENT sets and clears the resent flag', () => {
+    const s1 = r(initialSession, { type: 'SET_OTP_RESENT', value: true })
+    expect(s1.otpResent).toBe(true)
+    const s2 = r(s1, { type: 'SET_OTP_RESENT', value: false })
+    expect(s2.otpResent).toBe(false)
+  })
+
+  it('SET_OTP_COOLDOWN stores the supplied deadline verbatim (D6: never Date.now() inside the reducer)', () => {
+    const s = r(initialSession, { type: 'SET_OTP_COOLDOWN', until: 1_726_000_000_000 })
+    expect(s.otpCooldownUntil).toBe(1_726_000_000_000)
+    const cleared = r(s, { type: 'SET_OTP_COOLDOWN', until: null })
+    expect(cleared.otpCooldownUntil).toBeNull()
+  })
+})
+
+describe('AUTH_ID_SUBMITTED — the successful half of authSubmitId (prototype 2113)', () => {
+  it('lands on save-otp with otp cleared, authErr null, and the normalised id written', () => {
+    const dirty: SessionState = { ...initialSession, screen: 'save-case', otp: 'stale', authErr: 'stale error' }
+    const s = r(dirty, { type: 'AUTH_ID_SUBMITTED', authId: '+919876543210' })
+    expect(s.screen).toBe('save-otp')
+    expect(s.otp).toBe('')
+    expect(s.authErr).toBeNull()
+    expect(s.authId).toBe('+919876543210')
+  })
+})
+
+describe('SIGNED_IN (prototype authVerifyOtp, 2122)', () => {
+  it('sets the user and clears authErr/otp/authBusy, leaving migration untouched — starting the migration is a separate, explicitly-dispatched step', () => {
+    const dirty: SessionState = { ...initialSession, authBusy: true, authErr: 'stale', otp: '123456', migration: 'idle' }
+    const s = r(dirty, { type: 'SIGNED_IN', user: FIXTURE_USER })
+    expect(s.user).toEqual(FIXTURE_USER)
+    expect(s.authBusy).toBe(false)
+    expect(s.authErr).toBeNull()
+    expect(s.otp).toBe('')
+    expect(s.migration).toBe('idle')
+  })
+})
+
+describe('SET_USER_NAME (Task 13\'s standalone rename path — distinct from SIGNED_IN, design note 7)', () => {
+  it('sets user.name and changes nothing else, surviving a non-null authErr, a non-empty otp, and authBusy:true', () => {
+    const dirty: SessionState = {
+      ...initialSession,
+      user: { method: 'phone', id: '+919876543210', name: null },
+      authErr: 'stale error', otp: '123456', authBusy: true,
+    }
+    const s = r(dirty, { type: 'SET_USER_NAME', name: 'Ananya' })
+    expect(s.user).toEqual({ method: 'phone', id: '+919876543210', name: 'Ananya' })
+    for (const key of Object.keys(initialSession) as (keyof SessionState)[]) {
+      if (key === 'user') continue
+      expect(
+        s[key],
+        'reusing SIGNED_IN for a name change wipes three unrelated fields; the standalone rename path has no auth flow in progress to wipe',
+      ).toEqual(dirty[key])
+    }
+  })
+
+  it('returns s by identity when user is null', () => {
+    const s = r(initialSession, { type: 'SET_USER_NAME', name: 'Ananya' })
+    expect(s).toBe(initialSession)
+  })
+})
+
+describe('MIGRATION_STARTED — the double-trigger guard (Task 8 design note 4: the mount effect\'s getCurrentUser() and the onAuthChange subscription can both fire)', () => {
+  it.each([
+    { from: 'idle', expectRunning: true },
+    { from: 'failed', expectRunning: true },
+    { from: 'running', expectRunning: false },
+    { from: 'done', expectRunning: false },
+  ] as const)('from $from', ({ from, expectRunning }) => {
+    expect.assertions(1) // conditional branch below — pin exactly one assertion runs
+    const dirty: SessionState = { ...initialSession, migration: from }
+    const s = r(dirty, { type: 'MIGRATION_STARTED' })
+    if (expectRunning) {
+      expect(s.migration).toBe('running')
+    } else {
+      // The no-op IS the guard: identity, not just equal value.
+      expect(s).toBe(dirty)
+    }
+  })
+})
+
+describe('MIGRATION_FAILED — nm_cases stays authoritative on failure (design note 7)', () => {
+  it('sets migration to failed and authErr, leaving savedCases identical by reference', () => {
+    const savedCases = [FIXTURE_CASE]
+    const dirty: SessionState = { ...initialSession, migration: 'running', savedCases }
+    const s = r(dirty, { type: 'MIGRATION_FAILED', error: 'network error' })
+    expect(s.migration).toBe('failed')
+    expect(s.authErr).toBe('network error')
+    expect(s.savedCases).toBe(savedCases)
+  })
+})
+
+describe('ADOPT_CASES — D10\'s adoptStoredCases (design note 7: cases is adopted+toUpload, the union — never adopted alone)', () => {
+  it('replaces savedCases wholesale and sets migration to done in the SAME transition', () => {
+    const dirty: SessionState = { ...initialSession, savedCases: [FIXTURE_CASE], migration: 'running' }
+    const merged = [{ ...FIXTURE_CASE, id: 'c2' }, { ...FIXTURE_CASE, id: 'c3' }]
+    const s = r(dirty, { type: 'ADOPT_CASES', cases: merged })
+    expect(s.savedCases).toEqual(merged)
+    expect(s.migration).toBe('done')
+  })
+
+  it('replaces a non-empty local set with an empty adopted set — the real "no cases anywhere" case a naive merge would get wrong', () => {
+    const dirty: SessionState = { ...initialSession, savedCases: [FIXTURE_CASE], migration: 'running' }
+    const s = r(dirty, { type: 'ADOPT_CASES', cases: [] })
+    expect(s.savedCases).toEqual([])
+    expect(s.migration).toBe('done')
+  })
+})
+
+describe('SIGN_OUT — the Global Constraint arm (design note 7: local casefiles must never be lost silently)', () => {
+  it('with an empty localCases payload (the ordinary, successful-migration case) clears user and savedCases, and resets everything else', () => {
+    const dirty: SessionState = {
+      ...initialSession, user: FIXTURE_USER, savedCases: [FIXTURE_CASE],
+      screen: 'passport-diagnosis', history: ['home'], acctOpen: true, signOutConfirm: true,
+      migration: 'done',
+    }
+    const s = r(dirty, { type: 'SIGN_OUT', localCases: [] })
+    expect(s).toEqual(initialSession)
+  })
+
+  it('with a non-empty localCases payload (a failed migration) clears user but sets savedCases to those cases, and resets migration to idle', () => {
+    const dirty: SessionState = { ...initialSession, user: FIXTURE_USER, savedCases: [], migration: 'failed', authErr: 'network error' }
+    const localCases = [FIXTURE_CASE, { ...FIXTURE_CASE, id: 'c2' }]
+    const s = r(dirty, { type: 'SIGN_OUT', localCases })
+    expect(
+      s.user,
+      'after a failed migration the local set is still the truth; emptying it here is what lets the signed-out persistence effect write [] over the rows the failure path preserved',
+    ).toBeNull()
+    expect(
+      s.savedCases,
+      'after a failed migration the local set is still the truth; emptying it here is what lets the signed-out persistence effect write [] over the rows the failure path preserved',
+    ).toEqual(localCases)
+    expect(s.migration).toBe('idle')
+  })
+})
+
+describe('TOGGLE_ACCT / CLOSE_ACCT / SET_SIGN_OUT_CONFIRM (prototype acct-chip 2266, scrim/Escape 2248/3949)', () => {
+  it('TOGGLE_ACCT twice returns to closed and clears signOutConfirm on the closing toggle', () => {
+    const opened = r(initialSession, { type: 'TOGGLE_ACCT' })
+    expect(opened.acctOpen).toBe(true)
+    const withConfirmArmed: SessionState = { ...opened, signOutConfirm: true }
+    const closed = r(withConfirmArmed, { type: 'TOGGLE_ACCT' })
+    expect(closed.acctOpen).toBe(false)
+    expect(closed.signOutConfirm).toBe(false)
+  })
+
+  it('CLOSE_ACCT (scrim click / Escape) closes the popover and clears signOutConfirm', () => {
+    const dirty: SessionState = { ...initialSession, acctOpen: true, signOutConfirm: true }
+    const s = r(dirty, { type: 'CLOSE_ACCT' })
+    expect(s.acctOpen).toBe(false)
+    expect(s.signOutConfirm).toBe(false)
+  })
+
+  it('SET_SIGN_OUT_CONFIRM arms and disarms', () => {
+    const armed = r(initialSession, { type: 'SET_SIGN_OUT_CONFIRM', value: true })
+    expect(armed.signOutConfirm).toBe(true)
+    const disarmed = r(armed, { type: 'SET_SIGN_OUT_CONFIRM', value: false })
+    expect(disarmed.signOutConfirm).toBe(false)
   })
 })

@@ -11,6 +11,10 @@ import {
   ciChoose, ciConfirm, ciValence, ciClosureAnswer, ciUndo, ciCancel,
   closeUnresolved, reopenCase, removeSaved, setRemind, toggleLog, setRemoveConfirm, setReminderCopied,
 } from './cases'
+// A session/ -> session/ import, permitted by the layering rule (session.ts's
+// own doc comment / auth.ts's doc comment): AppUser is a type only, never a
+// network call — session.ts still never talks to Supabase directly.
+import type { AppUser } from './auth'
 
 /** The three services C3 ships. Declared here rather than derived from
  *  DEPS_FOR, which is typed Record<string, DependentKeys> — `keyof` that is
@@ -30,6 +34,7 @@ export type ScreenId =
   | 'voter-entry' | 'voter-q1' | 'voter-q2' | 'voter-diagnosis' | 'voter-nextmove' | 'voter-prepare'
   | 'sir-state' | 'sir-unsupported' | 'sir-reverifying' | 'sir-q1' | 'sir-diagnosis' | 'sir-nextmove' | 'sir-prepare'
   | 'checkin' | 'dead-end' | 'case-closed' | 'save-done'
+  | 'save-case' | 'save-otp' | 'save-name'
 // Transcribe the exact id list from the prototype's own switch (3910-3944),
 // taking only C3's screens; do not invent or normalise a name.
 // C4 adds the three '*-prepare' ids (also the prototype's own, same
@@ -39,10 +44,11 @@ export type ScreenId =
 // C5 adds the four ids above (same switch, 3941-3943 plus save-done at
 // 3940) — 'checkin', 'dead-end', 'case-closed', 'save-done'.
 // C6 adds 'sir-reverifying' (freshness/re-verification screen, prototype
-// 3931's 'sir-reverifying' case). Still deliberately NOT added here:
-// 'save-case' / 'save-otp' / 'save-name' (C7's sign-in + save flow),
-// 'interp-confirm' (C8's free-text interpretation confirm) — each belongs
-// to a later chunk and stays off this union until that chunk lands.
+// 3931's 'sir-reverifying' case).
+// C7 adds 'save-case' / 'save-otp' / 'save-name' (same switch, 3937-3939) —
+// the sign-in + save flow. Still deliberately NOT added here:
+// 'interp-confirm' (C8's free-text interpretation confirm) — it belongs to
+// a later chunk and stays off this union until that chunk lands.
 
 // CiSnapshot is cases.ts's, not this file's (imported above): Task 4
 // anticipated its shape here (`answers`/`prepChecks` copied by value, plus
@@ -55,18 +61,23 @@ export type ScreenId =
 // snapshotting, so a live reference would drift under it). See cases.ts's
 // own CiSnapshot doc comment for the full reasoning.
 
-/** C3+C4's slice, plus everything C5 adds: the persisted casefile list,
- *  working/active case tracking, prepare-progress state, check-in
- *  interaction state, and casefile UI state. Fields belonging to LATER
- *  chunks (`user` — C7; `describe*`/`interp` — C8) are still ABSENT on
- *  purpose — a field nothing reads is a field that rots.
+/** C3+C4's slice, plus everything C5 adds, plus C7's user/auth-flow fields:
+ *  the persisted casefile list, working/active case tracking,
+ *  prepare-progress state, check-in interaction state, casefile UI state,
+ *  and (from C7) the signed-in user and the sign-in/save-flow's own UI
+ *  state. Fields belonging to the LATER C8 chunk (`describe*`/`interp`) are
+ *  still ABSENT on purpose — a field nothing reads is a field that rots.
  *
- *  `savedCases` is the persisted slice: it is the ONLY field RESTART and
- *  BACK-to-Home preserve, via an explicit allowlist
- *  (`{ ...initialSession, savedCases: s.savedCases }`) rather than a
- *  blanket `initialSession` reset — so a future field added here is
+ *  `savedCases` AND (from C7) `user` are the persisted slice: they are the
+ *  ONLY fields RESTART and BACK-to-Home preserve, via an explicit allowlist
+ *  (`{ ...initialSession, savedCases: s.savedCases, user: s.user }`) rather
+ *  than a blanket `initialSession` reset — so a future field added here is
  *  non-persisted by default (fail-safe direction) unless someone
- *  deliberately adds it to that allowlist too. */
+ *  deliberately adds it to that allowlist too. Signing out is a DIFFERENT,
+ *  explicit action (`SIGN_OUT`) — RESTART and BACK-to-Home must never do it
+ *  as a side effect (the topbar brand button dispatches RESTART; without
+ *  `user` on the allowlist, tapping the logo would silently sign the
+ *  citizen out). */
 export interface SessionState {
   screen: ScreenId
   history: ScreenId[]
@@ -139,6 +150,86 @@ export interface SessionState {
   phaseDrift: boolean
 
   pendingSave: { engineKey: ServiceKey; serviceLabel: string; returnScreen: ScreenId } | null
+
+  /** The signed-in citizen, or `null` when signed out (prototype `S.user`,
+   *  1948). Imported as a TYPE from `session/auth.ts` — the only file that
+   *  actually talks to Supabase `auth.*`; this file just carries the
+   *  shape. Preserved by RESTART/BACK-to-Home (this interface's own header
+   *  comment); cleared only by the explicit `SIGN_OUT` action. */
+  user: AppUser | null
+  /** Which identifier the save-flow's sign-in screen is currently asking
+   *  for (prototype `S.authMethod`, 1948, initial `'phone'`). Switching
+   *  clears `authId`/`authErr` (prototype 3841, `SET_AUTH_METHOD`'s own
+   *  arm) — a half-typed id or a stale error from the other method must
+   *  never survive the switch. */
+  authMethod: 'phone' | 'email'
+  /** The raw text of whatever `authMethod` is currently asking for
+   *  (prototype `S.authId`, 1948) — normalised only on successful
+   *  submission (`AUTH_ID_SUBMITTED`); the reducer never validates. */
+  authId: string
+  /** The OTP input (prototype `S.otp`, 1948). */
+  otp: string
+  /** The save-flow's inline error string, or `null` (prototype `S.authErr`,
+   *  1948) — e.g. "That doesn't look like a full mobile number yet."
+   *  Cleared on every navigation (nav()-style clears, design note 5) so it
+   *  never survives onto a screen the citizen just arrived at. */
+  authErr: string | null
+  /** The OTP screen's transient "code resent" flash (prototype
+   *  `S.otpResent`, 1948). */
+  otpResent: boolean
+  /** Arms the account popover's inline "Sign out?" confirm (prototype
+   *  `S.signOutConfirm`, 1948). Cleared whenever the popover itself closes
+   *  (`TOGGLE_ACCT`'s closing branch, `CLOSE_ACCT`) — prototype 2266/2248/
+   *  3949 — so it never survives to the popover's next opening. */
+  signOutConfirm: boolean
+  /** Whether the topbar account popover is open (prototype `S.acctOpen`,
+   *  1951). Cleared on every navigation, alongside `authErr` (nav()-style
+   *  clears, design note 5) — a stale popover must never float over an
+   *  unrelated screen. */
+  acctOpen: boolean
+  /** The optional-name screen's draft input (prototype `S.pendingName`,
+   *  1951) — cleared, never persisted mid-edit; `SET_USER_NAME` is the only
+   *  action that writes the value onto `user.name`. */
+  pendingName: string
+
+  /** NOT a prototype field — a mechanism field for a mechanism deviation
+   *  (design note 4): the prototype's auth calls are synchronous
+   *  simulations, real ones are not, and a citizen who taps "Send me a
+   *  code" twice must not start two flows. Declared, typed, initialised,
+   *  and used to disable the submit controls — same class as C5's
+   *  `ciPendingIdx`/`ciConsecutive`. */
+  authBusy: boolean
+  /** NOT a prototype field — D2's OTP-resend cooldown deadline, a
+   *  timestamp. D6: always supplied on the dispatching action
+   *  (`SET_OTP_COOLDOWN`), never read from `Date.now()` inside the
+   *  reducer. */
+  otpCooldownUntil: number | null
+  /** NOT a prototype field, and the field that makes three separate
+   *  hazards testable instead of hopeful: the prototype's `adoptStoredCases`
+   *  is one synchronous line with no lifecycle to model; the real one is an
+   *  awaited fetch-plan-push-clear sequence that can be in flight, can
+   *  fail, and can be triggered from two independent places at once
+   *  (Task 8's mount effect AND its `onAuthChange` subscription).
+   *   - `'idle'` — no migration has run for the current session. The only
+   *     status (with `'failed'`) from which a migration may START
+   *     (`MIGRATION_STARTED`).
+   *   - `'running'` — a migration is in flight. THIS IS THE DOUBLE-TRIGGER
+   *     GUARD: `MIGRATION_STARTED` is a no-op, by identity, while this is
+   *     `'running'` or `'done'` — a status check in real reducer state,
+   *     testable and inspectable, unlike an in-flight `useRef`.
+   *   - `'done'` — the migration succeeded; `nm_cases` is genuinely empty
+   *     and the server is authoritative. Gates the signed-in push effect
+   *     (Task 8): that effect must not fire during `'running'` (it would
+   *     race the migration's own upsert) or `'failed'` (it would push to a
+   *     server that just rejected the write).
+   *   - `'failed'` — the fetch or the push failed. `nm_cases` STILL HOLDS
+   *     the citizen's cases and is authoritative. No automatic retry: the
+   *     next sign-in re-runs the migration against the still-intact local
+   *     set — see `SIGN_OUT`'s own comment for why this makes the
+   *     signed-out persistence effect safe by construction.
+   *  `SIGN_OUT` resets this to `'idle'` (it is part of `initialSession`),
+   *  so a subsequent sign-in retries cleanly. */
+  migration: 'idle' | 'running' | 'done' | 'failed'
 }
 
 export const initialSession: SessionState = {
@@ -151,6 +242,9 @@ export const initialSession: SessionState = {
   ciSnapshot: null, ciJustUpdated: false, ciConsecutive: false, ciAccepted: false,
   logOpen: {}, removeConfirm: null, reminderCopied: false, phaseDrift: false,
   pendingSave: null,
+  user: null, authMethod: 'phone', authId: '', otp: '', authErr: null,
+  otpResent: false, signOutConfirm: false, acctOpen: false, pendingName: '',
+  authBusy: false, otpCooldownUntil: null, migration: 'idle',
 }
 
 export type SessionAction =
@@ -215,12 +309,62 @@ export type SessionAction =
   // treatment NAVIGATE itself applies), so it is a direct reducer arm, like
   // NAVIGATE's own.
   | { type: 'PHASE_DRIFT_RECHECK' }
+  // Task 4 (C7) — the sign-in + save/adopt/sign-out flow. Every arm here is
+  // a thin arm doing exactly what its prototype counterpart does (design
+  // note 7), except `authBusy`/`otpCooldownUntil`/`migration`, which are
+  // mechanism fields the prototype has no counterpart for (design note 4).
+  | { type: 'SET_AUTH_METHOD'; method: 'phone' | 'email' }
+  | { type: 'SET_AUTH_ID'; value: string }
+  | { type: 'SET_OTP'; value: string }
+  | { type: 'SET_AUTH_ERR'; error: string | null }
+  | { type: 'SET_PENDING_NAME'; value: string }
+  | { type: 'SET_AUTH_BUSY'; value: boolean }
+  // The successful half of authSubmitId (prototype 2113) — the reducer
+  // never validates; auth.ts's normalisePhone/isValidEmail (pure, tested
+  // there) decide what reaches this action.
+  | { type: 'AUTH_ID_SUBMITTED'; authId: string }
+  // Prototype authVerifyOtp (2119-2128)'s user-write half. Deliberately
+  // does NOT start the migration (design note 7) — that is Task 7/8's own
+  // MIGRATION_STARTED, dispatched separately, because the two are
+  // triggered from different places and conflating them reintroduces the
+  // double-fire hazard MIGRATION_STARTED exists to guard against.
+  | { type: 'SIGNED_IN'; user: AppUser }
+  // Task 13's standalone rename path (account popover "Add your name" /
+  // prototype saveNameFinish, 2129-2136) AND Task 8's USER_UPDATED echo —
+  // the SAME arm for both, idempotent by construction. Deliberately NOT
+  // SIGNED_IN (design note 7): SIGNED_IN also clears authErr/otp/authBusy,
+  // which would silently wipe unrelated state when there is no auth flow
+  // in progress.
+  | { type: 'SET_USER_NAME'; name: string | null }
+  // The double-trigger guard (design note 7) — a no-op, by identity, from
+  // 'running'/'done'.
+  | { type: 'MIGRATION_STARTED' }
+  | { type: 'MIGRATION_FAILED'; error: string }
+  // D10's adoptStoredCases. `cases` is the account's COMPLETE post-
+  // migration set (Task 7's `migrateLocalCases`'s own `merged` —
+  // adopted+toUpload, never `adopted` alone; design note 7) — this arm
+  // trusts its payload completely on purpose.
+  | { type: 'ADOPT_CASES'; cases: Casefile[] }
+  // Prototype signOut (2155-2159). `localCases` is read at the dispatch
+  // site via `loadCases()` (the same injection convention as `now`/
+  // `newId` elsewhere in this file) — the reducer still reads no storage.
+  // See design note 7's own comment for why a payload, not `[]`.
+  | { type: 'SIGN_OUT'; localCases: Casefile[] }
+  // Prototype's acct-chip onclick (2266) and the scrim/Escape handler
+  // (2248/3949).
+  | { type: 'TOGGLE_ACCT' }
+  | { type: 'CLOSE_ACCT' }
+  | { type: 'SET_SIGN_OUT_CONFIRM'; value: boolean }
+  // D2.
+  | { type: 'SET_OTP_RESENT'; value: boolean }
+  | { type: 'SET_OTP_COOLDOWN'; until: number | null }
 
 /** Applies a CiFragment (cases.ts) onto SessionState. `navigateTo` decides
  *  the shape: a non-null screen id gets the SAME nav()-style treatment
  *  every other navigating action gets (history push, screen change,
- *  trustOpen/restartConfirm/removeConfirm cleared — prototype nav(), line
- *  2029); `null` means the interaction stays on the current screen (e.g.
+ *  trustOpen/restartConfirm/removeConfirm/authErr/acctOpen cleared —
+ *  prototype nav(), line 2029; the last two are C7's, design note 5);
+ *  `null` means the interaction stays on the current screen (e.g.
  *  CI_CHOOSE opening a panel, or CI_CLOSURE's "still pending, no patch"
  *  branch), so only the fragment's own fields are spread on. */
 function applyCiFragment(s: SessionState, fragment: CiFragment): SessionState {
@@ -230,6 +374,7 @@ function applyCiFragment(s: SessionState, fragment: CiFragment): SessionState {
       ...s, ...rest,
       history: [...s.history, s.screen], screen: navigateTo as ScreenId,
       trustOpen: false, restartConfirm: false, removeConfirm: null,
+      authErr: null, acctOpen: false,
     }
   }
   return { ...s, ...rest }
@@ -244,8 +389,11 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         screen: a.screen,
         // removeConfirm: an armed destructive confirm must never survive a
         // navigation away from the screen that armed it (design note 5;
-        // prototype nav(), line 2029).
+        // prototype nav(), line 2029). authErr/acctOpen: C7's own addition
+        // to the SAME nav()-style clear set (design note 5) — a stale auth
+        // error or a floating account popover must never survive either.
         trustOpen: false, restartConfirm: false, removeConfirm: null,
+        authErr: null, acctOpen: false,
       }
     case 'BACK': {
       if (s.history.length === 0) return s
@@ -253,9 +401,20 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       const prev = s.history[s.history.length - 1]
       // Home is a clean slate, always (prototype back(), line 2035-2040).
       // Explicit allowlist, not a blanket initialSession reset: savedCases
-      // is the persisted slice and must survive this, and only this.
-      if (prev === 'home') return { ...initialSession, savedCases: s.savedCases }
-      return { ...s, screen: prev, history, trustOpen: false, restartConfirm: false }
+      // AND (C7) user are the persisted slice and must survive this, and
+      // only this — RESTART's own arm comment explains why user must be on
+      // this allowlist.
+      if (prev === 'home') return { ...initialSession, savedCases: s.savedCases, user: s.user }
+      // DEVIATION from the prototype's back() (2035-2040), which clears
+      // only trustOpen/authErr — not acctOpen, and not restartConfirm
+      // either; only nav() and restart() carry the full clear set. This
+      // arm already diverged on restartConfirm (C3, shipped) before C7
+      // existed; acctOpen follows that same established local precedent
+      // (design note 5) rather than inventing a new one — a popover
+      // surviving Back would float over an unrelated screen, the same
+      // defect the clear exists to prevent. removeConfirm is deliberately
+      // NOT cleared here, matching the prototype.
+      return { ...s, screen: prev, history, trustOpen: false, restartConfirm: false, authErr: null, acctOpen: false }
     }
     case 'ANSWER': {
       const { answers } = applyCorrection(s.answers, a.key, a.value, DEPS_FOR[a.service])
@@ -269,10 +428,14 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
     case 'RESTART_REQUEST': return { ...s, restartConfirm: true }
     case 'RESTART_CANCEL': return { ...s, restartConfirm: false }
     // Explicit allowlist, not a blanket initialSession reset (Issue #7,
-    // design note 3): savedCases is the persisted slice and must survive
-    // a restart, and only savedCases — every other field, including any
-    // added later, resets to initialSession's value by default.
-    case 'RESTART': return { ...initialSession, savedCases: s.savedCases }
+    // design note 3; C7 design note 6): savedCases AND (from C7) user are
+    // the persisted slice and must survive a restart — every other field,
+    // including any added later, resets to initialSession's value by
+    // default. `user` is on this allowlist because the topbar BRAND BUTTON
+    // dispatches RESTART (prototype topbar(), 2273): without it, tapping
+    // the logo would silently sign the citizen out. Signing out is a
+    // separate, explicit action (SIGN_OUT) — never a RESTART side effect.
+    case 'RESTART': return { ...initialSession, savedCases: s.savedCases, user: s.user }
     case 'TOGGLE_TRUST': return { ...s, trustOpen: !s.trustOpen }
     case 'SET_RECOVERY_TEXT': return { ...s, recoveryText: a.text }
     case 'EXPLAIN_VOTER_ENTRY': return { ...s, voterEntryExplain: true }
@@ -289,6 +452,7 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         ...s, ...fragment,
         history: [...s.history, s.screen], screen: 'checkin',
         trustOpen: false, restartConfirm: false, removeConfirm: null,
+        authErr: null, acctOpen: false,
       }
     }
     case 'OPEN_CHECKIN': {
@@ -298,6 +462,7 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         ...s, ...fragment,
         history: [...s.history, s.screen], screen: 'checkin',
         trustOpen: false, restartConfirm: false, removeConfirm: null,
+        authErr: null, acctOpen: false,
       }
     }
     case 'BEGIN_SAVE': {
@@ -314,6 +479,7 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         pendingSave: { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen },
         history: [...s.history, s.screen], screen: 'save-done',
         trustOpen: false, restartConfirm: false, removeConfirm: null,
+        authErr: null, acctOpen: false,
       }
     }
     case 'CI_CHOOSE': {
@@ -384,6 +550,7 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         ...s, ...rest,
         history: [...s.history, s.screen], screen: navigateTo as ScreenId,
         trustOpen: false, restartConfirm: false, removeConfirm: null,
+        authErr: null, acctOpen: false,
       }
     }
     case 'REMOVE_SAVED': {
@@ -397,6 +564,7 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         // dispatches it.
         screen: 'home', history: [],
         trustOpen: false, restartConfirm: false, removeConfirm: null,
+        authErr: null, acctOpen: false,
       }
     }
     case 'SET_REMIND': {
@@ -419,6 +587,7 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         ...s, phaseDrift: false,
         history: [...s.history, s.screen], screen: 'sir-q1',
         trustOpen: false, restartConfirm: false, removeConfirm: null,
+        authErr: null, acctOpen: false,
       }
     case 'TOGGLE_PREP_STEP': {
       const prepChecks = { ...s.prepChecks, [a.index]: !s.prepChecks[a.index] }
@@ -452,5 +621,80 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         : { workingCase: s.workingCase, savedCases: s.savedCases.map(x => (x.id === s.activeCaseId ? updated : x)) }
       return { ...s, prepChecks, ...placement }
     }
+    // Task 4 (C7) — the sign-in + save/adopt/sign-out flow.
+    case 'SET_AUTH_METHOD':
+      // Prototype 3841: switching identifier type clears whatever was
+      // half-typed for the OTHER method, and any error it left behind.
+      return { ...s, authMethod: a.method, authId: '', authErr: null }
+    case 'SET_AUTH_ID':
+      return { ...s, authId: a.value }
+    case 'SET_OTP':
+      return { ...s, otp: a.value }
+    case 'SET_AUTH_ERR':
+      return { ...s, authErr: a.error }
+    case 'SET_PENDING_NAME':
+      return { ...s, pendingName: a.value }
+    case 'SET_AUTH_BUSY':
+      return { ...s, authBusy: a.value }
+    case 'AUTH_ID_SUBMITTED':
+      // authSubmitId's success path (2104-2113) ends in `nav('save-otp')` —
+      // the SAME nav()-style treatment every other navigating arm applies,
+      // plus the auth-specific writes design note 7 calls out (id written,
+      // otp cleared, authErr cleared).
+      return {
+        ...s, authId: a.authId, authErr: null, otp: '',
+        history: [...s.history, s.screen], screen: 'save-otp',
+        trustOpen: false, restartConfirm: false, removeConfirm: null, acctOpen: false,
+      }
+    case 'SIGNED_IN':
+      // Deliberately does NOT touch `migration` (design note 7) — starting
+      // the migration is a separate, explicitly-dispatched step.
+      return { ...s, user: a.user, authErr: null, otp: '', authBusy: false }
+    case 'SET_USER_NAME':
+      // Returns `s` unchanged when there is no signed-in user to rename
+      // (design note 7) — and touches nothing but `user.name` otherwise,
+      // unlike SIGNED_IN.
+      if (!s.user) return s
+      return { ...s, user: { ...s.user, name: a.name } }
+    case 'MIGRATION_STARTED':
+      // The double-trigger guard (design note 7; Task 8 design note 4): a
+      // no-op, BY IDENTITY, while a migration is already in flight or has
+      // already succeeded — the mount effect's getCurrentUser() and the
+      // onAuthChange subscription can both fire for the same sign-in.
+      if (s.migration === 'running' || s.migration === 'done') return s
+      return { ...s, migration: 'running' }
+    case 'MIGRATION_FAILED':
+      // savedCases is deliberately left exactly as it is (design note 7):
+      // after a failed push the locally-loaded set is still the truth.
+      return { ...s, migration: 'failed', authErr: a.error }
+    case 'ADOPT_CASES':
+      // Replaces savedCases wholesale and sets migration:'done' in the
+      // SAME transition (design note 7) — splitting them would invite a
+      // state where the cases landed but the signed-in push effect is
+      // still gated off.
+      return { ...s, savedCases: a.cases, migration: 'done' }
+    case 'SIGN_OUT':
+      // Prototype signOut (2155-2159): clears the SESSION only, never the
+      // account's stored cases. `a.localCases` (not the in-state
+      // savedCases, and not `[]`) is what makes the signed-out persistence
+      // effect safe by construction — see design note 7's own comment.
+      return { ...initialSession, savedCases: a.localCases, user: null }
+    case 'TOGGLE_ACCT': {
+      // Prototype acct-chip onclick (2266): `S.acctOpen=!S.acctOpen;
+      // if(!S.acctOpen)S.signOutConfirm=false` — the condition reads the
+      // NEW value, so signOutConfirm clears only on the CLOSING toggle.
+      const acctOpen = !s.acctOpen
+      return { ...s, acctOpen, signOutConfirm: acctOpen ? s.signOutConfirm : false }
+    }
+    case 'CLOSE_ACCT':
+      // The scrim click (2248) and Escape (3949) — both always close and
+      // clear signOutConfirm, regardless of the popover's current state.
+      return { ...s, acctOpen: false, signOutConfirm: false }
+    case 'SET_SIGN_OUT_CONFIRM':
+      return { ...s, signOutConfirm: a.value }
+    case 'SET_OTP_RESENT':
+      return { ...s, otpResent: a.value }
+    case 'SET_OTP_COOLDOWN':
+      return { ...s, otpCooldownUntil: a.until }
   }
 }
