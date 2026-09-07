@@ -6,8 +6,8 @@
 // own data module stays plain .ts, which is what the isolation scan
 // actually walks.)
 import { describe, it, expect, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { readFileSync, readdirSync } from 'node:fs'
+import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { render, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -200,6 +200,24 @@ describe('C3 screen copy passes the same content-safety scan as rule copy (§7)'
     expect(guardrailFindings(passportPlaybook, { extra: SCREEN_COPY.ui })).toEqual([])
   })
 
+  it('the ui: bucket actually grew with the C7 auth/account entries (a sweep over an accidentally-unregistered tree is vacuously clean)', () => {
+    // task-10-brief.md RED item 1: `guardrailFindings` passing above proves
+    // nothing on its own if the new copy was never registered under `UI` in
+    // the first place — this pins that it genuinely was, by name, before
+    // trusting the clean scan above.
+    const ats = SCREEN_COPY.ui.map(c => c.at)
+    for (const at of [
+      'ui:saveCase.trust',
+      'ui:saveOtp.resendWaitOne',
+      'ui:saveName.saveMidSave',
+      'ui:saveName.saveStandalone',
+      'ui:account.casefilesOne',
+      'ui:saveDone.ledeTailPhone',
+    ]) {
+      expect(ats, at).toContain(at)
+    }
+  })
+
   it('every bucket exists and is non-empty (the sweep cannot pass by being empty)', () => {
     for (const key of ['passport', 'voter', 'sir', 'ui'] as const) {
       expect(SCREEN_COPY[key].length, key).toBeGreaterThan(0)
@@ -224,6 +242,89 @@ describe('C3 screen copy passes the same content-safety scan as rule copy (§7)'
     for (const [bucket, entries] of Object.entries(SCREEN_COPY)) {
       for (const c of entries) expect(c.at).toMatch(new RegExp(`^${bucket}:`))
     }
+  })
+
+  it('UI.saveCase.trust is registered as ONE whole paragraph carrying all four load-bearing clauses', () => {
+    // task-10-brief.md RED item 2 / design note 2: this paragraph is "the
+    // load-bearing promise of this entire chunk" — splitting it into
+    // sentence fragments would let one clause be edited out of the
+    // guardrail scan's sight without anything catching it, which is why it
+    // is transcribed and registered as exactly one string, not several.
+    expect(typeof UI.saveCase.trust).toBe('string')
+    const clauses = ['exactly one thing', 'No marketing', 'Remove deletes a case for good', 'never required signing in']
+    for (const clause of clauses) {
+      expect(
+        UI.saveCase.trust,
+        `UI.saveCase.trust must stay ONE whole paragraph carrying "${clause}" — splitting it would let this clause drift out of the guardrail scan's sight`,
+      ).toContain(clause)
+    }
+  })
+
+  it('CAPTION_TEMPLATES includes the four new C7 template entries', () => {
+    // task-10-brief.md RED item 3. The full consistency check (that
+    // CAPTION_SUBSTITUTIONS covers exactly these keys) lives in the
+    // coverage-holds-by-construction describe block below, alongside every
+    // other CAPTION_TEMPLATES entry.
+    for (const key of ['ui:saveOtp.lede', 'ui:saveOtp.resendWaitMany', 'ui:account.casefilesOne', 'ui:account.casefilesMany']) {
+      expect(CAPTION_TEMPLATES.has(key), key).toBe(true)
+    }
+    // resendWaitOne carries no placeholder (its value is the fixed string
+    // 'Send again in one second'), so it is NOT a template — same shape as
+    // time.today/time.yesterday alongside time.daysAgo.
+    expect(CAPTION_TEMPLATES.has('ui:saveOtp.resendWaitOne')).toBe(false)
+  })
+
+  it('all six UI.saveName branch strings are registered and distinct', () => {
+    // task-10-brief.md RED item 4 / design note 6 — "the detail most likely
+    // to be missed": renderSaveName branches on midSave in three places;
+    // these six are the lede-clause pair and both button pairs, never
+    // collapsed into one shared string per pair.
+    const six = [
+      UI.saveName.ledeClauseMidSave,
+      UI.saveName.ledeClauseStandalone,
+      UI.saveName.saveMidSave,
+      UI.saveName.saveStandalone,
+      UI.saveName.switchMidSave,
+      UI.saveName.switchStandalone,
+    ]
+    for (const s of six) expect(typeof s).toBe('string')
+    expect(new Set(six).size, six.join(' | ')).toBe(6)
+  })
+
+  const TEXT_FILE_RE = /\.(ts|tsx|json|css|html?|md|txt|svg)$/i
+
+  /** Every text file under `dir`, recursively — used only by the D1 sweep
+   *  below. Deliberately broad (not scoped to .ts/.tsx) since the brief's
+   *  own RED item 5 asks for "nowhere in src/", not "nowhere in src/*.ts".
+   *  Skips binary assets (src/assets/fonts/*.woff2) by extension allowlist
+   *  rather than by directory, so it stays correct if fonts move. Skips
+   *  *.test.ts/*.test.tsx files (the same carve-out guardrails/
+   *  isolation.test.ts's own `applicationTsFiles` already applies): a test
+   *  file legitimately needs to reference the needle text to assert its
+   *  absence — this very file does, right below — so scanning test files
+   *  would make the assertion self-defeating. */
+  const TEST_FILE_RE = /\.test\.tsx?$/
+  function allSrcTextFiles(dir: string): string[] {
+    const out: string[] = []
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) { out.push(...allSrcTextFiles(full)); continue }
+      if (!entry.isFile() || !TEXT_FILE_RE.test(entry.name) || TEST_FILE_RE.test(entry.name)) continue
+      out.push(full)
+    }
+    return out
+  }
+
+  it("'Design prototype: any 6 digits work here.' appears nowhere in src/ (D1)", () => {
+    // task-10-brief.md RED item 5 / design note 4: the prototype's
+    // demo-hint is prototype-only scaffold copy, deliberately NOT
+    // registered in SCREEN_COPY — this is the repo-wide half of that rule,
+    // not scoped to any one component.
+    const here = dirname(fileURLToPath(import.meta.url)) // -> <repo>/src/screens
+    const srcRoot = join(here, '..') // -> <repo>/src
+    const needle = 'Design prototype: any 6 digits work here.'
+    const offenders = allSrcTextFiles(srcRoot).filter(f => readFileSync(f, 'utf8').includes(needle))
+    expect(offenders.map(f => f.split(sep).join('/')), offenders.join('\n')).toEqual([])
   })
 
   it("screenCopy.ts declares its own {at,text} type and imports no guardrail module", () => {
@@ -697,6 +798,28 @@ const CAPTION_TEMPLATES = new Set([
   'sir:reverifying.headline', // interpolates the SIR state's name for {state}
   'sir:reverifying.lede', // interpolates the SIR state's name for {state} and changedOnFor for {date}
   'sir:reverifying.verifiedNote', // interpolates SOURCES_VERIFIED for {date}
+  // C7 (Task 10 — auth/account copy). saveOtp.lede interpolates the masked
+  // destination (the citizen's own phone or email, not a government-process
+  // claim) for {dest}. saveOtp.resendWaitMany interpolates
+  // Math.ceil(msRemaining/1000) for {n} — always >= 1 while the resend
+  // control is disabled (see UI.saveOtp's own header comment in
+  // screenCopy.ts); its n===1 sibling, resendWaitOne, carries no
+  // placeholder and is NOT in this set (ordinary literal-string sweep,
+  // same shape as time.today/time.yesterday alongside time.daysAgo).
+  // account.casefilesOne/Many interpolate the signed-in citizen's own open
+  // casefile count, same category as home.casefilesOne/Many above.
+  //
+  // None of the four screens (SaveCase/SaveOtp/SaveName/SaveDone) or the
+  // account popover exist yet (Tasks 11-15 build them), so these four
+  // entries have no substituted-form RENDER assertion below yet — only the
+  // key-equality check against CAPTION_SUBSTITUTIONS. That is the same
+  // documented, expected gap as the per-bucket coverage sweep's new
+  // failures (task-10-brief.md design note 9 / the GREEN note); a render
+  // assertion for each is added alongside its screen.
+  'ui:saveOtp.lede',
+  'ui:saveOtp.resendWaitMany',
+  'ui:account.casefilesOne',
+  'ui:account.casefilesMany',
 ])
 
 // `INTERACTION_GATED` itself (design note 4a: entries no STATIC mount can
@@ -713,6 +836,22 @@ const CAPTION_TEMPLATES = new Set([
 // `Record` of per-entry assertions whose keys are asserted to equal
 // `[...INTERACTION_GATED]`, the same pattern `CAPTION_SUBSTITUTIONS` below
 // already uses for `CAPTION_TEMPLATES`.
+//
+// C7 Task 10 deliberately does NOT add `ui:saveOtp.errors.code`,
+// `ui:saveCase.errors.mobile`/`.email`, `ui:saveOtp.resendWaitMany`/
+// `resendWaitOne`, or `ui:saveOtp.resendSent` to INTERACTION_GATED here,
+// even though task-10-brief.md design note 9 names all five as "likely
+// candidates" for it. Gating requires "a real interaction test elsewhere"
+// (this file's own rule, enforced by the equality check `Record` its own
+// header note describes) — SaveOtp/SaveCase don't exist as components yet
+// (Task 12), so no such test can exist yet either. Gating them now, before
+// their covering test exists, would be exactly the workaround the brief
+// warns against ("do not put these new entries into INTERACTION_GATED
+// merely to dodge [the coverage sweep]"). They are left as ordinary bucket
+// entries instead, which means the per-bucket sweep below is expected to
+// go red for them too, same as every other unmounted C7 entry — Task 12
+// gates them for real once SaveOtp/SaveCase exist and their own
+// interaction test can cover them.
 
 const SCREENS: [keyof typeof SCREEN_COPY, () => ReactElement][] = [
   ['passport', PassportBucketScreens],
@@ -822,9 +961,28 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     'sir:reverifying.headline': SIR_COPY.reverifying.headline.replace('{state}', 'Delhi'),
     'sir:reverifying.lede': SIR_COPY.reverifying.lede.replace('{state}', 'Delhi').replace('{date}', ''),
     'sir:reverifying.verifiedNote': SIR_COPY.reverifying.verifiedNote.replace('{date}', SOURCES_VERIFIED),
+    // C7 (Task 10) — SaveOtp/account popover don't exist yet (Tasks 12/15),
+    // so these substituted forms have no covering render assertion below
+    // yet, unlike every entry above. Supplying the substituted expectation
+    // now (rather than deferring it too) still forces the SHAPE of the
+    // interpolation to be decided here, and keeps this Record's own
+    // Object.keys(...) === [...CAPTION_TEMPLATES] pin meaningful.
+    'ui:saveOtp.lede': UI.saveOtp.lede.replace('{dest}', '+91 98765 43210'),
+    'ui:saveOtp.resendWaitMany': UI.saveOtp.resendWaitMany.replace('{n}', '5'),
+    'ui:account.casefilesOne': UI.account.casefilesOne.replace('{n}', '1'),
+    'ui:account.casefilesMany': UI.account.casefilesMany.replace('{n}', '2'),
   }
 
   it('CAPTION_SUBSTITUTIONS covers exactly CAPTION_TEMPLATES, and each substituted form actually renders', async () => {
+    // NOTE (C7 Task 10): the key-equality check below covers all of
+    // CAPTION_TEMPLATES, including the four new 'ui:saveOtp.lede'/
+    // 'ui:saveOtp.resendWaitMany'/'ui:account.casefilesOne'/
+    // 'ui:account.casefilesMany' entries — but the render assertions that
+    // follow, for entries whose screens already exist, do NOT yet cover
+    // those four (SaveOtp and the account popover aren't built until Tasks
+    // 12/15). That gap is expected and documented at each entry's own
+    // comment in the CAPTION_TEMPLATES/CAPTION_SUBSTITUTIONS declarations
+    // above — do not add fake mounts here to paper over it.
     expect(Object.keys(CAPTION_SUBSTITUTIONS).sort()).toEqual([...CAPTION_TEMPLATES].sort())
 
     const { container: trustContainer } = render(
