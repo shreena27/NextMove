@@ -230,41 +230,84 @@ describe('mid-save: skipping (RED items 3-4)', () => {
 })
 
 describe('standalone: no case may ever be saved here (RED item 5 — C5\'s OQ3 ruling)', () => {
-  it('a typed name calls setDisplayName and dispatches only NAVIGATE home — never BEGIN_SAVE', async () => {
-    const dispatch = vi.fn()
-    render(<SaveNameScreen pendingSave={null} pendingName="Ananya" now={NOW} dispatch={dispatch} />)
-    await userEvent.click(screen.getByRole('button', { name: new RegExp(UI.saveName.saveStandalone) }))
-    expect(setDisplayName).toHaveBeenCalledWith('Ananya')
-    expect(dispatch).toHaveBeenCalledWith({ type: 'NAVIGATE', screen: 'home' })
-    expect(
-      dispatch,
-      "a stray save on the standalone path would create a casefile the citizen never asked for — the exact " +
-      "harm C5's OQ3 ruling forbids",
-    ).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'BEGIN_SAVE' }))
-  })
+  it(
+    'a typed name calls setDisplayName, dispatches SET_USER_NAME (never SIGNED_IN) and NAVIGATE home — never BEGIN_SAVE',
+    async () => {
+      const dispatch = vi.fn()
+      render(<SaveNameScreen pendingSave={null} pendingName="Ananya" now={NOW} dispatch={dispatch} />)
+      await userEvent.click(screen.getByRole('button', { name: new RegExp(UI.saveName.saveStandalone) }))
+      expect(setDisplayName).toHaveBeenCalledWith('Ananya')
+      expect(dispatch).toHaveBeenCalledWith({ type: 'NAVIGATE', screen: 'home' })
+      // Fix Round 1, Finding 1: the standalone branch previously had NO
+      // assertion at all covering the name-write dispatch — a mutation to
+      // "call setDisplayName but never dispatch SET_USER_NAME afterward"
+      // and a mutation to "dispatch SIGNED_IN instead of SET_USER_NAME"
+      // both survived the original 15-test suite undetected. The SIGNED_IN
+      // mutation is the exact defect design note 2 exists to prevent
+      // SPECIFICALLY on this branch — there is no auth flow in progress
+      // here, so SIGNED_IN's own clearing of authErr/otp/authBusy would be
+      // a silent state wipe, unlike on the mid-save branch where those
+      // fields are already clear from the auth flow that just finished.
+      expect(dispatch).toHaveBeenCalledWith({ type: 'SET_USER_NAME', name: 'Ananya' })
+      expect(
+        dispatch,
+        'design note 2: a name write on the standalone path must dispatch SET_USER_NAME, never SIGNED_IN — ' +
+        'SIGNED_IN would silently clear authErr/otp/authBusy with no auth flow in progress to justify it',
+      ).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'SIGNED_IN' }))
+      expect(
+        dispatch,
+        "a stray save on the standalone path would create a casefile the citizen never asked for — the exact " +
+        "harm C5's OQ3 ruling forbids",
+      ).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'BEGIN_SAVE' }))
+    },
+  )
 
-  it('REAL reducer: navigates home and leaves savedCases genuinely empty (expect.assertions(2))', async () => {
-    expect.assertions(2)
-    // Seeded EMPTY, deliberately — verified by mutation (a stray BEGIN_SAVE
-    // dispatch was introduced here and reverted): completeSave's own
-    // one-active-case-per-service rule (cases.ts) matches an existing SAVE
-    // slot on `outcome==='still_open' && engineKey===payload.engineKey`
-    // ALONE, with no answers comparison — so seeding a decoy pre-existing
-    // 'passport' case here would let a stray same-engineKey BEGIN_SAVE
-    // dispatch merge invisibly into it, leaving the count unchanged for the
-    // WRONG reason and silently defeating this exact assertion. Starting
-    // from a genuinely empty array has no such blind spot: completeSave can
-    // only ever CREATE when nothing existing matches, so any stray
-    // BEGIN_SAVE at all — whatever engineKey it happened to carry — must
-    // grow this past zero.
-    render(<Controlled seed={{ pendingSave: null, user: signedInUser, savedCases: [], pendingName: 'Ananya' }} />)
-    await userEvent.click(screen.getByRole('button', { name: new RegExp(UI.saveName.saveStandalone) }))
-    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('home'))
-    expect(
-      screen.getByTestId('saved-count'),
-      "a stray save here would create a casefile the citizen never asked for — the exact harm C5's OQ3 ruling forbids",
-    ).toHaveTextContent('0')
-  })
+  it(
+    'REAL reducer: navigates home, leaves savedCases genuinely empty, AND genuinely writes user.name via ' +
+    'SET_USER_NAME — proven by authErr/otp/authBusy (seeded non-default) surviving, which SIGNED_IN would not',
+    async () => {
+      // Fix Round 1, Finding 1: the mid-save test elsewhere in this file
+      // seeds otp/authBusy non-default to discriminate SET_USER_NAME from
+      // SIGNED_IN, but that discriminator was ENTIRELY ABSENT from every
+      // standalone test — the one branch where the distinction is actually
+      // harmful (no auth flow in progress here to justify SIGNED_IN's own
+      // clearing of these fields). Seeded here for the same reason.
+      render(
+        <Controlled
+          seed={{
+            pendingSave: null, user: signedInUser, savedCases: [], pendingName: 'Ananya',
+            otp: '999999', authBusy: true,
+          }}
+        />,
+      )
+      await userEvent.click(screen.getByRole('button', { name: new RegExp(UI.saveName.saveStandalone) }))
+      await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('home'))
+      await waitFor(() => expect(screen.getByTestId('user-name')).toHaveTextContent('Ananya'))
+      // Seeded EMPTY, deliberately — verified by mutation (a stray
+      // BEGIN_SAVE dispatch was introduced here and reverted): completeSave's
+      // own one-active-case-per-service rule (cases.ts) matches an existing
+      // SAVE slot on `outcome==='still_open' && engineKey===payload.
+      // engineKey` ALONE, with no answers comparison — so a decoy
+      // pre-existing 'passport' case would let a stray same-engineKey
+      // BEGIN_SAVE dispatch merge invisibly into it, leaving the count
+      // unchanged for the WRONG reason. Starting from a genuinely empty
+      // array has no such blind spot: completeSave can only ever CREATE
+      // when nothing existing matches, so any stray BEGIN_SAVE at all must
+      // grow this past zero.
+      expect(
+        screen.getByTestId('saved-count'),
+        "a stray save here would create a casefile the citizen never asked for — the exact harm C5's OQ3 ruling forbids",
+      ).toHaveTextContent('0')
+      expect(
+        screen.getByTestId('otp'),
+        'SIGNED_IN would have cleared this to "" — SET_USER_NAME must not (and NAVIGATE does not touch it either)',
+      ).toHaveTextContent('999999')
+      expect(
+        screen.getByTestId('auth-busy'),
+        'SIGNED_IN would have cleared this to false — SET_USER_NAME must not (and NAVIGATE does not touch it either)',
+      ).toHaveTextContent('true')
+    },
+  )
 
   it('"Never mind" navigates home and calls nothing (no setDisplayName, no BEGIN_SAVE, no SET_USER_NAME)', async () => {
     const dispatch = vi.fn()
