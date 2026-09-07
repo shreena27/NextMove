@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Casefile } from '../domain/casefile'
 import { loadCases, saveCases } from './caseStore'
+import { diagnose } from '../domain/engine'
+import { voterEngine } from '../playbooks/engines'
 
 function makeCasefile(overrides: Partial<Casefile> = {}): Casefile {
   return {
@@ -85,8 +87,26 @@ describe('nm_case -> nm_cases migration', () => {
     expect(cases[0].log).toEqual([{ t: 1_800_000_000_000, kind: 'diagnosed', text: 'Case saved' }])
     expect(localStorage.getItem('nm_case')).toBeNull()
     expect(JSON.parse(localStorage.getItem('nm_cases')!)).toHaveLength(1)
+    // FIX WAVE (2026-09-06, whole-branch final review, Critical finding 1,
+    // symptom 2): the old single-case format never reliably stored
+    // `answers`/`prepChecks` — this fixture's `{engineKey:'voter'}` legacy
+    // value has neither. Normalized to `{}`, not left `undefined`.
+    expect(cases[0].answers).toEqual({})
+    expect(cases[0].prepChecks).toEqual({})
 
     nowSpy.mockRestore()
+  })
+
+  it('a migrated legacy case with no stored answers never crashes diagnose() — it resolves to the UNCLASSIFIED fallback, the same as an ordinary case opened with no answers', () => {
+    localStorage.setItem('nm_case', JSON.stringify({ engineKey: 'voter' }))
+    const cases = loadCases()
+    // Pre-fix, `cases[0].answers` was `undefined` (transcribed straight
+    // through from the legacy value, which never had the key) and this
+    // call threw `TypeError: Cannot convert undefined or null to object`
+    // (or similar) the first time `rule.condition(undefined)` ran — the
+    // first time such a migrated card was ever opened.
+    expect(() => diagnose(voterEngine, cases[0].answers)).not.toThrow()
+    expect(diagnose(voterEngine, cases[0].answers).ruleId).toBeNull() // UNCLASSIFIED
   })
 
   it("prefers the legacy case's own savedAt / returnScreen / stateLabel when present — every || is a real fallback, not decoration", () => {

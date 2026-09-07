@@ -481,11 +481,31 @@ export default function App() {
         body = <RestartToHome dispatch={dispatch} />
         break
       }
-      const d = diagnose(ENGINES[c.engineKey], c.answers)
+      // FIX WAVE (2026-09-06, whole-branch final review, Critical finding 1):
+      // this was `diagnose(ENGINES[c.engineKey], c.answers)` — the ACTIVE
+      // CASE's own stored answers. But `session/cases.ts`'s `ciChoose` (the
+      // reducer logic that runs when the citizen clicks one of the option
+      // rows this screen renders) independently rebuilds ITS OWN diagnosis
+      // from `state.answers` (the session's live answers), which can genuinely
+      // differ from `c.answers` — the ANSWER action updates `state.answers`
+      // but never touches the active case's stored `answers`, and a citizen
+      // can reach the casefile screen with the two out of sync via Back
+      // navigation after answering a question mid check-in. When they diverge,
+      // `ciChoose` indexes into a freshly-built option list (from
+      // `state.answers`) using the click index the citizen picked off THIS
+      // screen's list (built from `c.answers`) — silently recording the wrong
+      // option, or doing nothing at all if the new list is shorter. The fix:
+      // derive `d` from `state.answers`, exactly like `ciChoose` does and
+      // exactly like the locked prototype's own `currentDiagnosis()`
+      // (S.answers) — so the screen's rendered diagnosis and the reducer's
+      // diagnosis are the SAME computation over the SAME data, by
+      // construction, and can never diverge again.
+      const d = diagnose(ENGINES[c.engineKey], state.answers)
       body = (
         <CasefileScreen
           case={c}
           d={d}
+          answers={state.answers}
           prepChecks={state.prepChecks}
           savedCases={state.savedCases}
           now={now}

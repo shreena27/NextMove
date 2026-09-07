@@ -90,7 +90,7 @@ function baseProps(overrides: Record<string, unknown> = {}) {
 describe('open variant — the case is still_open', () => {
   it('renders the headline, the stamp, the meta line, the update module, the option list, the remind row and both case links', () => {
     const c = makeCase('passport', state5aD, state5aAnswers)
-    render(<CasefileScreen case={c} d={state5aD} {...baseProps()} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state5aD} {...baseProps()} />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(state5aD.label)
     expect(document.querySelector('.stamp-row .stamp')).toBeInTheDocument()
     expect(document.querySelector('.case-meta-line')).toHaveTextContent(
@@ -105,14 +105,14 @@ describe('open variant — the case is still_open', () => {
 
   it('shows "Started" for an unsaved case and "Saved" for a saved one, in the meta line', () => {
     const unsaved = makeCase('passport', state1D, state1Answers, { unsaved: true })
-    const { unmount } = render(<CasefileScreen case={unsaved} d={state1D} {...baseProps()} />)
+    const { unmount } = render(<CasefileScreen case={unsaved} answers={unsaved.answers} d={state1D} {...baseProps()} />)
     expect(document.querySelector('.case-meta-line')).toHaveTextContent(
       UI.casefile.metaStarted.replace('{day}', fmtDay(unsaved.savedAt)),
     )
     unmount()
 
     const saved = makeCase('passport', state1D, state1Answers)
-    render(<CasefileScreen case={saved} d={state1D} {...baseProps()} />)
+    render(<CasefileScreen case={saved} answers={saved.answers} d={state1D} {...baseProps()} />)
     expect(document.querySelector('.case-meta-line')).toHaveTextContent(
       UI.casefile.metaSaved.replace('{day}', fmtDay(saved.savedAt)),
     )
@@ -120,7 +120,7 @@ describe('open variant — the case is still_open', () => {
 
   it('the meta line appends the check-back suffix only when remindAt is set', () => {
     const c = makeCase('passport', state1D, state1Answers, { remindAt: '2026-10-12' })
-    render(<CasefileScreen case={c} d={state1D} {...baseProps()} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps()} />)
     expect(document.querySelector('.case-meta-line')).toHaveTextContent(
       UI.casefile.metaCheckBackSuffix.replace('{date}', fmtRemind('2026-10-12')),
     )
@@ -128,41 +128,41 @@ describe('open variant — the case is still_open', () => {
 
   it('"Continue preparing" is absent for a WAIT state with no prep plan, present for state-5a', () => {
     const noPrep = makeCase('passport', state1D, state1Answers)
-    const { unmount } = render(<CasefileScreen case={noPrep} d={state1D} {...baseProps()} />)
+    const { unmount } = render(<CasefileScreen case={noPrep} answers={noPrep.answers} d={state1D} {...baseProps()} />)
     expect(screen.queryByRole('button', { name: UI.casefile.prepareLink })).toBeNull()
     expect(screen.getByRole('button', { name: UI.casefile.diagnosisLink })).toBeInTheDocument() // still there
     unmount()
 
     const withPrep = makeCase('passport', state5aD, state5aAnswers)
-    render(<CasefileScreen case={withPrep} d={state5aD} {...baseProps()} />)
+    render(<CasefileScreen case={withPrep} answers={withPrep.answers} d={state5aD} {...baseProps()} />)
     expect(screen.getByRole('button', { name: UI.casefile.prepareLink })).toBeInTheDocument()
   })
 
   it('the case trail renders for passport and not for voter/SIR', () => {
     const passport = makeCase('passport', state1D, state1Answers)
-    const { unmount } = render(<CasefileScreen case={passport} d={state1D} {...baseProps()} />)
+    const { unmount } = render(<CasefileScreen case={passport} answers={passport.answers} d={state1D} {...baseProps()} />)
     expect(document.querySelector('.case-trail')).toBeInTheDocument()
     unmount()
 
     const voter = makeCase('voter', voterD, voterAnswers)
-    const { unmount: unmountVoter } = render(<CasefileScreen case={voter} d={voterD} {...baseProps()} />)
+    const { unmount: unmountVoter } = render(<CasefileScreen case={voter} answers={voter.answers} d={voterD} {...baseProps()} />)
     expect(document.querySelector('.case-trail')).toBeNull()
     unmountVoter()
 
     const sir = makeCase('sir', sirD, sirAnswers)
-    render(<CasefileScreen case={sir} d={sirD} {...baseProps()} />)
+    render(<CasefileScreen case={sir} answers={sir.answers} d={sirD} {...baseProps()} />)
     expect(document.querySelector('.case-trail')).toBeNull()
   })
 
   it('CaseProgress renders only with a prep plan; EscalationLadder renders only when ladderFor is non-null', () => {
     const noPlanNoLadder = makeCase('passport', state1D, state1Answers)
-    const { unmount } = render(<CasefileScreen case={noPlanNoLadder} d={state1D} {...baseProps()} />)
+    const { unmount } = render(<CasefileScreen case={noPlanNoLadder} answers={noPlanNoLadder.answers} d={state1D} {...baseProps()} />)
     expect(document.querySelector('.case-progress')).toBeNull()
     expect(document.querySelector('.ladder')).toBeNull()
     unmount()
 
     const planAndLadder = makeCase('passport', state5aD, state5aAnswers)
-    render(<CasefileScreen case={planAndLadder} d={state5aD} {...baseProps()} />)
+    render(<CasefileScreen case={planAndLadder} answers={planAndLadder.answers} d={state5aD} {...baseProps()} />)
     expect(document.querySelector('.case-progress')).toBeInTheDocument()
     expect(document.querySelector('.ladder')).toBeInTheDocument()
   })
@@ -170,7 +170,7 @@ describe('open variant — the case is still_open', () => {
   it('choosing an option calls the handler with the right index', () => {
     const c = makeCase('passport', state1D, state1Answers)
     const dispatch = vi.fn()
-    render(<CasefileScreen case={c} d={state1D} {...baseProps({ dispatch })} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps({ dispatch })} />)
     const rows = document.querySelectorAll(SEL.optionRow)
     expect(rows.length).toBeGreaterThan(1)
     ;(rows[1] as HTMLButtonElement).click()
@@ -185,7 +185,7 @@ describe('open variant — the case is still_open', () => {
 
     render(
       <CasefileScreen
-        case={c} d={state1D}
+        case={c} answers={c.answers} d={state1D}
         {...baseProps({ ciPending: list[deliverableIdx], ciPendingIdx: deliverableIdx })}
       />,
     )
@@ -206,7 +206,7 @@ describe('open variant — the case is still_open', () => {
 
   it('an unpicked deliverable row carries the butter-deep RING style (not a fill)', () => {
     const c = makeCase('passport', state1D, state1Answers)
-    render(<CasefileScreen case={c} d={state1D} {...baseProps()} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps()} />)
     const list = checkinOptionsFor(state1D, {}, 'passport')
     const deliverableIdx = list.findIndex(o => o.k === 'deliverable')
     const row = document.querySelectorAll(SEL.optionRow)[deliverableIdx]
@@ -223,7 +223,7 @@ describe('open variant — the case is still_open', () => {
     const actionIdx = actionList.indexOf(actionOpt)
     const { unmount } = render(
       <CasefileScreen
-        case={actionCase} d={state5aD}
+        case={actionCase} answers={actionCase.answers} d={state5aD}
         {...baseProps({ ciStage: 'confirm', ciPending: actionOpt, ciPendingIdx: actionIdx })}
       />,
     )
@@ -244,7 +244,7 @@ describe('open variant — the case is still_open', () => {
     const deadendIdx = deadendList.indexOf(deadendOpt)
     render(
       <CasefileScreen
-        case={deadendCase} d={dpgRD}
+        case={deadendCase} answers={deadendCase.answers} d={dpgRD}
         {...baseProps({ ciStage: 'confirm', ciPending: deadendOpt, ciPendingIdx: deadendIdx })}
       />,
     )
@@ -259,7 +259,7 @@ describe('open variant — the case is still_open', () => {
     const dispatch = vi.fn()
     render(
       <CasefileScreen
-        case={c} d={state5aD}
+        case={c} answers={c.answers} d={state5aD}
         {...baseProps({ dispatch, ciStage: 'confirm', ciPending: opt, ciPendingIdx: list.indexOf(opt) })}
       />,
     )
@@ -278,7 +278,7 @@ describe('open variant — the case is still_open', () => {
     const dispatch = vi.fn()
     render(
       <CasefileScreen
-        case={c} d={voterD}
+        case={c} answers={c.answers} d={voterD}
         {...baseProps({ dispatch, ciStage: 'valence', ciPending: opt, ciPendingIdx: list.indexOf(opt) })}
       />,
     )
@@ -298,7 +298,7 @@ describe('open variant — the case is still_open', () => {
     const dispatch = vi.fn()
     render(
       <CasefileScreen
-        case={c} d={state1D}
+        case={c} answers={c.answers} d={state1D}
         {...baseProps({ dispatch, ciStage: 'closureq', ciPending: opt, ciPendingIdx: list.indexOf(opt) })}
       />,
     )
@@ -314,7 +314,7 @@ describe('open variant — the case is still_open', () => {
 
   it("the reassure panel renders d.howLong and d.expectNext byte-identically to the Diagnosis fields", () => {
     const c = makeCase('passport', state1D, state1Answers)
-    render(<CasefileScreen case={c} d={state1D} {...baseProps({ ciReassure: true })} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps({ ciReassure: true })} />)
     expect(document.querySelector('.ci-panel.reassure')).toHaveTextContent(UI.casefile.reassureLead)
     expect(document.querySelector('.ci-panel.reassure')).toHaveTextContent(state1D.howLong!)
     expect(document.querySelector('.ci-panel.reassure')).toHaveTextContent(state1D.expectNext!)
@@ -322,7 +322,7 @@ describe('open variant — the case is still_open', () => {
 
   it('the anti-compulsion line appears only when ciConsecutive; the Undo button only when ciSnapshot is non-null', () => {
     const c = makeCase('passport', state1D, state1Answers)
-    const { unmount } = render(<CasefileScreen case={c} d={state1D} {...baseProps({ ciReassure: true })} />)
+    const { unmount } = render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps({ ciReassure: true })} />)
     expect(screen.queryByText(UI.casefile.reassureConsecutive)).toBeNull()
     expect(screen.queryByRole('button', { name: UI.casefile.undoButton })).toBeNull()
     unmount()
@@ -331,7 +331,7 @@ describe('open variant — the case is still_open', () => {
     const dispatch = vi.fn()
     render(
       <CasefileScreen
-        case={c} d={state1D}
+        case={c} answers={c.answers} d={state1D}
         {...baseProps({ dispatch, ciReassure: true, ciConsecutive: true, ciSnapshot: snapshot })}
       />,
     )
@@ -343,7 +343,7 @@ describe('open variant — the case is still_open', () => {
 
   it('the check-back input is type="date", carries the aria-label, and has NO default value when remindAt is null', () => {
     const c = makeCase('passport', state1D, state1Answers)
-    render(<CasefileScreen case={c} d={state1D} {...baseProps()} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps()} />)
     const input = screen.getByLabelText(UI.casefile.checkBackAria) as HTMLInputElement
     expect(input).toHaveAttribute('type', 'date')
     expect(input.value).toBe('')
@@ -354,7 +354,7 @@ describe('open variant — the case is still_open', () => {
   it('changing the check-back date fires SET_REMIND', () => {
     const c = makeCase('passport', state1D, state1Answers)
     const dispatch = vi.fn()
-    render(<CasefileScreen case={c} d={state1D} {...baseProps({ dispatch })} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps({ dispatch })} />)
     const input = screen.getByLabelText(UI.casefile.checkBackAria) as HTMLInputElement
     input.dispatchEvent(new Event('input', { bubbles: true })) // no-op guard for jsdom quirks
     // eslint-disable-next-line testing-library/no-node-access -- fireEvent import kept minimal
@@ -366,19 +366,19 @@ describe('open variant — the case is still_open', () => {
 
   it('the copyable reminder line and Copy button appear only when remindAt is set', () => {
     const noRemind = makeCase('passport', state1D, state1Answers)
-    const { unmount } = render(<CasefileScreen case={noRemind} d={state1D} {...baseProps()} />)
+    const { unmount } = render(<CasefileScreen case={noRemind} answers={noRemind.answers} d={state1D} {...baseProps()} />)
     expect(screen.queryByRole('button', { name: UI.casefile.copyLabel })).toBeNull()
     unmount()
 
     const withRemind = makeCase('passport', state1D, state1Answers, { remindAt: '2026-10-12' })
-    render(<CasefileScreen case={withRemind} d={state1D} {...baseProps()} />)
+    render(<CasefileScreen case={withRemind} answers={withRemind.answers} d={state1D} {...baseProps()} />)
     expect(screen.getByText(UI.casefile.reminderText.replace('{date}', fmtRemind('2026-10-12')))).toBeInTheDocument()
     expect(screen.getByRole('button', { name: UI.casefile.copyLabel })).toBeInTheDocument()
   })
 
   it('shows "Copied" instead of "Copy" once reminderCopied is true', () => {
     const c = makeCase('passport', state1D, state1Answers, { remindAt: '2026-10-12' })
-    render(<CasefileScreen case={c} d={state1D} {...baseProps({ reminderCopied: true })} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps({ reminderCopied: true })} />)
     expect(screen.getByRole('button', { name: UI.casefile.copiedLabel })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: UI.casefile.copyLabel })).toBeNull()
   })
@@ -393,7 +393,7 @@ describe('open variant — the case is still_open', () => {
     // with a mocked clipboard, the same way PrepareScreen.test.tsx splits
     // its own copy-button coverage across a working mock and a rejecting one.
     const c = makeCase('passport', state1D, state1Answers, { remindAt: '2026-10-12' })
-    render(<CasefileScreen case={c} d={state1D} {...baseProps()} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps()} />)
     expect(() => screen.getByRole('button', { name: UI.casefile.copyLabel }).click()).not.toThrow()
   })
 
@@ -405,7 +405,7 @@ describe('open variant — the case is still_open', () => {
     try {
       const c = makeCase('passport', state1D, state1Answers, { remindAt: '2026-10-12' })
       const dispatch = vi.fn()
-      render(<CasefileScreen case={c} d={state1D} {...baseProps({ dispatch })} />)
+      render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps({ dispatch })} />)
       screen.getByRole('button', { name: UI.casefile.copyLabel }).click()
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
         UI.casefile.reminderText.replace('{date}', fmtRemind('2026-10-12')),
@@ -420,14 +420,14 @@ describe('open variant — the case is still_open', () => {
 
   it('a working (unsaved) case renders the "lives only in this tab" note and a save control; a saved case renders neither, and renders the remove control', () => {
     const working = makeCase('passport', state1D, state1Answers, { unsaved: true })
-    const { unmount } = render(<CasefileScreen case={working} d={state1D} {...baseProps()} />)
+    const { unmount } = render(<CasefileScreen case={working} answers={working.answers} d={state1D} {...baseProps()} />)
     expect(screen.getByText(UI.casefile.livesOnlyNote)).toBeInTheDocument()
     expect(document.querySelector('.btn-ghost, .saved-note')).toBeInTheDocument() // SaveControl's own two branches
     expect(document.querySelector('.case-remove')).toBeNull()
     unmount()
 
     const saved = makeCase('passport', state1D, state1Answers)
-    render(<CasefileScreen case={saved} d={state1D} {...baseProps()} />)
+    render(<CasefileScreen case={saved} answers={saved.answers} d={state1D} {...baseProps()} />)
     expect(screen.queryByText(UI.casefile.livesOnlyNote)).toBeNull()
     expect(screen.queryByText(UI.saveControl.save)).toBeNull()
     expect(screen.queryByText(UI.saveControl.saveWithSteps)).toBeNull()
@@ -438,7 +438,7 @@ describe('open variant — the case is still_open', () => {
     // PREP['state-5a'] has real steps; feed prepChecks that would tick some
     // of them and confirm the button still reads the no-steps label.
     const working = makeCase('passport', state5aD, state5aAnswers, { unsaved: true })
-    render(<CasefileScreen case={working} d={state5aD} {...baseProps({ prepChecks: { 0: true } })} />)
+    render(<CasefileScreen case={working} answers={working.answers} d={state5aD} {...baseProps({ prepChecks: { 0: true } })} />)
     expect(screen.getByRole('button', { name: UI.saveControl.save })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: UI.saveControl.saveWithSteps })).toBeNull()
   })
@@ -446,7 +446,7 @@ describe('open variant — the case is still_open', () => {
   it('the working-case tail\'s Save button fires BEGIN_SAVE', () => {
     const working = makeCase('passport', state1D, state1Answers, { unsaved: true })
     const dispatch = vi.fn()
-    render(<CasefileScreen case={working} d={state1D} {...baseProps({ dispatch })} />)
+    render(<CasefileScreen case={working} answers={working.answers} d={state1D} {...baseProps({ dispatch })} />)
     screen.getByRole('button', { name: UI.saveControl.save }).click()
     expect(dispatch).toHaveBeenCalledWith({
       type: 'BEGIN_SAVE', engineKey: 'passport', serviceLabel: working.serviceLabel,
@@ -457,7 +457,7 @@ describe('open variant — the case is still_open', () => {
   it("the remove control's non-confirm state renders one button; clicking it arms SET_REMOVE_CONFIRM", () => {
     const c = makeCase('passport', state1D, state1Answers)
     const dispatch = vi.fn()
-    render(<CasefileScreen case={c} d={state1D} {...baseProps({ dispatch })} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps({ dispatch })} />)
     screen.getByRole('button', { name: UI.casefile.removeButton }).click()
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_REMOVE_CONFIRM', id: 'c1' })
   })
@@ -465,7 +465,7 @@ describe('open variant — the case is still_open', () => {
   it("the remove control's confirm state renders both buttons; Yes fires REMOVE_SAVED", () => {
     const c = makeCase('passport', state1D, state1Answers)
     const dispatch = vi.fn()
-    render(<CasefileScreen case={c} d={state1D} {...baseProps({ dispatch, removeConfirm: 'c1' })} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps({ dispatch, removeConfirm: 'c1' })} />)
     expect(document.querySelector('.restart-confirm')).toHaveTextContent(UI.casefile.removePrompt)
     screen.getByRole('button', { name: UI.casefile.removeYes }).click()
     expect(dispatch).toHaveBeenCalledWith({ type: 'REMOVE_SAVED', id: 'c1' })
@@ -478,7 +478,7 @@ describe('open variant — the case is still_open', () => {
     const one = makeCase('passport', state1D, state1Answers, {
       log: [{ t: NOW, kind: 'diagnosed', text: 'x' }],
     })
-    const { unmount } = render(<CasefileScreen case={one} d={state1D} {...baseProps()} />)
+    const { unmount } = render(<CasefileScreen case={one} answers={one.answers} d={state1D} {...baseProps()} />)
     expect(screen.getByText(UI.casefile.journeyOne.replace('{n}', '1'))).toBeInTheDocument()
     unmount()
 
@@ -489,7 +489,7 @@ describe('open variant — the case is still_open', () => {
         { t: NOW + 2, kind: 'checked', text: 'c' },
       ],
     })
-    render(<CasefileScreen case={three} d={state1D} {...baseProps()} />)
+    render(<CasefileScreen case={three} answers={three.answers} d={state1D} {...baseProps()} />)
     expect(screen.getByText(UI.casefile.journeyMany.replace('{n}', '3'))).toBeInTheDocument()
   })
 })
@@ -497,7 +497,7 @@ describe('open variant — the case is still_open', () => {
 describe('Task 13: SIR phase drift — the interstitial replaces the whole update-mod', () => {
   it('renders the interstitial\'s exact strings, and renders NO option rows and NO remind row — "before any options are offered"', () => {
     const c = makeCase('sir', sirD, sirAnswers)
-    render(<CasefileScreen case={c} d={sirD} {...baseProps({ phaseDrift: true })} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={sirD} {...baseProps({ phaseDrift: true })} />)
     expect(document.querySelector(SEL.updateMod)).toHaveTextContent(UI.casefile.phaseDriftKicker)
     expect(document.querySelector(SEL.updateMod)).toHaveTextContent(UI.casefile.phaseDriftTitle)
     expect(document.querySelector(SEL.updateMod)).toHaveTextContent(UI.casefile.phaseDriftBody)
@@ -513,7 +513,7 @@ describe('Task 13: SIR phase drift — the interstitial replaces the whole updat
 
   it('the ordinary update module renders instead when phaseDrift is false', () => {
     const c = makeCase('sir', sirD, sirAnswers)
-    render(<CasefileScreen case={c} d={sirD} {...baseProps({ phaseDrift: false })} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={sirD} {...baseProps({ phaseDrift: false })} />)
     expect(screen.queryByText(UI.casefile.phaseDriftTitle)).toBeNull()
     expect(document.querySelector(SEL.updateMod)).toHaveTextContent(UI.casefile.whatsHappenedTitle)
     expect(document.querySelectorAll(SEL.optionRow).length).toBeGreaterThan(0)
@@ -522,14 +522,14 @@ describe('Task 13: SIR phase drift — the interstitial replaces the whole updat
   it('the interstitial\'s CTA dispatches PHASE_DRIFT_RECHECK', () => {
     const c = makeCase('sir', sirD, sirAnswers)
     const dispatch = vi.fn()
-    render(<CasefileScreen case={c} d={sirD} {...baseProps({ phaseDrift: true, dispatch })} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={sirD} {...baseProps({ phaseDrift: true, dispatch })} />)
     screen.getByRole('button', { name: new RegExp(UI.casefile.phaseDriftCta) }).click()
     expect(dispatch).toHaveBeenCalledWith({ type: 'PHASE_DRIFT_RECHECK' })
   })
 
   it('case-links and the save/remove tail are unaffected by phaseDrift', () => {
     const c = makeCase('sir', sirD, sirAnswers)
-    render(<CasefileScreen case={c} d={sirD} {...baseProps({ phaseDrift: true })} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={sirD} {...baseProps({ phaseDrift: true })} />)
     expect(screen.getByRole('button', { name: UI.casefile.diagnosisLink })).toBeInTheDocument()
     expect(document.querySelector('.case-remove')).toBeInTheDocument()
   })
@@ -540,7 +540,7 @@ describe('closed variant — the case is not still_open', () => {
     const gotIt = makeCase('passport', state1D, state1Answers, {
       outcome: 'deliverable_received', closedAt: NOW + 1000,
     })
-    const { unmount } = render(<CasefileScreen case={gotIt} d={state1D} {...baseProps()} />)
+    const { unmount } = render(<CasefileScreen case={gotIt} answers={gotIt.answers} d={state1D} {...baseProps()} />)
     expect(document.querySelector('.case-h1')).toHaveTextContent(UI.casefile.closedGotItHeadline)
     expect(document.querySelector('.case-meta-line')).toHaveTextContent(
       UI.casefile.metaClosedSuffix.replace('{date}', fmtDay(gotIt.closedAt!)).trim(),
@@ -553,19 +553,19 @@ describe('closed variant — the case is not still_open', () => {
     const unresolved = makeCase('passport', state1D, state1Answers, {
       outcome: 'closed_unresolved', closedAt: NOW + 1000,
     })
-    render(<CasefileScreen case={unresolved} d={state1D} {...baseProps()} />)
+    render(<CasefileScreen case={unresolved} answers={unresolved.answers} d={state1D} {...baseProps()} />)
     expect(document.querySelector('.case-h1')).toHaveTextContent(UI.casefile.closedUnresolvedHeadline)
   })
 
   it('closed-deliverable_received crumbs use CLOSED_TITLE; closed-unresolved crumbs use stateLabel', () => {
     const gotIt = makeCase('passport', state1D, state1Answers, { outcome: 'deliverable_received' })
-    const { unmount } = render(<CasefileScreen case={gotIt} d={state1D} {...baseProps()} />)
+    const { unmount } = render(<CasefileScreen case={gotIt} answers={gotIt.answers} d={state1D} {...baseProps()} />)
     expect(document.querySelector('.crumbs')).toHaveTextContent(CLOSED_TITLE.passport)
     expect(document.querySelector('.crumbs')).not.toHaveTextContent(gotIt.stateLabel)
     unmount()
 
     const unresolved = makeCase('passport', state1D, state1Answers, { outcome: 'closed_unresolved' })
-    render(<CasefileScreen case={unresolved} d={state1D} {...baseProps()} />)
+    render(<CasefileScreen case={unresolved} answers={unresolved.answers} d={state1D} {...baseProps()} />)
     expect(document.querySelector('.crumbs')).toHaveTextContent(unresolved.stateLabel)
     expect(document.querySelector('.crumbs')).not.toHaveTextContent(CLOSED_TITLE.passport)
   })
@@ -573,14 +573,14 @@ describe('closed variant — the case is not still_open', () => {
   it('"This came back; reopen it" fires REOPEN_CASE', () => {
     const c = makeCase('passport', state1D, state1Answers, { outcome: 'closed_unresolved' })
     const dispatch = vi.fn()
-    render(<CasefileScreen case={c} d={state1D} {...baseProps({ dispatch })} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps({ dispatch })} />)
     screen.getByRole('button', { name: new RegExp(UI.casefile.reopen) }).click()
     expect(dispatch).toHaveBeenCalledWith({ type: 'REOPEN_CASE', id: 'c1', now: NOW })
   })
 
   it('renders NO check-in machinery: no .update-mod, no .arow option rows, no .remind-row', () => {
     const c = makeCase('passport', state5aD, state5aAnswers, { outcome: 'deliverable_received' })
-    render(<CasefileScreen case={c} d={state5aD} {...baseProps()} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state5aD} {...baseProps()} />)
     // Each query string here is the BYTE-IDENTICAL selector the open-variant
     // tests above assert PRESENT, per this file's own header rule.
     expect(document.querySelector(SEL.updateMod)).toBeNull()
@@ -592,14 +592,14 @@ describe('closed variant — the case is not still_open', () => {
     const one = makeCase('passport', state1D, state1Answers, {
       outcome: 'closed_unresolved', log: [{ t: NOW, kind: 'diagnosed', text: 'x' }],
     })
-    render(<CasefileScreen case={one} d={state1D} {...baseProps()} />)
+    render(<CasefileScreen case={one} answers={one.answers} d={state1D} {...baseProps()} />)
     expect(screen.getByText(UI.casefile.journeyOne.replace('{n}', '1'))).toBeInTheDocument()
   })
 
   it("the remove control works identically on the closed variant", () => {
     const c = makeCase('passport', state1D, state1Answers, { outcome: 'closed_unresolved' })
     const dispatch = vi.fn()
-    render(<CasefileScreen case={c} d={state1D} {...baseProps({ dispatch, removeConfirm: 'c1' })} />)
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps({ dispatch, removeConfirm: 'c1' })} />)
     expect(document.querySelector('.restart-confirm')).toHaveTextContent(UI.casefile.removePrompt)
     screen.getByRole('button', { name: UI.casefile.removeYes }).click()
     expect(dispatch).toHaveBeenCalledWith({ type: 'REMOVE_SAVED', id: 'c1' })

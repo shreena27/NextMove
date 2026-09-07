@@ -4,6 +4,7 @@
 // TRANSCRIBED, not authored: design/nextmove-v1-prototype.html (git tag
 // v1-design-lock-2, commit 91ff7a1) — the `store` object (1956-1960) and the
 // `nm_case` -> `nm_cases` migration (1975-1983).
+import type { AnswerRecord } from '../domain/types'
 import type { Casefile } from '../domain/casefile'
 import { LOG_COPY } from '../domain/casefile'
 
@@ -47,12 +48,26 @@ const store = {
  *  `||` in that expression is a real defence against an older stored shape,
  *  not incidental — `engineKey` alone carries no fallback because the old
  *  shape always had one (whatever it held, right or wrong, is transcribed
- *  unchanged). */
+ *  unchanged).
+ *
+ *  FIX WAVE (2026-09-06, whole-branch final review, Critical finding 1,
+ *  symptom 2): `answers`/`prepChecks` are declared here — optional, because
+ *  the OLD single-case storage format did not reliably store them, so a
+ *  real stored value can genuinely lack either. Before this fix the
+ *  migration's `{...old, ...}` spread carried whatever `old.answers` held
+ *  (including `undefined`) straight through into a `Casefile` whose type
+ *  claims `answers` is always present — so a migrated card with no
+ *  `answers` reached `diagnose(engine, undefined)`, which calls
+ *  `rule.condition(undefined)` on every playbook rule: a real `TypeError`
+ *  crash the first time such a card was opened. See the `migrated` object
+ *  below for the fix. */
 interface LegacyCase {
   savedAt?: number
   returnScreen?: string
   engineKey: string
   stateLabel?: string
+  answers?: AnswerRecord
+  prepChecks?: Record<number, boolean>
 }
 
 /** The one-time `nm_case` -> `nm_cases` migration (prototype 1975-1983).
@@ -70,6 +85,15 @@ function migrateLegacyCase(): void {
     id: 'c' + (old.savedAt || now),
     outcome: 'still_open',
     returnScreen: old.returnScreen || (old.engineKey + '-nextmove'),
+    // FIX WAVE (2026-09-06, whole-branch final review, Critical finding 1,
+    // symptom 2): normalize a missing `answers`/`prepChecks` to `{}` rather
+    // than transcribing `undefined` through — see this interface's own doc
+    // comment above for exactly what crash this closes. `diagnose(engine,
+    // {})` correctly resolves to the UNCLASSIFIED fallback rather than
+    // throwing, matching what `loadCase`/`openCheckin` (session/cases.ts)
+    // already do for a case with no meaningful answers.
+    answers: old.answers || {},
+    prepChecks: old.prepChecks || {},
     log: [
       { t: old.savedAt || now, kind: 'diagnosed', text: old.stateLabel || LOG_COPY.caseSaved },
     ],

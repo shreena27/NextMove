@@ -534,34 +534,34 @@ function UiChrome() {
           the SaveControl mounts below, every new ui:casefile and
           ui:saveControl string reaches real, production component output. */}
       <CasefileScreen
-        case={cfWorking} d={helplineDiagnosis} {...casefileBaseProps}
+        case={cfWorking} answers={cfWorking.answers} d={helplineDiagnosis} {...casefileBaseProps}
         ciStage="confirm" ciPending={helplineActionOpt} ciPendingIdx={helplineOptions.indexOf(helplineActionOpt)}
       />
       <CasefileScreen
-        case={cfSavedValence} d={voterDecisionDiagnosis} {...casefileBaseProps}
+        case={cfSavedValence} answers={cfSavedValence.answers} d={voterDecisionDiagnosis} {...casefileBaseProps}
         ciStage="valence" ciPending={voterValenceOpt} ciPendingIdx={voterOptions.indexOf(voterValenceOpt)}
       />
       <CasefileScreen
-        case={cfSavedClosureq} d={helplineDiagnosis} {...casefileBaseProps}
+        case={cfSavedClosureq} answers={cfSavedClosureq.answers} d={helplineDiagnosis} {...casefileBaseProps}
         removeConfirm="ui-cf-saved-closureq"
         ciStage="closureq" ciPending={helplineDeliverableOpt} ciPendingIdx={helplineOptions.indexOf(helplineDeliverableOpt)}
       />
       <CasefileScreen
-        case={cfReassure} d={helplineDiagnosis} {...casefileBaseProps}
+        case={cfReassure} answers={cfReassure.answers} d={helplineDiagnosis} {...casefileBaseProps}
         ciReassure ciConsecutive
         ciSnapshot={{ answers: { q1: 'adverse', q2: 'informal' }, prepChecks: {}, casefile: cfReassure }}
       />
-      <CasefileScreen case={cfClosedGotIt} d={helplineDiagnosis} {...casefileBaseProps} />
-      <CasefileScreen case={cfClosedUnresolved} d={helplineDiagnosis} {...casefileBaseProps} />
+      <CasefileScreen case={cfClosedGotIt} answers={cfClosedGotIt.answers} d={helplineDiagnosis} {...casefileBaseProps} />
+      <CasefileScreen case={cfClosedUnresolved} answers={cfClosedUnresolved.answers} d={helplineDiagnosis} {...casefileBaseProps} />
       {/* copiedLabel ("Copied") only renders once reminderCopied is true —
           no click needed to reach it (props-driven, unlike PrepareScreen's
           own internal copy state), just its own static mount. */}
-      <CasefileScreen case={cfWorking} d={helplineDiagnosis} {...casefileBaseProps} reminderCopied />
+      <CasefileScreen case={cfWorking} answers={cfWorking.answers} d={helplineDiagnosis} {...casefileBaseProps} reminderCopied />
       {/* Task 13: the SIR phase-drift interstitial (casefile.phaseDriftKicker/
           phaseDriftTitle/phaseDriftBody/phaseDriftCta) — REPLACES the whole
           update-mod, so this mount's own ciStage/ciPending are irrelevant
           (the panel they'd open is unreachable while phaseDrift is true). */}
-      <CasefileScreen case={cfWorking} d={helplineDiagnosis} {...casefileBaseProps} phaseDrift />
+      <CasefileScreen case={cfWorking} answers={cfWorking.answers} d={helplineDiagnosis} {...casefileBaseProps} phaseDrift />
       <SaveControl engineKey="passport" stepsDone={0} savedCases={[]} answers={caseSnap.answers} onSave={noop} />
       <SaveControl engineKey="passport" stepsDone={2} savedCases={[]} answers={caseSnap.answers} onSave={noop} />
       <SaveControl

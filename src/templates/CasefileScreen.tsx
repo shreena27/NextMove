@@ -16,10 +16,17 @@
  *  before construction (reusing `App.tsx`'s existing `RestartToHome`
  *  component, the same seam `PrepareScreen`'s missing-plan guard reuses),
  *  the same way "no plan for this rule" is a state `PrepareScreen` cannot be
- *  in. `d` is the diagnosis recomputed from the case's own answers
- *  (`diagnose(ENGINES[case.engineKey], case.answers)`) — supplied by the
+ *  in. `d` is the diagnosis recomputed from the SESSION's live answers
+ *  (`diagnose(ENGINES[case.engineKey], state.answers)`) — supplied by the
  *  caller, exactly as every other screen in this codebase receives `d`
- *  pre-resolved rather than computing it internally.
+ *  pre-resolved rather than computing it internally. FIX WAVE (2026-09-06,
+ *  whole-branch final review, Critical finding 1): this was previously
+ *  computed from `case.answers` (the case's last-stored snapshot), which
+ *  could diverge from `state.answers` after an answer change followed by
+ *  Back navigation — see `App.tsx`'s `'checkin'` case and `session/cases.ts`'s
+ *  `ciChoose` for the full mechanism. `answers` (new prop, same fix) is the
+ *  same `state.answers` value, threaded through for `<EscalationLadder>`
+ *  (see the `answers` prop's own doc comment below) for the identical reason.
  *
  *  `prepChecks` is `SessionState.prepChecks` (the LIVE, in-progress copy),
  *  not `case.prepChecks` (the last-saved snapshot) — the same distinction
@@ -76,7 +83,7 @@
  *  `string` at the type level — the same reason `session.ts`'s own
  *  `navigateTo as ScreenId` casts exist. Cast, with this note as the record. */
 import type { ReactNode, CSSProperties } from 'react'
-import type { Diagnosis } from '../domain/types'
+import type { AnswerRecord, Diagnosis } from '../domain/types'
 import type { Casefile } from '../domain/casefile'
 import { CLOSED_TITLE, DELIVERABLE_Q, checkinOptionsFor, type CheckinOption } from '../domain/checkinOptions'
 import type { ScreenId, SessionAction } from '../session/session'
@@ -104,8 +111,19 @@ const COPY_FLASH_MS = 2200
 export interface CasefileScreenProps {
   /** Required and non-nullable — see the file header note. */
   case: Casefile
-  /** The diagnosis recomputed from `case.answers` — see the file header. */
+  /** The diagnosis recomputed from `state.answers` — see the file header. */
   d: Diagnosis
+  /** `SessionState.answers` — the session's LIVE answers, not `case.answers`
+   *  (the case's last-stored snapshot). FIX WAVE (2026-09-06, whole-branch
+   *  final review, Critical finding 1): the prototype's `renderLadder` reads
+   *  `S.answers` directly (design/nextmove-v1-prototype.html, 2793), never
+   *  the case's own stored answers, so `<EscalationLadder>` below is wired
+   *  to this prop, not `case.answers` — matching `d` above, which the router
+   *  (App.tsx) now also derives from `state.answers` rather than
+   *  `case.answers`, closing a divergence where the two could disagree
+   *  after an answer change followed by Back navigation (see cases.ts's own
+   *  `ciChoose` and caseStore.ts's migration fix, same review finding). */
+  answers: AnswerRecord
   /** `SessionState.prepChecks` (the live copy) — see the file header. */
   prepChecks: Record<number, boolean>
   /** `SessionState.savedCases` — threaded through to `<SaveControl>` only
@@ -142,6 +160,7 @@ export interface CasefileScreenProps {
 export function CasefileScreen({
   case: c,
   d,
+  answers,
   prepChecks,
   savedCases,
   now,
@@ -375,7 +394,7 @@ export function CasefileScreen({
               </div>
               {trail ? <CaseTrail trail={trail} /> : null}
               <CaseProgress prep={prep} prepChecks={prepChecks} />
-              <EscalationLadder engineKey={c.engineKey} d={d} answers={c.answers} />
+              <EscalationLadder engineKey={c.engineKey} d={d} answers={answers} />
               <div className="nm-k" style={{ margin: '24px 0 4px' }}>{journeyHeading}</div>
               <JourneyLog case={c} logOpen={logOpen} onShowAll={() => dispatch?.({ type: 'TOGGLE_LOG', caseId: c.id })} />
             </>

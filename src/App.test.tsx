@@ -324,6 +324,74 @@ describe('Task 13: end to end — Add an update, confirm, and Undo', () => {
   })
 })
 
+describe('FIX WAVE (2026-09-06, whole-branch final review, Critical finding 1): the casefile screen and CI_CHOOSE must resolve options from the SAME answer record', () => {
+  it('changing an answer via "Something else happened", then Back to the casefile screen WITHOUT re-saving, shows the NEW diagnosis\'s own options — and clicking one records exactly that option, never a stale one read off the case\'s own stored answers', async () => {
+    render(<App />)
+    // Reach state-1 (WAIT) and start a working check-in on it. The working
+    // case's OWN stored `answers` are frozen here — {guardrail:'no',
+    // q1:'no_contact', q2:'no_followup'} — and, per the bug this fix wave
+    // closes, the ANSWER action never touches them again.
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+    await userEvent.click(screen.getByRole('button', { name: UI.updateEntry.label }))
+    expect(document.querySelector('.update-mod')).toBeInTheDocument()
+    // Premise: state-1's own first option ("Police contacted...") is what's
+    // on screen right now — the stale option a bug would leave behind.
+    expect(screen.getByRole('button', { name: 'Police contacted or visited me' })).toBeInTheDocument()
+
+    // "Something else happened" — the universal escape hatch — takes the
+    // citizen to a real question screen. It writes only a log entry onto
+    // the case; the case's own stored `answers` are still state-1's.
+    await userEvent.click(screen.getByRole('button', { name: 'Something else happened' }))
+    expect(screen.getByRole('heading', { name: "What's happening with your application?" })).toBeInTheDocument()
+
+    // Answer BOTH questions with a genuinely different, complete answer set
+    // — state-2, not a partial/unclassified one — landing on
+    // passport-diagnosis. This is `state.answers` now; the working case's
+    // own stored `answers` never moved off state-1's.
+    await userEvent.click(screen.getByRole('button', { name: "Someone from the police contacted me, but it isn't finished" }))
+    expect(screen.getByRole('heading', { name: 'Have you already tried to follow up on this?' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+    const liveD = diagnose(passportEngine, { guardrail: 'no', q1: 'contacted_incomplete', q2: 'no_followup' })
+    expect(liveD.ruleId).toBe('state-2') // guards the fixture: a genuinely different diagnosis than state-1
+
+    // Back three times — diagnosis -> Q2 -> Q1 -> the casefile screen —
+    // never through Home, so activeCaseId (still 'working') survives every
+    // one of these, per App.tsx's own established Back behaviour.
+    await userEvent.click(screen.getByRole('button', { name: /← Back/ }))
+    await userEvent.click(screen.getByRole('button', { name: /← Back/ }))
+    await userEvent.click(screen.getByRole('button', { name: /← Back/ }))
+    expect(document.querySelector('.update-mod')).toBeInTheDocument() // back on the casefile screen
+
+    // THE FIX: the screen's diagnosis is now derived from `state.answers`
+    // (state-2), never the case's own stored `answers` (state-1) — so
+    // state-1's own first option must be GONE, and state-2's own first
+    // option is what's actually offered.
+    expect(screen.queryByRole('button', { name: 'Police contacted or visited me' })).toBeNull()
+    const stateTwoFirstOption = 'Verification finished, but nothing has moved since'
+    expect(screen.getByRole('button', { name: stateTwoFirstOption })).toBeInTheDocument()
+
+    // Click it. Pre-fix, CI_CHOOSE independently rebuilt its OWN option list
+    // from `state.answers` (state-2's) and indexed into it with the click's
+    // position in the list ABOVE (state-2's, post-fix — but state-1's,
+    // pre-fix) — so a citizen clicking this exact row could have had a
+    // DIFFERENT option recorded than the one they saw and clicked. The
+    // confirm panel must echo back the SAME option.
+    await userEvent.click(screen.getByRole('button', { name: stateTwoFirstOption }))
+    expect(screen.getByText(UI.casefile.confirmQ)).toBeInTheDocument()
+    expect(document.querySelector('.ci-panel')).toHaveTextContent(stateTwoFirstOption)
+
+    // Confirming re-diagnoses from state-2 (never the stale state-1) —
+    // closing the loop end to end.
+    const afterD = diagnose(passportEngine, { guardrail: 'no', q1: 'verified_no_progress', q2: 'no_followup' })
+    await userEvent.click(screen.getByRole('button', { name: UI.casefile.confirmYes }))
+    expect(document.querySelector('.stamp')).toHaveTextContent(afterD.rec === 'FOLLOW_UP' ? 'FOLLOW UP' : afterD.rec)
+    expect(screen.getByText(afterD.explanation)).toBeInTheDocument()
+  })
+})
+
 describe('Task 13: end to end — save, save-done, Home, and back into the casefile', () => {
   it('Next Move -> Save this case -> save-done -> Go to Home -> the card is on Home -> tap the card -> the casefile screen', async () => {
     render(<App />)
