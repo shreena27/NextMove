@@ -8,7 +8,8 @@
       "extracted_text": "FAQ_SIR2026.extracted.txt",
       "note": "32 numbered questions. Q4 is the operative Delhi SIR calendar (corroborated by news reporting of the 31 Aug draft publication and 30 Sep claims deadline): house-to-house 30.06–17.08; draft publication 31.08; claims & objections FILING 31.08–30.09; notice phase & DISPOSAL 31.08–29.10; final publication 04.11.2026.",
       "sha256": "c5183bc701298cf1aad4523f76652eab9d5e53fa9101705dc04cdebe525d35d3",
-      "check": "auto"
+      "check": "local",
+      "check_note": "ceodelhi.gov.in silently drops connections from GitHub Actions' US-based runner IPs (60s timeout, confirmed reproducible, unaffected by a realistic browser User-Agent — investigated 2026-09-07); eci.gov.in and passportindia.gov.in are unaffected, so this is a per-site block, not a general NIC restriction. The document fetches fine (3.6s) from an actual India-based network. check_freshness.py's NEXTMOVE_CI env var skips 'local' documents in CI and checks them on a human's local run instead. This is the single most consequential source in the manifest (backs every citizen-facing SIR date, already revised twice) — the tracked mitigation is a manual local check, not silence; see the Final Roll date above for when this stops mattering."
     },
     "SIR_revised_Schedule_2026-07-15.pdf": {
       "title": "ECI order No.23/2026-ERS (Vol.-II) dated 15.07.2026 — revised Delhi SIR schedule",
@@ -17,7 +18,7 @@
       "extracted_text": null,
       "note": "SUPERSEDED — kept as provenance only. Image-only scan (no text layer). Gives draft 17.08 / C&O to 16.09 / final 19.10, which contradicts both the FAQ and the actually-observed 31 Aug draft publication; the schedule was evidently revised again after this order. Never cite this document for dates.",
       "sha256": "1e988ebb40c4c51b210b174a0bdac1890d890fef0637282fc450ed354203fadf",
-      "check": "auto"
+      "check": "none"
     },
     "Final-ER-FAQ.pdf": {
       "title": "ECI Electoral Roll FAQ (national) — Final-ER-FAQ.pdf",
