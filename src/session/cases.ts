@@ -783,7 +783,18 @@ export function closeUnresolved(
  *  reopened case that still shows when it was once closed is honest
  *  history, not a stale field an incomplete fix left behind. Only reachable
  *  against `savedCases` — a closed case is, by design note 9 above, always
- *  a SAVED one (an unsaved closure leaves no case standing to reopen). */
+ *  a SAVED one (an unsaved closure leaves no case standing to reopen).
+ *
+ *  Task 5 design note 5 (D5) — the server-side mirror of Task 2's partial
+ *  unique index (`casefiles_one_open_per_service`, on `(user_id,
+ *  engine_key) where outcome = 'still_open'`): reopening a case whose
+ *  engine ALREADY has a different still_open sibling would have that write
+ *  rejected server-side, so this returns `null` first — the same
+ *  precondition-failure shape every other function in this file uses (an
+ *  unknown id also returns `null`) — rather than optimistically writing a
+ *  fragment the server would then bounce. `CasefileScreen`'s closed variant
+ *  checks this same condition before ever rendering the reopen control, so
+ *  the citizen sees no button rather than a click that silently fails. */
 export interface ReopenCaseFragment extends LoadCaseFragment {
   savedCases: Casefile[]
   navigateTo: string
@@ -792,6 +803,10 @@ export interface ReopenCaseFragment extends LoadCaseFragment {
 export function reopenCase(savedCases: Casefile[], id: string, now: number): ReopenCaseFragment | null {
   const c = savedCases.find(x => x.id === id)
   if (!c) return null
+  const hasOpenSibling = savedCases.some(
+    x => x.id !== id && x.engineKey === c.engineKey && x.outcome === 'still_open',
+  )
+  if (hasOpenSibling) return null
   const updated = appendLog({ ...c, outcome: 'still_open' }, { kind: 'reopened', text: LOG_COPY.reopened }, now)
   const nextSavedCases = savedCases.map(x => (x.id === id ? updated : x))
   return {

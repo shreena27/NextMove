@@ -614,6 +614,25 @@ describe('TOGGLE_PREP_STEP / SET_PREP_DRAFT — PrepareScreen\'s tick/draft stat
     expect(s.savedCases).toBe(dirty.savedCases) // same reference — never rebuilt
   })
 
+  it(
+    'a superseded case (even with a matching engine) is left untouched — the still_open guard already covers it ' +
+    '(Task 5 design note 1: verified correct as-is, pinned so a later reader does not "fix" it)',
+    () => {
+      const superseded: Casefile = {
+        ...FIXTURE_CASE, id: 'c1', engineKey: 'passport', outcome: 'superseded',
+        answers: ESCALATE_ANSWERS, returnScreen: 'passport-nextmove', savedAt: NOW - 10_000,
+      }
+      const dirty: SessionState = {
+        ...initialSession, savedCases: [superseded], activeCaseId: 'c1',
+        screen: 'passport-prepare', answers: ESCALATE_ANSWERS, prepChecks: {},
+      }
+      const s = r(dirty, { type: 'TOGGLE_PREP_STEP', index: 0, now: NOW })
+      expect(s.prepChecks).toEqual({ 0: true }) // the tick itself still happens
+      expect(s.savedCases[0]).toEqual(superseded) // but the superseded case's snapshot is untouched
+      expect(s.savedCases).toBe(dirty.savedCases) // same reference — never rebuilt
+    },
+  )
+
   it('with no active case, TOGGLE_PREP_STEP is a no-op on savedCases/workingCase', () => {
     const dirty: SessionState = { ...initialSession, screen: 'passport-prepare', prepChecks: {} }
     const s = r(dirty, { type: 'TOGGLE_PREP_STEP', index: 0, now: NOW })

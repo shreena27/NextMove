@@ -433,6 +433,46 @@ describe('completeSave (design note 4)', () => {
   })
 })
 
+// Task 5 design note 1 — three of the four sites the brief's blast-radius
+// audit lists as "verified correct as-is, no change needed" (the fourth,
+// TOGGLE_PREP_STEP, is session.test.ts's own). All three already compare
+// `outcome === 'still_open'` explicitly, so a superseded case is already
+// invisible to them — these tests PIN that fact so a later reader does not
+// "fix" a site that was never broken.
+describe('Task 5 design note 1 — a superseded case is invisible to caseIsSaved / beginWorkingCheckin / completeSave', () => {
+  it('caseIsSaved: a superseded passport case with matching answers does NOT suppress SaveControl (it is not still_open)', () => {
+    const superseded = savedCase(PASSPORT_ANSWERS, { id: 'c1', outcome: 'superseded' })
+    expect(caseIsSaved({ savedCases: [superseded], answers: { ...PASSPORT_ANSWERS } }, 'passport')).toBe(false)
+  })
+
+  it('beginWorkingCheckin: a superseded case of the same engine+answers is NOT reused — a fresh working case is created instead', () => {
+    const superseded = savedCase(PASSPORT_ANSWERS, { id: 'c-superseded', outcome: 'superseded' })
+    const fragment = beginWorkingCheckin(
+      { ...BASE, savedCases: [superseded], answers: { ...PASSPORT_ANSWERS } },
+      PASSPORT_PAYLOAD,
+    )
+    assertBeginWorking(fragment)
+    expect(fragment.workingCase.id).toBe('working')
+    expect(fragment.activeCaseId).toBe('working')
+  })
+
+  it("completeSave: a superseded case of the same engine is NOT the case updated in place — a NEW case is unshifted, the superseded one left untouched", () => {
+    const superseded = savedCase(PASSPORT_ANSWERS, { id: 'c-superseded', outcome: 'superseded' })
+
+    const fragment = completeSave(
+      { savedCases: [superseded], workingCase: null, answers: PASSPORT_ANSWERS_2, prepChecks: {} },
+      PASSPORT_PAYLOAD,
+    )
+
+    expect(fragment.savedCases).toHaveLength(2)
+    expect(fragment.savedCases.find(c => c.id === 'c-superseded')).toEqual(superseded) // untouched
+    const created = fragment.savedCases.find(c => c.id !== 'c-superseded')!
+    expect(created.id).toBe('c' + NOW)
+    expect(created.outcome).toBe('still_open')
+    expect(fragment.activeCaseId).toBe(created.id)
+  })
+})
+
 describe('D3 — key-order-independent answers comparison (deviation D3)', () => {
   // The reorder MUST come from the correction path (applyCorrection +
   // PASSPORT_DEPS), never from an applyEvent null-then-set round trip: a
@@ -1229,6 +1269,37 @@ describe('reopenCase (design note 3; prototype reopenCase, 2183-2187)', () => {
 
     expect(reopenCase([voterCase], 'v1', NOW)!.navigateTo).toBe('voter-diagnosis')
     expect(reopenCase([sirCase], 's1', NOW)!.navigateTo).toBe('sir-diagnosis')
+  })
+
+  describe("D5 — the server-side mirror of Task 2's casefiles_one_open_per_service partial unique index", () => {
+    it(
+      'returns null when a sibling still_open case shares the engineKey — the server would reject a second ' +
+      "still_open row for the same (user_id, engine_key), so this returns null instead of a fragment the write would fail",
+      () => {
+        const closed = savedCase(PASSPORT_ANSWERS, { id: 'c1', outcome: 'closed_unresolved' })
+        const sibling = savedCase(PASSPORT_ANSWERS_2, { id: 'c2', outcome: 'still_open' })
+        expect(reopenCase([closed, sibling], 'c1', NOW)).toBeNull()
+      },
+    )
+
+    it('returns a fragment when the still_open sibling is for a DIFFERENT engine (SIR alongside passport)', () => {
+      const closed = savedCase(PASSPORT_ANSWERS, { id: 'c1', outcome: 'closed_unresolved' })
+      const sirSibling = caseFor(
+        'sir', sirEngine, 'Voter roll (SIR)', 'sir-nextmove', { sirState: 'delhi', sirQ1: 'notice' },
+        { id: 's1', outcome: 'still_open' },
+      )
+      const fragment = reopenCase([closed, sirSibling], 'c1', NOW)
+      expect(fragment).not.toBeNull()
+      expect(fragment!.savedCases.find(c => c.id === 'c1')!.outcome).toBe('still_open')
+    })
+
+    it('returns a fragment when the sibling shares the engineKey but is itself closed (no still_open collision)', () => {
+      const closed = savedCase(PASSPORT_ANSWERS, { id: 'c1', outcome: 'closed_unresolved' })
+      const closedSibling = savedCase(PASSPORT_ANSWERS_2, { id: 'c2', outcome: 'closed_unresolved' })
+      const fragment = reopenCase([closed, closedSibling], 'c1', NOW)
+      expect(fragment).not.toBeNull()
+      expect(fragment!.savedCases.find(c => c.id === 'c1')!.outcome).toBe('still_open')
+    })
   })
 })
 

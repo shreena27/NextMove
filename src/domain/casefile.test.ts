@@ -7,7 +7,9 @@ import { voterPlaybook } from '../playbooks/voterPlaybook'
 import { sirPlaybook, SIR_STATES, SIR_PHASES } from '../playbooks/sirPlaybook'
 import { guardrailFindings } from '../playbooks/guardrails/suite'
 import { retiredActionFindings } from '../playbooks/guardrails/contentSafety'
-import { caseSnapshot, sirPhaseId, casefileCopyExtras, LOG_COPY } from './casefile'
+import {
+  caseSnapshot, sirPhaseId, casefileCopyExtras, LOG_COPY, CASE_OUTCOMES, SERVICE_KEYS,
+} from './casefile'
 
 const NOW = 1_725_000_000_000
 
@@ -125,11 +127,12 @@ describe('casefileCopyExtras() guardrail sweep (the shape prep.test.ts uses)', (
 describe('LOG_COPY completeness', () => {
   // Every string cases.ts will later compose must be a key here, so a new
   // entry string added in a later task cannot be inlined in session/ and
-  // skip the guardrail scan (see the file's own header comment).
-  it('has exactly the 9 keys this chunk ships — no fewer, no silent extra', () => {
+  // skip the guardrail scan (see the file's own header comment). Task 5
+  // (D3) adds the 10th key, 'superseded'.
+  it('has exactly the 10 keys this chunk ships — no fewer, no silent extra', () => {
     expect(Object.keys(LOG_COPY).sort()).toEqual([
       'caseSaved', 'checkedNoChange', 'closedDeliverable', 'closedUnresolved',
-      'elseReDiagnose', 'inHandSuffix', 'pendingSuffix', 'rejectedSuffix', 'reopened',
+      'elseReDiagnose', 'inHandSuffix', 'pendingSuffix', 'rejectedSuffix', 'reopened', 'superseded',
     ])
   })
 
@@ -143,6 +146,23 @@ describe('LOG_COPY completeness', () => {
     expect(LOG_COPY.closedUnresolved).toBe('Closed as unresolved, every verified step used')
     expect(LOG_COPY.reopened).toBe('Case reopened: this came back')
     expect(LOG_COPY.caseSaved).toBe('Case saved')
+  })
+
+  // Task 5 (D3) — NOT transcribed from the prototype (it has no
+  // 'superseded' outcome at all); FINALIZED verbatim per the task brief's
+  // design note 3, transcribed exactly, not paraphrased.
+  it('LOG_COPY.superseded is the FINALIZED string, verbatim', () => {
+    expect(LOG_COPY.superseded).toBe('Set aside: your account already had an open case for this service')
+  })
+})
+
+describe('CASE_OUTCOMES / SERVICE_KEYS — runtime companions to the type unions (Task 5, design note 2)', () => {
+  it('CASE_OUTCOMES has exactly four values, in a stable order', () => {
+    expect(CASE_OUTCOMES).toEqual(['still_open', 'deliverable_received', 'closed_unresolved', 'superseded'])
+  })
+
+  it('SERVICE_KEYS has exactly three values, in a stable order', () => {
+    expect(SERVICE_KEYS).toEqual(['passport', 'voter', 'sir'])
   })
 })
 

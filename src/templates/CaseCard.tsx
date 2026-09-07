@@ -45,10 +45,17 @@ export interface CaseCardProps {
 export function CaseCard({ case: c, onOpen, now }: CaseCardProps) {
   const open = c.outcome === 'still_open'
   const gotIt = c.outcome === 'deliverable_received'
+  // Task 5 (D3): a superseded case is NOT an unresolved one — it never went
+  // through the escalation ladder and the record is not "the last thing
+  // this citizen could do", so it needs its own kicker rather than falling
+  // into the `else` branch that used to mean "everything that isn't got-it".
+  const superseded = c.outcome === 'superseded'
   const title = gotIt ? (CLOSED_TITLE[c.engineKey] ?? c.stateLabel) : c.stateLabel
   const kicker = open
     ? UI.card.savedPrefix.replace('{date}', fmtDay(c.savedAt))
-    : gotIt ? UI.card.closedGotIt : UI.card.closedUnresolved
+    : gotIt ? UI.card.closedGotIt
+      : superseded ? UI.card.closedSuperseded
+        : UI.card.closedUnresolved
 
   return (
     <button className={`saved-card ${open ? '' : 'closed'}`} onClick={onOpen}>

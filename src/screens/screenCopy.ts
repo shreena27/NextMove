@@ -256,6 +256,12 @@ export const UI = {
     // The closed variant (2884-2901).
     closedGotItHeadline: 'Case closed: you got it.',
     closedUnresolvedHeadline: 'Case closed. The record stays.',
+    // Task 5 (D3) — FINALIZED, added during the same Fable consultation
+    // that authored LOG_COPY.superseded (domain/casefile.ts). Not in the
+    // original draft; reuses closedUnresolvedHeadline's exact second
+    // sentence deliberately, so closedLede below still reads true beneath
+    // it without its own change (see task-5-brief.md design note 4).
+    closedSupersededHeadline: 'Case set aside. The record stays.',
     closedLede: "Nothing further is tracked on a closed case. The journey record stays yours. It's the paper trail any future step would start from.",
     reopen: 'This came back; reopen it',
 
@@ -328,6 +334,12 @@ export const UI = {
     savedPrefix: 'Saved {date}', // TEMPLATE
     closedGotIt: 'Closed — got it',
     closedUnresolved: 'Closed — unresolved',
+    // Task 5 (D3) — FINALIZED. "Closed" is the right lead word specifically
+    // because this codebase's OWN existing usage already means "not
+    // active, record kept, can come back" (closedUnresolved cases are
+    // already reopenable), not "final" — a set-aside case fits the same
+    // category honestly. See task-5-brief.md design note 4.
+    closedSuperseded: 'Closed — set aside',
     next: 'Next: {what}', // TEMPLATE — the "→ " prefix is the CSS ::before, not part of this string.
     steps: '{done} of {total} steps done', // TEMPLATE
     lastUpdate: 'last update {ago}', // TEMPLATE

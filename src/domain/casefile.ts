@@ -30,7 +30,12 @@ export interface CopyLocation { at: string; text: string }
  *  cycle the moment session.ts starts importing `Casefile` from this file
  *  (it does, from Task 4 on). Same reasoning `session.ts`'s own doc comment
  *  gives for not deriving ServiceKey from DEPS_FOR. */
-export type ServiceKey = 'passport' | 'voter' | 'sir'
+/** Task 5 (design note 2): the runtime companion to `ServiceKey` —
+ *  `supabase/migrations.test.ts`'s `engine_key` check-constraint assertion
+ *  imports THIS array (not a hand-typed list) so the SQL constraint and this
+ *  union can never drift apart. */
+export const SERVICE_KEYS = ['passport', 'voter', 'sir'] as const
+export type ServiceKey = typeof SERVICE_KEYS[number]
 
 // `CaseSnapshot.returnScreen` (below) is deliberately typed as plain
 // `string`, not session.ts's `ScreenId` union — for the same layering
@@ -42,8 +47,16 @@ export type ServiceKey = 'passport' | 'voter' | 'sir'
 // returns it. Every real call site (session.ts, App.tsx) narrows it back
 // to ScreenId, which is a subtype of `string`.
 
-/** The spec's own three case-outcome values, verbatim. */
-export type CaseOutcome = 'still_open' | 'deliverable_received' | 'closed_unresolved'
+/** The spec's own three case-outcome values, plus Task 5's own fourth
+ *  (D3): 'superseded', for a case the sign-in migration (a later task)
+ *  merges away because the signed-in account already had an open case for
+ *  that service. Task 5 (design note 2): the runtime companion,
+ *  `CASE_OUTCOMES` — `supabase/migrations.test.ts`'s `outcome`
+ *  check-constraint assertion imports THIS array (not a hand-typed list) so
+ *  the SQL constraint and this union can never drift apart — "one source of
+ *  truth across TypeScript and Postgres". */
+export const CASE_OUTCOMES = ['still_open', 'deliverable_received', 'closed_unresolved', 'superseded'] as const
+export type CaseOutcome = typeof CASE_OUTCOMES[number]
 
 /** The five `kind` values the prototype's journey-log writes ever use. */
 export type JourneyEntryKind = 'diagnosed' | 'reported' | 'checked' | 'closed' | 'reopened'
@@ -90,6 +103,16 @@ export const LOG_COPY = {
   /** 1980 — the seed entry's text fallback for a migrated legacy case whose
    *  stored stateLabel is missing. */
   caseSaved: 'Case saved',
+  /** Task 5 (D3) — NOT transcribed from the prototype; 'superseded' is new.
+   *  The closing log entry for a case the sign-in migration (a later task)
+   *  merges away because the signed-in account already had an open case for
+   *  this service. FINALIZED via a Fable consultation the repo owner asked
+   *  for explicitly (2026-09-07) — see the task brief's design note 3 for
+   *  the full reasoning behind "Set aside" over "superseded" (internal
+   *  jargon), "shelved"/"parked" (colloquial), or "duplicate" (false, and
+   *  faintly blames the citizen). States what happened and why, in one
+   *  clause, with no apology and no instruction about what happens next. */
+  superseded: 'Set aside: your account already had an open case for this service',
 } as const
 
 /** Exactly what `caseSnapshot` produces (prototype 2053-2067) — the fields a

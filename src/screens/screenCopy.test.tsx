@@ -288,6 +288,11 @@ const closedUnresolvedCase: Casefile = {
   ...caseSnap, id: 'ui-case-closed-unresolved', outcome: 'closed_unresolved',
   lastCheck: null, remindAt: null, closedAt: CASE_NOW, log: [],
 }
+// Task 5 (D3): the 'superseded' outcome's own card kicker (card.closedSuperseded).
+const closedSupersededCase: Casefile = {
+  ...caseSnap, id: 'ui-case-closed-superseded', outcome: 'superseded',
+  lastCheck: null, remindAt: null, closedAt: CASE_NOW, log: [],
+}
 
 const journeyLogA: Casefile = {
   ...caseSnap, id: 'ui-log-a', outcome: 'still_open', lastCheck: null, remindAt: null,
@@ -350,6 +355,11 @@ const cfClosedGotIt: Casefile = {
 }
 const cfClosedUnresolved: Casefile = {
   ...caseSnap, id: 'ui-cf-closed-unresolved', outcome: 'closed_unresolved',
+  lastCheck: null, remindAt: null, closedAt: CASE_NOW, log: [{ t: CASE_NOW, kind: 'diagnosed', text: 'x' }],
+}
+// Task 5 (D3): the 'superseded' outcome's own headline (casefile.closedSupersededHeadline).
+const cfClosedSuperseded: Casefile = {
+  ...caseSnap, id: 'ui-cf-closed-superseded', outcome: 'superseded',
   lastCheck: null, remindAt: null, closedAt: CASE_NOW, log: [{ t: CASE_NOW, kind: 'diagnosed', text: 'x' }],
 }
 
@@ -549,6 +559,7 @@ function UiChrome() {
       <CaseCard case={daysAgoCase} onOpen={noop} now={CASE_NOW} />
       <CaseCard case={closedGotItCase} onOpen={noop} now={CASE_NOW} />
       <CaseCard case={closedUnresolvedCase} onOpen={noop} now={CASE_NOW} />
+      <CaseCard case={closedSupersededCase} onOpen={noop} now={CASE_NOW} />
       {/* C5 Task 9: CasefileScreen — open (working + confirm panel),
           (saved + valence panel), (saved + closureq panel + remove-confirm),
           (reassure panel), and both closed headline branches. Together with
@@ -574,6 +585,7 @@ function UiChrome() {
       />
       <CasefileScreen case={cfClosedGotIt} answers={cfClosedGotIt.answers} d={helplineDiagnosis} {...casefileBaseProps} />
       <CasefileScreen case={cfClosedUnresolved} answers={cfClosedUnresolved.answers} d={helplineDiagnosis} {...casefileBaseProps} />
+      <CasefileScreen case={cfClosedSuperseded} answers={cfClosedSuperseded.answers} d={helplineDiagnosis} {...casefileBaseProps} />
       {/* copiedLabel ("Copied") only renders once reminderCopied is true —
           no click needed to reach it (props-driven, unlike PrepareScreen's
           own internal copy state), just its own static mount. */}

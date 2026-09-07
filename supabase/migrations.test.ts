@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { CaseOutcome, ServiceKey } from '../src/domain/casefile.ts'
+import { CASE_OUTCOMES, SERVICE_KEYS } from '../src/domain/casefile.ts'
 
 // Static (always-runs) test over every supabase/migrations/*.sql file. It
 // greps the SQL text — it cannot prove a policy does what it says, only
@@ -28,30 +28,17 @@ function readAllMigrations(): string {
 
 const sql = readAllMigrations()
 
-// design note 5 (Task 2) / Task 5's own GREEN item ("Wire Task 2's
-// migration test to import CASE_OUTCOMES") both establish that
-// src/domain/casefile.ts does not yet export a runtime CASE_OUTCOMES
-// companion, and CaseOutcome itself does not yet include 'superseded' —
-// that lands in Task 5 (D3), which is *why* Task 5 says it will "wire"
-// this file rather than this file already doing so. Until then this array
-// is the one deliberate, tracked exception to "imported, not hand-typed"
-// in this file: it is typed against the CURRENT CaseOutcome import plus
-// the one literal value ('superseded') Task 5 adds, so drift in the
-// three EXISTING members still shows up as a type mismatch to a reader's
-// editor even though tsc -b does not check this file (design note 5).
-const CASE_OUTCOMES: (CaseOutcome | 'superseded')[] = [
-  'still_open',
-  'deliverable_received',
-  'closed_unresolved',
-  'superseded',
-]
-
-// ServiceKey is already exported from src/domain/casefile.ts today (no
-// Task 5 dependency for the type itself) — the runtime SERVICE_KEYS
-// companion is what lands in Task 5 "in the same one-line style" as
-// CASE_OUTCOMES. Typing this hand-array against the ServiceKey import is
-// the best available "imported, not hand-typed" today.
-const SERVICE_KEYS: ServiceKey[] = ['passport', 'voter', 'sir']
+// Task 5 (design note 2) closes a finding Task 2's own review left
+// deliberately open: at Task 2's time, src/domain/casefile.ts exported no
+// runtime CASE_OUTCOMES/SERVICE_KEYS companions to its CaseOutcome/
+// ServiceKey type unions, and CaseOutcome itself did not yet include
+// 'superseded' (that's Task 5's own D3) — so the outcome/engine_key
+// check-constraint assertions below had to hand-type their expected value
+// lists, a second source of truth that could silently drift from the real
+// TypeScript unions. Task 5 adds both arrays (casefile.ts's own doc
+// comments on CASE_OUTCOMES/SERVICE_KEYS) and wires this file to import
+// them directly, which is what makes "one source of truth across
+// TypeScript and Postgres" actually true here, not just claimed.
 
 /**
  * If `text` starts a dollar-quoted body (`$tag$...$tag$`, e.g. a plpgsql
