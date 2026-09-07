@@ -579,7 +579,10 @@ export const SIR_COPY = {
      *  this shape by design). Rather than carve out a guardrail exemption
      *  for an unsourced claim, this drops the clause — "never invent copy"
      *  forbids authoring an unbacked timeline, not omitting one; same
-     *  reasoning already applied to SaveDoneScreen's OQ1 sentence. */
+     *  reasoning already applied to SaveDoneScreen's OQ1 sentence. Made
+     *  unilaterally by the implementing session, then explicitly confirmed
+     *  with the repo owner (2026-09-07, C6 whole-branch final review) —
+     *  "keep it dropped," no replacement text. */
     verifiedNote: 'Guidance here was last human-verified on {date}.', // TEMPLATE
   },
 } as const

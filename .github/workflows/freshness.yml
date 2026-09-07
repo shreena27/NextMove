@@ -2,15 +2,30 @@ name: Source freshness check
 
 # Daily check that the official government PDFs NextMove's playbook rules
 # cite haven't changed since sources/manifest.json's committed hash.
-# Writes sources/freshness.json and commits it only when the content
-# actually changed, so the normal build+deploy picks it up — the deployed
-# app reads freshness.json at build time, never fetches it live.
+# Writes sources/freshness.json and commits it, so the normal build+deploy
+# picks it up — the deployed app reads freshness.json at build time, never
+# fetches it live.
+#
+# The commit step below is conditional on a real diff, but IN PRACTICE it
+# commits every single day: check_freshness.py writes a fresh checkedAt
+# and, for every 'ok' document, a fresh lastChecked on every successful
+# run — by design, confirmed with the repo owner (2026-09-07) — so the
+# file's content differs daily even when nothing has actually changed.
+# This is deliberate, not a bug: it's what makes TrustDisclosure's
+# "Verified on {date}" caption genuinely live (domain/freshness.ts's
+# verifiedDateFor) rather than frozen at whenever a document last happened
+# to change. The cost, accepted knowingly: a daily bot commit to master,
+# and — once VERCEL_TOKEN below is configured — a daily production
+# redeploy. The `if git diff` guard stays as real, non-decorative defense
+# for the one case it WOULD actually skip a commit (a run where nothing at
+# all needed a fresh timestamp), not as evidence this runs less than daily.
 #
 # NEXTMOVE_CI=1 makes check_freshness.py skip 'local'-mode documents
 # (ceodelhi.gov.in blocks GitHub's runner IPs — see manifest.json's
 # FAQ_SIR2026.pdf.check_note); those get checked by a human running the
 # same script locally instead, and this workflow carries their last-known
-# status forward untouched.
+# status forward untouched. See issue #13 for the open follow-up: nothing
+# yet tracks whether that local check is actually still happening.
 on:
   schedule:
     # 21:17 UTC ~= 02:47 IST, off-peak. An off-:00 minute avoids GitHub's
