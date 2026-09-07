@@ -477,17 +477,39 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       }
     }
     case 'BEGIN_SAVE': {
+      // C7 Task 16 (prototype beginSave, 2048-2052): C5 could only build the
+      // `if(S.user)` half of this — no real accounts existed yet. This arm
+      // now carries the full branch.
+      const pendingSave = { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen }
+      if (!s.user) {
+        // Signed out: detour into the sign-in flow instead of saving.
+        // `pendingSave` is set so `saveNameFinish` (Task 13) knows what to
+        // save once the citizen has signed in, and `SaveDoneScreen`'s "Back
+        // to my case" (Task 14) knows where to go — the SAME shape the
+        // signed-in branch below sets it to. `otp`/`authErr` are cleared the
+        // same way `AUTH_ID_SUBMITTED` clears them before a fresh sign-in
+        // attempt. Critically: NO write to `savedCases` or `workingCase` —
+        // if the citizen abandons the flow (e.g. at the OTP screen), the
+        // case must be exactly as it was before this tap.
+        return {
+          ...s,
+          pendingSave,
+          otp: '',
+          history: [...s.history, s.screen], screen: 'save-case',
+          trustOpen: false, restartConfirm: false, removeConfirm: null,
+          authErr: null, acctOpen: false,
+        }
+      }
       const fragment = completeSave(
         { savedCases: s.savedCases, workingCase: s.workingCase, answers: s.answers, prepChecks: s.prepChecks },
         { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen, now: a.now, newId: a.newId },
       )
       return {
         ...s, ...fragment,
-        // pendingSave is set even though the save completes immediately
-        // (no auth detour in C5, scope exclusion 1) — SaveDoneScreen's
-        // "Back to my case" button reads pendingSave.returnScreen
-        // (prototype 3895; design note 9).
-        pendingSave: { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen },
+        // pendingSave is set even though the save completes immediately —
+        // SaveDoneScreen's "Back to my case" button reads
+        // pendingSave.returnScreen (prototype 3895; design note 9).
+        pendingSave,
         history: [...s.history, s.screen], screen: 'save-done',
         trustOpen: false, restartConfirm: false, removeConfirm: null,
         authErr: null, acctOpen: false,

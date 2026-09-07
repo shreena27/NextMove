@@ -320,29 +320,86 @@ describe('BEGIN_WORKING_CHECKIN / OPEN_CHECKIN reducer wiring (thin arms over ca
   })
 })
 
-describe("BEGIN_SAVE (design notes 8-9: completes immediately, no auth detour in C5)", () => {
-  it("lands on 'save-done' with the case saved, activeCaseId set, and pendingSave.returnScreen populated for SaveDoneScreen to read", () => {
-    const s = seq(
-      { type: 'ANSWER', service: 'passport', key: 'q1', value: 'adverse' },
-      { type: 'ANSWER', service: 'passport', key: 'q2', value: 'informal' },
-      {
+describe('BEGIN_SAVE (C7 Task 16: the prototype\'s full beginSave branch, 2048-2052 — C5 only ever built the `if(S.user)` half)', () => {
+  it(
+    "signed in: lands on 'save-done' with the case saved, activeCaseId set, and pendingSave.returnScreen populated for " +
+    'SaveDoneScreen to read — a pure regression pin on C5\'s shipped behaviour, unchanged by this task',
+    () => {
+      const s = seq(
+        { type: 'SIGNED_IN', user: FIXTURE_USER },
+        { type: 'ANSWER', service: 'passport', key: 'q1', value: 'adverse' },
+        { type: 'ANSWER', service: 'passport', key: 'q2', value: 'informal' },
+        {
+          type: 'BEGIN_SAVE',
+          engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+          now: 1_725_000_000_000, newId: 'passport-case-uuid',
+        },
+      )
+      expect(s.screen).toBe('save-done')
+      expect(s.savedCases).toHaveLength(1)
+      // D4: BEGIN_SAVE threads the injected `newId` straight through to
+      // completeSave — the created case's id is the INJECTED value, never a
+      // timestamp derived inside the reducer.
+      expect(s.savedCases[0].id).toBe('passport-case-uuid')
+      expect(s.savedCases[0].engineKey).toBe('passport')
+      expect(s.savedCases[0].outcome).toBe('still_open')
+      expect(s.activeCaseId).toBe(s.savedCases[0].id)
+      expect(s.pendingSave).toEqual({ engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove' })
+      expect(s.workingCase).toBeNull()
+      expect(s.user).toBe(FIXTURE_USER)
+    },
+  )
+
+  it(
+    'signed out: detours into the sign-in flow instead of saving — sets pendingSave, clears otp/authErr, navigates to ' +
+    "'save-case', and leaves savedCases AND workingCase completely untouched (identity, not just value)",
+    () => {
+      expect.assertions(5)
+      const workingCase: Casefile = { ...FIXTURE_CASE, id: 'working', unsaved: true }
+      const dirty: SessionState = {
+        ...initialSession,
+        savedCases: [FIXTURE_CASE],
+        workingCase,
+        answers: { q1: 'adverse', q2: 'informal' },
+        otp: '123456',
+        authErr: 'That doesn\'t look like a full mobile number yet.',
+        user: null,
+      }
+      const s = r(dirty, {
         type: 'BEGIN_SAVE',
         engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
-        now: 1_725_000_000_000, newId: 'passport-case-uuid',
-      },
-    )
-    expect(s.screen).toBe('save-done')
-    expect(s.savedCases).toHaveLength(1)
-    // D4: BEGIN_SAVE threads the injected `newId` straight through to
-    // completeSave — the created case's id is the INJECTED value, never a
-    // timestamp derived inside the reducer.
-    expect(s.savedCases[0].id).toBe('passport-case-uuid')
-    expect(s.savedCases[0].engineKey).toBe('passport')
-    expect(s.savedCases[0].outcome).toBe('still_open')
-    expect(s.activeCaseId).toBe(s.savedCases[0].id)
-    expect(s.pendingSave).toEqual({ engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove' })
-    expect(s.workingCase).toBeNull()
-  })
+        now: 1_725_000_000_000, newId: 'unused-because-signed-out',
+      })
+      expect(s.screen).toBe('save-case')
+      expect(s.pendingSave).toEqual({ engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove' })
+      expect({ otp: s.otp, authErr: s.authErr }).toEqual({ otp: '', authErr: null })
+      // Identity, not value — a clone that happens to match by content would
+      // still be a bug (a citizen's saved list re-rendering / an unrelated
+      // effect re-firing off a changed reference). `dirty.savedCases` is the
+      // exact same array BEGIN_SAVE was handed; nothing here may replace it.
+      expect(s.savedCases).toBe(dirty.savedCases)
+      expect(s.workingCase).toBe(dirty.workingCase)
+    },
+  )
+
+  it(
+    'abandoning at the OTP screen (BEGIN_SAVE then NAVIGATE away) leaves savedCases untouched at the reducer level — ' +
+    'no route needed; the full rendered journey is Task 17\'s',
+    () => {
+      const before = seq({ type: 'ANSWER', service: 'passport', key: 'q1', value: 'adverse' })
+      const afterBeginSave = r(before, {
+        type: 'BEGIN_SAVE',
+        engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+        now: 1_725_000_000_000, newId: 'unused-because-signed-out',
+      })
+      expect(afterBeginSave.screen).toBe('save-case')
+      expect(afterBeginSave.savedCases).toEqual([])
+      const afterNavigateAway = r(afterBeginSave, { type: 'NAVIGATE', screen: 'home' })
+      expect(afterNavigateAway.savedCases).toBe(afterBeginSave.savedCases) // same empty array, never touched
+      expect(afterNavigateAway.savedCases).toEqual([])
+      expect(afterNavigateAway.workingCase).toBeNull()
+    },
+  )
 })
 
 describe('CI_CHOOSE / CI_CONFIRM / CI_VALENCE / CI_CLOSURE / CI_UNDO / CI_CANCEL — reducer wiring (Task 6, design notes 2-10)', () => {

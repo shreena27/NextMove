@@ -465,6 +465,13 @@ describe('FIX WAVE (2026-09-06, whole-branch final review, Critical finding 1): 
 
 describe('Task 13: end to end — save, save-done, Home, and back into the casefile', () => {
   it('Next Move -> Save this case -> save-done -> Go to Home -> the card is on Home -> tap the card -> the casefile screen', async () => {
+    // C7 Task 16: BEGIN_SAVE now completes the save only while signed in —
+    // a signed-out tap detours into the sign-in flow instead (whose route,
+    // 'save-case', is wired in Task 17, not here). This test's own subject
+    // (Save -> save-done -> Home -> reopen) is the SIGNED-IN branch, which
+    // this task's design note pins as behaving exactly as it did before —
+    // so a signed-in user is seeded to keep exercising that same path.
+    seededState.current = { user: { method: 'phone', id: '+919876543210', name: 'Ananya' } }
     render(<App />)
     await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
     await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
@@ -488,24 +495,44 @@ describe('Task 13: end to end — save, save-done, Home, and back into the casef
 })
 
 describe('Task 13: the localStorage persistence effect (design note 6)', () => {
-  it('nm_cases is written after a save, and read back on a fresh mount', async () => {
-    expect(localStorage.getItem('nm_cases')).toBeNull()
+  it('nm_cases reflects a signed-out savedCases change, and is read back on a fresh mount', async () => {
+    // C7 Task 16: BEGIN_SAVE no longer completes a save while signed out —
+    // it detours into the sign-in flow instead (whose route, 'save-case',
+    // is wired in Task 17, not here), so the click-through flow this test
+    // used to create a NEW case (Home -> Passport -> ... -> Save) can no
+    // longer reach a completed save while signed out. Design note 6's own
+    // claim is broader than "after a save", though: ANY savedCases change
+    // while signed out is written to storage and read back on a fresh
+    // mount. This proves that same claim against a case that already
+    // exists (seeded straight into localStorage, exactly like `loadCases`
+    // itself reads it) via the one savedCases-mutating action still
+    // reachable while signed out — removing a saved case.
+    const existing: Casefile = {
+      engineKey: 'passport', serviceLabel: UI.serviceLabel.passport, returnScreen: 'passport-nextmove',
+      answers: { q1: 'adverse', q2: 'informal' }, prepChecks: {}, savedAt: 1_700_000_000_000,
+      stateLabel: 'Followed up informally, unresolved', rec: 'FOLLOW_UP',
+      whatShort: 'Move to a formal Grievance / CPGRAMS filing',
+      stepsTotal: 5, stepsDone: 1, sirPhaseId: null,
+      id: 'c1700000000000', outcome: 'still_open', lastCheck: null, remindAt: null,
+      log: [{ t: 1_700_000_000_000, kind: 'diagnosed', text: 'Followed up informally, unresolved' }],
+    }
+    localStorage.setItem('nm_cases', JSON.stringify([existing]))
+
     const { unmount } = render(<App />)
-    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
-    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
-    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
-    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
-    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
-    await userEvent.click(screen.getByRole('button', { name: UI.saveControl.save }))
+    expect(document.querySelector('.saved-card')).toBeInTheDocument()
+
+    await userEvent.click(document.querySelector('.saved-card') as HTMLButtonElement)
+    await userEvent.click(screen.getByRole('button', { name: UI.casefile.removeButton }))
+    await userEvent.click(screen.getByRole('button', { name: UI.casefile.removeYes }))
 
     const stored = localStorage.getItem('nm_cases')
     expect(stored).not.toBeNull()
-    expect(JSON.parse(stored!)).toHaveLength(1)
+    expect(JSON.parse(stored!)).toHaveLength(0)
     unmount()
 
     // A fresh mount reads it straight back — the lazy useReducer initializer.
     render(<App />)
-    expect(document.querySelector('.saved-card')).toBeInTheDocument()
+    expect(document.querySelector('.saved-card')).toBeNull()
   })
 
   it('a corrupt nm_cases value does not prevent App rendering Home', () => {
