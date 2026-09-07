@@ -343,6 +343,16 @@ describe('Task 13: the four C5 router cases', () => {
     expect(screen.getByRole('button', { name: UI.saveDone.goHome })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: UI.saveDone.backToCase })).toBeNull()
   })
+
+  it(
+    "'save-done' passes App's real state.user through to SaveDoneScreen (Task 14 wiring): a phone-method user " +
+    "reaches the restored auth-coupled tail sentence in .lede's rendered output",
+    () => {
+      seededState.current = { screen: 'save-done', user: { method: 'phone', id: 'app-test-phone', name: null } }
+      render(<App />)
+      expect(document.querySelector('.lede')).toHaveTextContent(UI.saveDone.ledeTailPhone)
+    },
+  )
 })
 
 describe('Task 13: end to end — Add an update, confirm, and Undo', () => {
