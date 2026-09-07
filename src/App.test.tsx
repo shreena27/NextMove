@@ -39,6 +39,11 @@ vi.mock('./session/session', async (importOriginal) => {
 afterEach(() => {
   vi.restoreAllMocks()
   seededScreen.current = undefined
+  // Task 13: App now genuinely reads/writes `nm_cases` via `localStorage`
+  // (the lazy useReducer initializer / the persistence useEffect) — jsdom's
+  // REAL localStorage is shared across every `it()` in this file, so a case
+  // saved by one test would otherwise leak into the next `render(<App/>)`.
+  localStorage.clear()
 })
 
 describe('Passport, end to end — the flow is real, not just unit-tested components', () => {
@@ -245,6 +250,198 @@ describe('Home v2', () => {
     expect(rows.length).toBe(4)
     for (const row of rows) expect(row.tagName).toBe('DIV')
     expect(screen.getAllByText('Coming Soon').length).toBe(4)
+  })
+})
+
+describe('Task 13: the four C5 router cases', () => {
+  it("'checkin' with no active case dispatches RESTART and lands on Home, rendering nothing of the casefile screen", () => {
+    seededScreen.current = 'checkin'
+    render(<App />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    expect(screen.queryByRole('button', { name: /← Back/ })).toBeNull()
+    expect(document.querySelector('.update-mod')).toBeNull()
+  })
+
+  it("'dead-end' with no active case dispatches RESTART and lands on Home", () => {
+    seededScreen.current = 'dead-end'
+    render(<App />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    expect(screen.queryByText(UI.deadEnd.headline)).toBeNull()
+  })
+
+  it("'case-closed' renders (case is nullable — no RestartToHome guard needed)", () => {
+    seededScreen.current = 'case-closed'
+    render(<App />)
+    expect(screen.getByRole('button', { name: UI.caseClosed.backToHome })).toBeInTheDocument()
+  })
+
+  it("'save-done' renders (pendingSave is nullable — no RestartToHome guard needed)", () => {
+    seededScreen.current = 'save-done'
+    render(<App />)
+    expect(screen.getByRole('heading', { name: UI.saveDone.headline })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: UI.saveDone.goHome })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: UI.saveDone.backToCase })).toBeNull()
+  })
+})
+
+describe('Task 13: end to end — Add an update, confirm, and Undo', () => {
+  it('Home -> Passport -> diagnosis -> "Add an update" -> the casefile screen -> pick an option -> confirm -> back on diagnosis with the update recorded -> Undo -> the case restored', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+
+    const before = diagnose(passportEngine, { guardrail: 'no', q1: 'no_contact', q2: 'no_followup' })
+    expect(document.querySelector('.stamp')).toHaveTextContent('WAIT')
+    expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument()
+
+    // "Add an update" — BEGIN_WORKING_CHECKIN, landing on the casefile screen.
+    await userEvent.click(screen.getByRole('button', { name: UI.updateEntry.label }))
+    expect(document.querySelector('.update-mod')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(before.label)
+
+    // Pick the first option ("Police contacted or visited me", state-1's own
+    // CHECKIN_META entry) — opens the confirm panel (an 'event' kind).
+    await userEvent.click(screen.getByRole('button', { name: 'Police contacted or visited me' }))
+    expect(screen.getByText(UI.casefile.confirmQ)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: UI.casefile.confirmYes }))
+
+    // Navigated to passport-diagnosis with the update recorded — a real
+    // diagnosis CHANGE (state-1 WAIT -> state-2 FOLLOW_UP).
+    const after = diagnose(passportEngine, { guardrail: 'no', q1: 'contacted_incomplete', q2: 'no_followup' })
+    expect(after.ruleId).not.toBe(before.ruleId) // guards the fixture — a real change, not a no-op
+    expect(document.querySelector('.stamp')).toHaveTextContent('FOLLOW UP')
+    expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument()
+    expect(screen.getByText(after.explanation)).toBeInTheDocument()
+    expect(screen.getByText(UI.diagnosis.updateRecorded)).toBeInTheDocument()
+
+    // Undo — the case (and the diagnosis it drives) is restored whole.
+    await userEvent.click(screen.getByRole('button', { name: UI.diagnosis.undoUpdate }))
+    expect(document.querySelector('.stamp')).toHaveTextContent('WAIT')
+    expect(screen.getByText(before.explanation)).toBeInTheDocument()
+    expect(screen.queryByText(UI.diagnosis.updateRecorded)).toBeNull()
+  })
+})
+
+describe('FIX WAVE (2026-09-06, whole-branch final review, Critical finding 1): the casefile screen and CI_CHOOSE must resolve options from the SAME answer record', () => {
+  it('changing an answer via "Something else happened", then Back to the casefile screen WITHOUT re-saving, shows the NEW diagnosis\'s own options — and clicking one records exactly that option, never a stale one read off the case\'s own stored answers', async () => {
+    render(<App />)
+    // Reach state-1 (WAIT) and start a working check-in on it. The working
+    // case's OWN stored `answers` are frozen here — {guardrail:'no',
+    // q1:'no_contact', q2:'no_followup'} — and, per the bug this fix wave
+    // closes, the ANSWER action never touches them again.
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+    await userEvent.click(screen.getByRole('button', { name: UI.updateEntry.label }))
+    expect(document.querySelector('.update-mod')).toBeInTheDocument()
+    // Premise: state-1's own first option ("Police contacted...") is what's
+    // on screen right now — the stale option a bug would leave behind.
+    expect(screen.getByRole('button', { name: 'Police contacted or visited me' })).toBeInTheDocument()
+
+    // "Something else happened" — the universal escape hatch — takes the
+    // citizen to a real question screen. It writes only a log entry onto
+    // the case; the case's own stored `answers` are still state-1's.
+    await userEvent.click(screen.getByRole('button', { name: 'Something else happened' }))
+    expect(screen.getByRole('heading', { name: "What's happening with your application?" })).toBeInTheDocument()
+
+    // Answer BOTH questions with a genuinely different, complete answer set
+    // — state-2, not a partial/unclassified one — landing on
+    // passport-diagnosis. This is `state.answers` now; the working case's
+    // own stored `answers` never moved off state-1's.
+    await userEvent.click(screen.getByRole('button', { name: "Someone from the police contacted me, but it isn't finished" }))
+    expect(screen.getByRole('heading', { name: 'Have you already tried to follow up on this?' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+    const liveD = diagnose(passportEngine, { guardrail: 'no', q1: 'contacted_incomplete', q2: 'no_followup' })
+    expect(liveD.ruleId).toBe('state-2') // guards the fixture: a genuinely different diagnosis than state-1
+
+    // Back three times — diagnosis -> Q2 -> Q1 -> the casefile screen —
+    // never through Home, so activeCaseId (still 'working') survives every
+    // one of these, per App.tsx's own established Back behaviour.
+    await userEvent.click(screen.getByRole('button', { name: /← Back/ }))
+    await userEvent.click(screen.getByRole('button', { name: /← Back/ }))
+    await userEvent.click(screen.getByRole('button', { name: /← Back/ }))
+    expect(document.querySelector('.update-mod')).toBeInTheDocument() // back on the casefile screen
+
+    // THE FIX: the screen's diagnosis is now derived from `state.answers`
+    // (state-2), never the case's own stored `answers` (state-1) — so
+    // state-1's own first option must be GONE, and state-2's own first
+    // option is what's actually offered.
+    expect(screen.queryByRole('button', { name: 'Police contacted or visited me' })).toBeNull()
+    const stateTwoFirstOption = 'Verification finished, but nothing has moved since'
+    expect(screen.getByRole('button', { name: stateTwoFirstOption })).toBeInTheDocument()
+
+    // Click it. Pre-fix, CI_CHOOSE independently rebuilt its OWN option list
+    // from `state.answers` (state-2's) and indexed into it with the click's
+    // position in the list ABOVE (state-2's, post-fix — but state-1's,
+    // pre-fix) — so a citizen clicking this exact row could have had a
+    // DIFFERENT option recorded than the one they saw and clicked. The
+    // confirm panel must echo back the SAME option.
+    await userEvent.click(screen.getByRole('button', { name: stateTwoFirstOption }))
+    expect(screen.getByText(UI.casefile.confirmQ)).toBeInTheDocument()
+    expect(document.querySelector('.ci-panel')).toHaveTextContent(stateTwoFirstOption)
+
+    // Confirming re-diagnoses from state-2 (never the stale state-1) —
+    // closing the loop end to end.
+    const afterD = diagnose(passportEngine, { guardrail: 'no', q1: 'verified_no_progress', q2: 'no_followup' })
+    await userEvent.click(screen.getByRole('button', { name: UI.casefile.confirmYes }))
+    expect(document.querySelector('.stamp')).toHaveTextContent(afterD.rec === 'FOLLOW_UP' ? 'FOLLOW UP' : afterD.rec)
+    expect(screen.getByText(afterD.explanation)).toBeInTheDocument()
+  })
+})
+
+describe('Task 13: end to end — save, save-done, Home, and back into the casefile', () => {
+  it('Next Move -> Save this case -> save-done -> Go to Home -> the card is on Home -> tap the card -> the casefile screen', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+
+    await userEvent.click(screen.getByRole('button', { name: UI.saveControl.save }))
+    expect(screen.getByRole('heading', { name: UI.saveDone.headline })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: UI.saveDone.goHome }))
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    const card = document.querySelector('.saved-card')
+    expect(card).toBeInTheDocument()
+    expect(card).toHaveTextContent(UI.serviceLabel.passport)
+
+    await userEvent.click(card!)
+    expect(document.querySelector('.update-mod')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: UI.casefile.diagnosisLink })).toBeInTheDocument()
+  })
+})
+
+describe('Task 13: the localStorage persistence effect (design note 6)', () => {
+  it('nm_cases is written after a save, and read back on a fresh mount', async () => {
+    expect(localStorage.getItem('nm_cases')).toBeNull()
+    const { unmount } = render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+    await userEvent.click(screen.getByRole('button', { name: UI.saveControl.save }))
+
+    const stored = localStorage.getItem('nm_cases')
+    expect(stored).not.toBeNull()
+    expect(JSON.parse(stored!)).toHaveLength(1)
+    unmount()
+
+    // A fresh mount reads it straight back — the lazy useReducer initializer.
+    render(<App />)
+    expect(document.querySelector('.saved-card')).toBeInTheDocument()
+  })
+
+  it('a corrupt nm_cases value does not prevent App rendering Home', () => {
+    localStorage.setItem('nm_cases', '{not valid json')
+    render(<App />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    expect(document.querySelector('.home-cases')).toBeNull()
   })
 })
 

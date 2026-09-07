@@ -1,16 +1,15 @@
 /** Ports the prototype's `crumbs()` and `phaseEyebrow()` (design/nextmove-
- *  v1-prototype.html, lines 2313-2321), plus the `SERVICE_SQ` map (2310-2312)
- *  — Teak's marker-square device: every crumb strip leads with the owning
- *  service's colored square, then dashed-soft chips for phase context.
+ *  v1-prototype.html, lines 2313-2321).
  *
- *  Review fix round 1 (Minor): `SERVICE_SQ`'s keys are computed from
- *  `UI.serviceLabel.*` (screenCopy.ts) rather than re-typed as string
- *  literals — every caller now passes `UI.serviceLabel.passport`/
- *  `.voterServices`/`.sir` as the `service` prop, so a re-typed literal here
- *  could silently desync from screenCopy.ts with no test catching it
- *  (a renamed service label would just drop the crumb's coloured square).
- *  Keying off the same constants makes that impossible by construction. */
-import { UI } from '../screens/screenCopy'
+ *  The `SERVICE_SQ` map (2310-2312) used to live here, but moved out to its
+ *  own component-free `src/ui/serviceSquare.ts` (Task 8 design note 1):
+ *  `CaseCard` needs the same map, and this file exports components, so
+ *  exporting a plain data map alongside them would trip oxlint's
+ *  react(only-export-components) Fast Refresh rule. See serviceSquare.ts's
+ *  own header note for the full reasoning, including why this file's own
+ *  `?? null` fallback below is deliberately DIFFERENT from CaseCard's
+ *  `|| 'sq-butter'` — do not unify them. */
+import { SERVICE_SQ } from './serviceSquare'
 
 export interface CrumbsProps {
   parts: string[]
@@ -28,14 +27,6 @@ export function Crumbs({ parts, sqClass }: CrumbsProps) {
       ))}
     </div>
   )
-}
-
-// Both Voter Services and SIR reuse the pink square (sq-voter) — the
-// prototype never cut a separate square colour for SIR. Transcribed as-is.
-const SERVICE_SQ: Record<string, string> = {
-  [UI.serviceLabel.passport]: 'sq-passport',
-  [UI.serviceLabel.voterServices]: 'sq-voter',
-  [UI.serviceLabel.sir]: 'sq-voter',
 }
 
 export function PhaseEyebrow({ service, phase }: { service: string; phase?: string }) {

@@ -5,6 +5,8 @@ import { NextMoveScreen } from './NextMoveScreen'
 import { diagnose } from '../domain/engine'
 import { passportEngine, voterEngine, sirEngine } from '../playbooks/engines'
 import type { ServiceKey } from '../session/session'
+import { caseSnapshot, type Casefile } from '../domain/casefile'
+import { UI } from '../screens/screenCopy'
 
 // `engine.key` is typed `string` on `ServiceEngine` (Task 1's domain type,
 // not narrowed there); `NextMoveScreen`'s `engineKey` prop is `ServiceKey`
@@ -18,6 +20,19 @@ const cases = [
   ['sir', sirEngine, { sirState: 'delhi', sirQ1: 'roll_absent' }],
   ['passport-unclassified', passportEngine, { q1: 'not_sure' }],
 ] as const
+
+describe('PRE-CHANGE PIN (Task 11): extend, never restructure', () => {
+  // See DiagnosisScreen.test.tsx's own identically-named describe block for
+  // the full mechanism note: this is a regression pin, not a RED test, run
+  // and committed against the UNMODIFIED component before Task 11 touches
+  // NextMoveScreen.tsx — the artefact the "extend, don't restructure"
+  // guarantee rests on.
+  it('renders byte-identical output when the Task 11 props are absent', () => {
+    const d = diagnose(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    const { container } = render(<NextMoveScreen serviceLabel="Passport" engineKey="passport" d={d} />)
+    expect(container.innerHTML).toMatchSnapshot()
+  })
+})
 
 describe("AC-11: What / Why / Where / What-you'll-need all populated, never blank", () => {
   it.each(cases)('%s', (_, engine, answers) => {
@@ -184,5 +199,61 @@ describe('AC-10 (matched state): the Next Move crumb carries it', () => {
       expect(screen.getByText(`${label} · ${d.label}`)).toBeInTheDocument()
       unmount()
     }
+  })
+})
+
+describe('Task 11: <UpdateEntry> then <SaveControl>, after the CTA (design note 4)', () => {
+  it('renders both, in that order, after the CTA, and each callback fires', () => {
+    const onUpdate = vi.fn()
+    const onSave = vi.fn()
+    const d = diagnose(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    render(
+      <NextMoveScreen
+        serviceLabel="Passport" engineKey="passport" d={d}
+        onUpdate={onUpdate} onSave={onSave} savedCases={[]}
+      />,
+    )
+    const updateBtn = screen.getByRole('button', { name: UI.updateEntry.label })
+    updateBtn.click()
+    expect(onUpdate).toHaveBeenCalledTimes(1)
+
+    const saveBtn = screen.getByRole('button', { name: UI.saveControl.save })
+    saveBtn.click()
+    expect(onSave).toHaveBeenCalledTimes(1)
+
+    const rightCol = document.querySelector('.split-r')!
+    const children = Array.from(rightCol.children)
+    // No prep plan for this fixture -> the CTA is the secondary "Back to
+    // Home" button (.btn-secondary).
+    const ctaIdx = children.findIndex(el => el.classList.contains('btn-secondary'))
+    const updateIdx = children.indexOf(updateBtn)
+    const saveIdx = children.indexOf(saveBtn)
+    expect(ctaIdx).toBeGreaterThanOrEqual(0) // guard
+    expect(updateIdx).toBeGreaterThan(-1) // guard: it really is a direct child
+    expect(saveIdx).toBeGreaterThan(-1) // guard
+    expect(updateIdx).toBeGreaterThan(ctaIdx)
+    expect(saveIdx).toBeGreaterThan(updateIdx)
+  })
+
+  it('SaveControl shows the saved-note (no button) when a matching still-open saved case already exists', () => {
+    const answers = { q1: 'no_contact', q2: 'no_followup' }
+    const d = diagnose(passportEngine, answers)
+    const snap = caseSnapshot('passport', 'Passport', 'passport-nextmove', d, answers, {}, 1_760_000_000_000)
+    const saved: Casefile = { ...snap, id: 'c1', outcome: 'still_open', lastCheck: null, remindAt: null, log: [] }
+    render(
+      <NextMoveScreen
+        serviceLabel="Passport" engineKey="passport" d={d} onSave={vi.fn()} savedCases={[saved]}
+      />,
+    )
+    expect(document.querySelector('.saved-note')).toHaveTextContent(UI.saveControl.savedNote)
+    expect(screen.queryByRole('button', { name: UI.saveControl.save })).toBeNull()
+  })
+
+  it('omits both when the new props are absent (pre-existing behaviour)', () => {
+    const d = diagnose(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    render(<NextMoveScreen serviceLabel="Passport" engineKey="passport" d={d} />)
+    expect(screen.queryByText(UI.updateEntry.label)).toBeNull()
+    expect(screen.queryByText(UI.saveControl.save)).toBeNull()
+    expect(document.querySelector('.saved-note')).toBeNull()
   })
 })

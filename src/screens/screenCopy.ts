@@ -95,6 +95,14 @@ export const UI = {
       voter: { title: 'Voter Services', sub: 'Registration, correction, verification, or SIR' },
       other: { title: 'Other services', sub: 'Income, caste, EWS and more' },
     },
+    // The casefiles section (Task 11; prototype renderHome, 3137-3142).
+    // `casefilesOne`/`casefilesMany` are TWO SEPARATE templates, not one
+    // built by string concatenation — the same JourneyLog.tsx-precedented
+    // reason casefile.journeyOne/journeyMany already give: the singular
+    // form can then never accidentally grow a suffix it shouldn't have.
+    casefilesOne: 'Your casefile · {n}', // TEMPLATE
+    casefilesMany: 'Your casefiles · {n}', // TEMPLATE
+    closedLead: 'Closed',
   },
   otherServices: {
     crumb: 'Other services',
@@ -116,6 +124,27 @@ export const UI = {
     headlineUnclassified: "We don't have enough information to call this safely.",
     waitingOn: 'Waiting on',
     cta: 'See my next move',
+    /** The ciJustUpdated undo banner (Task 11, design note 3.1; prototype
+     *  renderDiagnosis, 3598) — `updateRecorded` is the banner's own text,
+     *  `undoUpdate` its `.read-change` button label. */
+    updateRecorded: 'Update recorded. This is where it leaves your case.',
+    undoUpdate: 'Undo that update',
+    /** The SIR phase-drift banner (Task 13, design note 1; prototype
+     *  renderDiagnosis, 3600) — `phaseDriftLead` is the bold lead-in,
+     *  `phaseDriftBody` the plain tail, rendered inside one `<Banner>` the
+     *  same way `updateRecorded`'s own bold/plain split doesn't need
+     *  (single sentence there) but this one does (two, the first bold). */
+    phaseDriftLead: 'The SIR phase changed while this case was saved.',
+    phaseDriftBody:
+      "NextMove re-checked your case against the current phase, so this diagnosis reflects today's rules, not the ones from when you saved.",
+  },
+  /** `updateEntry` (prototype 2284-2289) — the tracking entry point shared
+   *  by Diagnosis (Task 11's own design note 3.5) and Next Move (design
+   *  note 4). Only one string: the component itself makes no routing
+   *  decision (design note 1 — that logic already lives in the reducer's
+   *  BEGIN_WORKING_CHECKIN arm, Task 5). */
+  updateEntry: {
+    label: "Add an update: what's happened since?",
   },
   nextMove: {
     why: 'Why',
@@ -181,6 +210,211 @@ export const UI = {
     visitNote:
       "The carry list combines this case's verified requirements with common-sense basics. The tips are general practical guidance for any government office, not official rules.",
     doneBackHome: 'Done, back to Home',
+  },
+  /** The casefile screen — port of `renderCheckin` (design/nextmove-v1-
+   *  prototype.html, 2830-2970, tag v1-design-lock-2). Per the compact-card
+   *  spec, this screen IS the case's home ("there is no fifth surface").
+   *  `prepareStepsK`/`prepareCount` are Task 8's (the `.case-progress`
+   *  block); everything else is Task 9's.
+   *
+   *  `journeyOne`/`journeyMany` are TWO separate full templates, not one
+   *  built by concatenating a shared prefix with a conditionally-appended
+   *  plural suffix — a mechanism deviation from the prototype's own inline
+   *  ternary (`` `Journey · ${n} entr${n===1?'y':'ies'}` ``), for the exact
+   *  reason JourneyLog.tsx's own header note gives for `collapsedOne`/
+   *  `collapsedMany`: the singular form can then never accidentally grow a
+   *  suffix it shouldn't have. Same rendered output either way. */
+  casefile: {
+    prepareStepsK: 'Prepare steps',
+    prepareCount: '{done} of {total} done', // TEMPLATE
+
+    yourCasefile: 'Your casefile',
+    // The meta-line templates (2914, 2888). `metaSaved` is reused for BOTH
+    // the open-and-saved branch and the closed variant's "Saved {day}"
+    // prefix — the prototype composes the identical literal in both places.
+    metaStarted: 'Started {day}', // TEMPLATE
+    metaSaved: 'Saved {day}', // TEMPLATE
+    metaCheckBackSuffix: ' · check back {date}', // TEMPLATE
+    metaClosedSuffix: ' · closed {date}', // TEMPLATE
+    journeyOne: 'Journey · {n} entry', // TEMPLATE
+    journeyMany: 'Journey · {n} entries', // TEMPLATE
+
+    // The closed variant (2884-2901).
+    closedGotItHeadline: 'Case closed: you got it.',
+    closedUnresolvedHeadline: 'Case closed. The record stays.',
+    closedLede: "Nothing further is tracked on a closed case. The journey record stays yours. It's the paper trail any future step would start from.",
+    reopen: 'This came back; reopen it',
+
+    // The "Add an update" module head + lede (2932-2937).
+    addUpdateKicker: 'Add an update',
+    whatsHappenedTitle: "What's happened since?",
+    addUpdateLede: 'Pick what actually happened, and your casefile and diagnosis update from it. If none of these fit, "Something else happened" re-checks your case properly.',
+
+    // The SIR phase-drift interstitial (Task 13, design note 2; prototype
+    // 2925-2931) — REPLACES the whole module above when `phaseDrift`, so no
+    // check-in option is reachable before the citizen re-checks their case.
+    phaseDriftKicker: 'Before any update',
+    phaseDriftTitle: 'The SIR phase changed while this case was saved.',
+    phaseDriftBody:
+      "The options and recommendations from when you saved may no longer apply. Answer one question against today's phase and NextMove re-diagnoses your case; your journey record keeps everything you've already done.",
+    phaseDriftCta: "Re-check my case against today's phase",
+
+    // The four follow-up panels (2836-2876). `cancel` is ONE registered
+    // string reused at its three literal "Cancel" sites within this same
+    // render function (the confirm panel's `.btn-secondary`, the valence
+    // panel's `.btn-ghost`, and the remove control's inline confirm) — the
+    // prototype's own source has the same bare word at all three.
+    pickedEcho: 'You picked:',
+    confirmQ: 'Record this?',
+    confirmBody: 'It updates your casefile',
+    confirmDiagnosisClause: ' and may change your diagnosis',
+    confirmYes: 'Yes, record it',
+    cancel: 'Cancel',
+    valenceQ: 'Which way did it go?',
+    favour: 'In my favour',
+    against: 'Against me / rejected',
+    closureYes: "Yes, it's done",
+    closureNotYet: 'Not yet',
+    reassureLead: 'Nothing changing is not a bad sign here.',
+    reassureConsecutive: "This stage doesn't change day to day, so checking more often won't move it.",
+    undoButton: 'Undo this check-in',
+
+    // The remind row + copyable reminder line (2953-2958).
+    remindPrompt: 'Want to check back on a date of your choosing?',
+    checkBackAria: 'Check-back date',
+    remindLead: 'Your own reminder (copy it to your phone):',
+    reminderText: 'Check NextMove case: {date}', // TEMPLATE — also copyReminder's own argument text.
+    copyLabel: 'Copy',
+    copiedLabel: 'Copied',
+
+    // .case-links (2960-2963, 2895-2897) and the tail (2879-2883, 2964-2967).
+    diagnosisLink: 'See my diagnosis',
+    prepareLink: 'Continue preparing',
+    livesOnlyNote: 'This casefile lives only in this tab until you save it.',
+    removePrompt: 'Remove this case and its history?',
+    removeYes: 'Yes',
+    removeButton: 'Remove this case and its history',
+  },
+  /** `saveControl` (prototype 2292-2298) — the one save entry point, shared
+   *  by Next Move, Prepare (both Task 11) and the casefile screen's own
+   *  unsaved-case tail (Task 9, 2966). Built here, ahead of Task 11's own
+   *  file-list entry, because the casefile screen's tail already needs it
+   *  (design note 8) — Task 11 wires it into the other two call sites and
+   *  Home, it does not rebuild it. */
+  saveControl: {
+    savedNote: 'Saved. Find it on Home whenever you come back',
+    save: 'Save this case, and NextMove keeps walking with you',
+    saveWithSteps: 'Save this case (your ticked steps come with it)',
+  },
+  /** The compact Home casefile card (C5, Task 8) — port of `caseCard`
+   *  (prototype 3117-3135). `next`/`steps`/`lastUpdate`/`checkBack` are
+   *  TEMPLATES; `closedMark` is the mini closed stamp's literal text
+   *  (3127). */
+  card: {
+    savedPrefix: 'Saved {date}', // TEMPLATE
+    closedGotIt: 'Closed — got it',
+    closedUnresolved: 'Closed — unresolved',
+    next: 'Next: {what}', // TEMPLATE — the "→ " prefix is the CSS ::before, not part of this string.
+    steps: '{done} of {total} steps done', // TEMPLATE
+    lastUpdate: 'last update {ago}', // TEMPLATE
+    checkBack: 'check back {date}', // TEMPLATE
+    closedMark: 'CLOSED',
+  },
+  /** The journey log (C5, Task 8) — port of `renderLog` (prototype
+   *  2807-2829). `collapsedOne`/`collapsedMany` are two SEPARATE templates
+   *  (not one built by string concatenation) so the " – {to}" half only
+   *  ever exists in the plural form's own registered copy — see
+   *  JourneyLog.tsx's own header note. */
+  log: {
+    showAll: 'Show all {n} entries', // TEMPLATE
+    collapsedOne: 'Checked {n} time, {from} — no change reported', // TEMPLATE
+    collapsedMany: 'Checked {n} times, {from} – {to} — no change reported', // TEMPLATE
+    whoReported: 'You reported:',
+    whoDiagnosed: 'NextMove:',
+    whoOther: '—',
+    note: 'Your journey record, not an official document.',
+  },
+  /** DeadEndScreen (C5, Task 10) — port of `renderDeadEnd` (prototype
+   *  2971-2985, tag v1-design-lock-2): the screen shown once every
+   *  verified step in a service's escalation ladder is exhausted. `lede` is
+   *  transcribed whole, word for word — per the task brief, "the most
+   *  carefully written copy in the product." This screen offers no next
+   *  action, ever: no `*-prepare`/`*-nextmove` link, only "keep it open"
+   *  (RESTART) or "close as unresolved" (CLOSE_UNRESOLVED). */
+  deadEnd: {
+    crumbTail: 'End of the verified ladder',
+    headline: "You've used every step this playbook can verify.",
+    lede:
+      "That's a hard place to be, and NextMove won't pretend otherwise. There is no further official rung in the "
+      + 'verified sources, and inventing one would be worse than saying so. What you\'ve built still matters: every '
+      + 'filing, number, and date in your journey record is exactly what any lawyer, RTI request, or public '
+      + 'representative would ask for first.',
+    keepOpen: 'Keep the case open',
+    closeUnresolved: 'Close it as unresolved',
+  },
+  /** CaseClosedScreen (C5, Task 10) — port of `renderCaseClosed` (prototype
+   *  2986-3000, tag v1-design-lock-2): "the single calm celebratory beat"
+   *  the spec allows, shown only on outcome `deliverable_received`.
+   *
+   *  `ledeLead`/`ledeSavedClause` are TWO SEPARATE strings, not one full
+   *  sentence split at render time (design note 2 of the task brief; Open
+   *  Question 3, RESOLVED; Finding 13). The prototype's full lede ends
+   *  "...NextMove's part is done; the casefile and its journey stay under
+   *  "Closed" on Home if you ever need the record." That closing clause is
+   *  true for a SAVED case, but affirmatively FALSE for a working (unsaved)
+   *  one — an unsaved case is never in `savedCases`, and RESTART drops it,
+   *  so nothing stays under "Closed" on Home. `ledeSavedClause` therefore
+   *  renders (in CaseClosedScreen.tsx) ONLY when the case is not `unsaved`
+   *  — a SUBTRACTION, not a rewrite: no replacement clause is authored for
+   *  the working-case branch, and the working case is never auto-saved to
+   *  make the sentence true (that would create a casefile the citizen
+   *  never asked for, contradicting the casefile screen's own
+   *  informed-consent warning). */
+  caseClosed: {
+    crumb: 'Case closed',
+    headlineLead: 'You',
+    headlineMark: 'got it',
+    ledeLead:
+      "The thing you were waiting for is in your hands. That's the whole point of all of this: the diagnosis, the "
+      + "letters, the waiting. NextMove's part is done",
+    ledeSavedClause: '; the casefile and its journey stay under "Closed" on Home if you ever need the record.',
+    backToHome: 'Back to Home',
+  },
+  /** SaveDoneScreen (C5, Task 10) — port of `renderSaveDone` (prototype
+   *  3887-3899, tag v1-design-lock-2): the confirmation shown right after a
+   *  case is saved.
+   *
+   *  `lede` is ONLY the prototype's first sentence (design note 3 of the
+   *  task brief; Open Question 1, RESOLVED, option (b)) — the second
+   *  sentence ("Nothing else happens with your
+   *  ${S.user && S.user.method==='phone' ? 'number' : 'account'}.") is a
+   *  deliberate SUBTRACTION, not an oversight: C5 is device-local, has no
+   *  accounts at all, and keeping that sentence would tell a reader they DO
+   *  have an account. C7 (real auth) restores it with its original ternary
+   *  — both branches recorded here so it is re-derived, not re-authored:
+   *    - phone sign-in: "Nothing else happens with your number."
+   *    - any other sign-in: "Nothing else happens with your account." */
+  saveDone: {
+    crumb: 'Case saved',
+    headline: 'Your casefile is saved.',
+    lede:
+      "It's waiting on the Home screen whenever you come back: your answers, your diagnosis, and any steps "
+      + "you've already ticked off.",
+    backToCase: 'Back to my case',
+    goHome: 'Go to Home',
+  },
+  /** `fmtDay`/`fmtRemind`/`daysAgo`'s (src/ui/dates.ts) own chrome —
+   *  `daysAgo`'s three branches (prototype 2739). `daysAgo` renders, at
+   *  runtime, a real day-count ("3 days ago"); the registered TEMPLATE
+   *  carries no digit, so the numeric content-safety scan (numericFindings)
+   *  never sees one to flag — this is arithmetic over the citizen's own
+   *  journey log, not a claim about a government process, the same
+   *  reasoning ui:trust.verifiedOn's own comment gives. No sources/
+   *  manifest.json allowlist entry is needed or wanted here. */
+  time: {
+    today: 'today',
+    yesterday: 'yesterday',
+    daysAgo: '{n} days ago', // TEMPLATE
   },
 } as const
 

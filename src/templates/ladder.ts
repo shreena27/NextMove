@@ -3,10 +3,11 @@
 //
 // Pure logic only: `ladderFor` reads answers and the diagnosis, never
 // session or casefile state. `<EscalationLadder>` (the port of
-// `renderLadder`, 2792-2803) and its CSS (801-826) are deferred to C5 —
-// `renderLadder` has exactly one call site in the locked design
-// (`renderCasefile`, 2920), and the casefile screen is C5's. This file
-// exports data and one pure function; no JSX, no CSS, no component.
+// `renderLadder`, 2792-2803) and its CSS (801-826) are C5's — built in Task
+// 8 (`EscalationLadder.tsx`), rendered from the casefile screen
+// (`CasefileScreen.tsx`, Task 9), `renderLadder`'s one call site in the
+// locked design (`renderCasefile`, 2920). This file still exports data and
+// one pure function only; no JSX, no CSS, no component.
 import type { AnswerRecord, Classification, Diagnosis } from '../domain/types'
 
 /** The three service engines' routing key (mirrors session.ts's

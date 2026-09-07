@@ -2,12 +2,16 @@
 // CHECKIN table (design/nextmove-v1-prototype.html lines 2508-2596, tag
 // v1-design-lock-2). TRANSCRIBED, not authored.
 //
-// Deliberately EXCLUDED and left to C5: every option's `label`, its `k` kind
-// ('event' | 'action' | 'resolved-rung' | 'valence' | 'closureq' | 'deadend'),
-// the `prepAware` flag, and the universal options the loop appends
-// ("Nothing yet", the deliverable, "Something else happened"). Those are
-// session/UI mechanics. What ships here is what C1's applyEvent() can already
-// apply and diagnose() can already be asserted against.
+// Every option's `label`, its `k` kind ('event' | 'action' | 'resolved-rung' |
+// 'valence' | 'closureq' | 'deadend'), the `prepAware` flag, and the
+// universal options the loop appends ("Nothing yet", the deliverable,
+// "Something else happened") are now supplied by `domain/checkinOptions.ts`
+// (built in this chunk, Task 3) — NOT still pending, as an earlier version of
+// this comment said. This file remains the rule-keyed PATCH PAYLOAD half only
+// (fix wave, 2026-09-06 whole-branch final review, Important finding 3: this
+// comment was named explicitly in an earlier task's housekeeping checklist
+// but was never actually updated). What ships here is what C1's applyEvent()
+// can already apply and diagnose() can already be asserted against.
 //
 // Keys are the prototype's own keys, and they are a MIX on purpose: passport
 // and voter entries are keyed by rule id, SIR entries by user-facing `state`

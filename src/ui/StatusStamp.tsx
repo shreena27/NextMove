@@ -10,9 +10,20 @@
  *  trust toggle, every selection), which is the noise the lifted
  *  `#app.settled` rule exists to suppress visually. The decorative glyph
  *  span gets `aria-hidden="true"` instead, consistent with the Global
- *  Constraint that already covers `.gems`. */
+ *  Constraint that already covers `.gems`.
+ *
+ *  Task 8 (design note 2) adds the compact Home card's MINI variant —
+ *  `<span class="stamp mini {cls}">{LABEL}</span>`, NO icon (prototype
+ *  3127) — and the CLOSED form, `<span class="stamp mini closedmark">
+ *  CLOSED</span>` (same line, the ternary's else branch). `mini`/`closed`
+ *  are both optional so the existing full-size call sites and their tests
+ *  are untouched: neither prop is ever passed there. `closed` short-circuits
+ *  entirely — the closedmark span never depends on `rec` at all, matching
+ *  the prototype's own ternary, which does not consult stampClass/
+ *  stampLabel/stampIcon on that branch. */
 import type { Classification } from '../domain/types'
 import { ICONS } from './icons'
+import { UI } from '../screens/screenCopy'
 
 function stampClass(rec: Classification): string {
   return rec === 'WAIT' ? 'wait' : rec === 'FOLLOW_UP' ? 'follow' : rec === 'ESCALATE' ? 'escalate' : 'unclassified'
@@ -32,10 +43,21 @@ function stampIcon(rec: Classification) {
         : ICONS.statusUnclassified
 }
 
-export function StatusStamp({ rec }: { rec: Classification }) {
+export interface StatusStampProps {
+  rec: Classification
+  /** The compact Home card's small stamp — no icon (prototype 3127). */
+  mini?: boolean
+  /** The compact Home card's CLOSED form — ignores `rec` entirely. */
+  closed?: boolean
+}
+
+export function StatusStamp({ rec, mini, closed }: StatusStampProps) {
+  if (closed) {
+    return <span className="stamp mini closedmark">{UI.card.closedMark}</span>
+  }
   return (
-    <span className={`stamp ${stampClass(rec)}`}>
-      <span className="stamp-icon" aria-hidden="true">{stampIcon(rec)}</span>
+    <span className={`stamp${mini ? ' mini' : ''} ${stampClass(rec)}`}>
+      {!mini && <span className="stamp-icon" aria-hidden="true">{stampIcon(rec)}</span>}
       {stampLabel(rec)}
     </span>
   )

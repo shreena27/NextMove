@@ -7,6 +7,8 @@ import { passportEngine, voterEngine, sirEngine } from '../playbooks/engines'
 import { SIR_STATES } from '../playbooks/sirPlaybook'
 import type { AnswerRecord } from '../domain/types'
 import type { ServiceKey } from '../session/session'
+import type { CiSnapshot } from '../session/cases'
+import { UI } from '../screens/screenCopy'
 
 // DiagnosisScreen composes <TrustDisclosure>, which is fully controlled
 // (design note 7) — so the screen takes trustOpen/onToggleTrust and passes
@@ -122,6 +124,24 @@ describe('the topbar slot (fix round 1, Important #3)', () => {
   })
 })
 
+describe('PRE-CHANGE PIN (Task 11): extend, never restructure', () => {
+  // NOT a RED test (see the task brief's own PRE-CHANGE PIN section):
+  // toMatchSnapshot() writes its baseline on first run and passes green
+  // immediately, so it cannot "fail first" the way a real RED test does.
+  // This is run, and its generated snapshot committed, AGAINST THE
+  // UNMODIFIED component — before Task 11 touches DiagnosisScreen.tsx at
+  // all. After the Task 11 changes land, re-running this SAME test (still
+  // passing none of the new ciJustUpdated/ciSnapshot/onUndo/onUpdate props)
+  // must still match this baseline exactly — that is the guarantee that
+  // Task 11 only ADDED behind new optional props and never restructured an
+  // existing branch. A second, separate snapshot (below) pins the
+  // WITH-new-props case once those props exist.
+  it('renders byte-identical output when the Task 11 props are absent', () => {
+    const { container } = renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    expect(container.innerHTML).toMatchSnapshot()
+  })
+})
+
 describe('the shared template renders every service unmodified (impl plan §1)', () => {
   it.each([
     ['passport', passportEngine, { q1: 'adverse', q2: 'no_followup' }, null],
@@ -167,5 +187,86 @@ describe('the shared template renders every service unmodified (impl plan §1)',
     // Open Question 4 ruling. d.state is '5b' here, short enough to fall
     // inside an unrelated word by accident, so anchor it as a whole token.
     expect(new RegExp(`\\b${d.state}\\b`).test(text)).toBe(false)
+  })
+})
+
+// A ciSnapshot fixture DiagnosisScreen only ever checks for PRESENCE
+// (truthiness) — it never reads any of its fields — so an opaque stand-in
+// is enough; no real Casefile needs constructing here.
+const fakeCiSnapshot = { answers: {}, prepChecks: {}, casefile: {} } as unknown as CiSnapshot
+
+describe('Task 11: the ciJustUpdated undo banner (design note 3.1)', () => {
+  it('renders the banner and its Undo button, positioned before the dependency block, when ciJustUpdated and a snapshot both exist', () => {
+    const onUndo = vi.fn()
+    renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' }, {
+      ciJustUpdated: true, ciSnapshot: fakeCiSnapshot, onUndo,
+    })
+    expect(screen.getByText(UI.diagnosis.updateRecorded)).toBeInTheDocument()
+    const undoBtn = screen.getByRole('button', { name: UI.diagnosis.undoUpdate })
+    undoBtn.click()
+    expect(onUndo).toHaveBeenCalledTimes(1)
+
+    const rightCol = document.querySelector('.split-r')!
+    const children = Array.from(rightCol.children)
+    const bannerIdx = children.findIndex(el => el.classList.contains('banner'))
+    const depBlockIdx = children.findIndex(el => el.classList.contains('dep-block'))
+    expect(bannerIdx).toBeGreaterThanOrEqual(0) // guard: the banner really rendered
+    expect(depBlockIdx).toBeGreaterThan(-1) // guard: this fixture really has a dep-block
+    expect(depBlockIdx).toBeGreaterThan(bannerIdx)
+  })
+
+  it('omits the banner when ciJustUpdated is true but there is no snapshot to undo', () => {
+    renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' }, {
+      ciJustUpdated: true, ciSnapshot: null,
+    })
+    expect(screen.queryByText(UI.diagnosis.updateRecorded)).toBeNull()
+  })
+
+  it('omits the banner entirely when the new props are absent (pre-existing behaviour)', () => {
+    renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    expect(screen.queryByText(UI.diagnosis.updateRecorded)).toBeNull()
+  })
+})
+
+describe('Task 13: the SIR phase-drift banner', () => {
+  it('renders it when phaseDrift is true', () => {
+    renderFor(sirEngine, { sirState: 'delhi', sirQ1: 'roll_present' }, { phaseDrift: true })
+    expect(screen.getByText(UI.diagnosis.phaseDriftLead)).toBeInTheDocument()
+    expect(document.querySelector('.banner')).toHaveTextContent(UI.diagnosis.phaseDriftBody)
+  })
+
+  it('omits it when phaseDrift is false or absent', () => {
+    const { unmount } = renderFor(sirEngine, { sirState: 'delhi', sirQ1: 'roll_present' }, { phaseDrift: false })
+    expect(screen.queryByText(UI.diagnosis.phaseDriftLead)).toBeNull()
+    unmount()
+
+    renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    expect(screen.queryByText(UI.diagnosis.phaseDriftLead)).toBeNull()
+  })
+})
+
+describe('Task 11: <UpdateEntry> between the CTA and the trust toggle (design note 3.5)', () => {
+  it('renders it there — asserting DOM position, not just presence — and it fires onUpdate', () => {
+    const onUpdate = vi.fn()
+    renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' }, { onUpdate })
+    const updateBtn = screen.getByRole('button', { name: UI.updateEntry.label })
+    updateBtn.click()
+    expect(onUpdate).toHaveBeenCalledTimes(1)
+
+    const rightCol = document.querySelector('.split-r')!
+    const children = Array.from(rightCol.children)
+    const ctaIdx = children.findIndex(el => el.classList.contains('btn-primary'))
+    const updateIdx = children.indexOf(updateBtn)
+    const trustIdx = children.findIndex(el => el.classList.contains('trust-toggle'))
+    expect(ctaIdx).toBeGreaterThanOrEqual(0) // guard
+    expect(updateIdx).toBeGreaterThan(-1) // guard: it really is a direct child
+    expect(trustIdx).toBeGreaterThan(-1) // guard
+    expect(updateIdx).toBeGreaterThan(ctaIdx)
+    expect(trustIdx).toBeGreaterThan(updateIdx)
+  })
+
+  it('omits it entirely when onUpdate is absent (pre-existing behaviour)', () => {
+    renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    expect(screen.queryByText(UI.updateEntry.label)).toBeNull()
   })
 })

@@ -3,11 +3,15 @@
  *  all three services render through unmodified (implementation plan §1's
  *  central architectural claim, now made executable).
  *
- *  Deliberately NOT ported here (Out of Scope, later chunks): `freshBanner`
- *  (C6), the `ciJustUpdated` undo banner and `phaseDrift` banner (C5),
- *  `updateEntry`'s "Add an update" button (C5), and the escalation ladder
- *  (`renderLadder` is called only from `renderCasefile`, C5's — never from
- *  here).
+ *  Deliberately NOT ported here (Out of Scope, later chunk): `freshBanner`
+ *  (C6, left as a comment seam in the right column below, in the
+ *  prototype's own order). The `phaseDrift` banner is Task 13's own, now
+ *  built (see the `phaseDrift` prop below). The `ciJustUpdated` undo banner
+ *  and `updateEntry`'s "Add an update"
+ *  button are Task 11's own (this commit) — see the `ciJustUpdated`/
+ *  `ciSnapshot`/`onUndo`/`onUpdate` props below. The escalation ladder is
+ *  still out of scope here (`renderLadder` is called only from
+ *  `renderCasefile`, C5's Task 9 — never from here).
  *
  *  Government-process rules never live here — the only branching is
  *  structural: `d.dependency !== 'Unknown'` decides whether the "Waiting on"
@@ -30,13 +34,16 @@
 import type { ReactNode } from 'react'
 import type { Diagnosis } from '../domain/types'
 import type { ServiceKey, ScreenId } from '../session/session'
+import type { CiSnapshot } from '../session/cases'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { StatusStamp } from '../ui/StatusStamp'
 import { Gems } from '../ui/Gems'
 import { Split } from '../ui/Split'
 import { Button } from '../ui/Button'
+import { Banner } from '../ui/Banner'
 import { TrustDisclosure } from './TrustDisclosure'
 import { CaseTrail, passportTrailFor } from './CaseTrail'
+import { UpdateEntry } from './UpdateEntry'
 import { UI } from '../screens/screenCopy'
 
 export interface DiagnosisScreenProps {
@@ -68,6 +75,31 @@ export interface DiagnosisScreenProps {
    *  (`${engineKey}-nextmove`) when the CTA is pressed. Wiring this to an
    *  actual navigation dispatch is Task 7's job. */
   onNavigate?: (screen: ScreenId) => void
+
+  // ---- Task 11 additions (design note 3). Every one of these five is
+  // optional with an `undefined` default, so every pre-existing test above
+  // (which passes none of them) renders BYTE-IDENTICAL output — the
+  // PRE-CHANGE PIN in DiagnosisScreen.test.tsx pins exactly this. ----
+
+  /** The ciJustUpdated undo banner (design note 3.1; prototype 3598).
+   *  Rendered only when this AND `ciSnapshot` are both present — there must
+   *  be something to undo, not merely a flag saying an update happened. */
+  ciJustUpdated?: boolean
+  ciSnapshot?: CiSnapshot | null
+  /** Fires the reducer's CI_UNDO action. Wired for real in App.tsx (Task 13). */
+  onUndo?: () => void
+  /** The "Add an update" entry point (design note 3.5; prototype 3607) —
+   *  gates whether `<UpdateEntry>` renders at all, same convention `topbar`
+   *  already uses on this file. A dumb button: see UpdateEntry.tsx's own
+   *  header note for why the routing decision does NOT live here. */
+  onUpdate?: () => void
+
+  /** Task 13's SIR phase-drift banner (prototype 3600; `SessionState.
+   *  phaseDrift`). Optional with an `undefined` default, same convention as
+   *  the Task 11 additions above: every pre-existing render call (none of
+   *  which pass this) keeps rendering byte-identical output. Irrelevant to
+   *  (and never true for) a non-SIR diagnosis. */
+  phaseDrift?: boolean
 }
 
 export function DiagnosisScreen({
@@ -81,6 +113,11 @@ export function DiagnosisScreen({
   preNote,
   extraToldUs,
   onNavigate,
+  ciJustUpdated,
+  ciSnapshot,
+  onUndo,
+  onUpdate,
+  phaseDrift,
 }: DiagnosisScreenProps) {
   // The reveal headline gets the highlighter swipe on its key word — the
   // marker stroke lands where the answer is. UNCLASSIFIED gets no swipe:
@@ -116,6 +153,25 @@ export function DiagnosisScreen({
           }
           right={
             <>
+              {/* Design note 3.1: the ciJustUpdated undo banner (prototype
+                  3598) — rendered first, ahead of everything else in this
+                  column, only when there is a real snapshot to undo. */}
+              {ciJustUpdated && ciSnapshot ? (
+                <Banner style={{ borderColor: 'var(--butter)', background: 'var(--butter-soft)' }}>
+                  {UI.diagnosis.updateRecorded}
+                  <button className="read-change" style={{ margin: '0 0 0 6px' }} onClick={onUndo}>
+                    {UI.diagnosis.undoUpdate}
+                  </button>
+                </Banner>
+              ) : null}
+              {/* DESIGN NOTE (C6): freshBanner(engineKey) slots in here,
+                  immediately after the ciJustUpdated banner (prototype
+                  3599) — out of this task's scope. */}
+              {phaseDrift ? (
+                <Banner>
+                  <b>{UI.diagnosis.phaseDriftLead}</b> {UI.diagnosis.phaseDriftBody}
+                </Banner>
+              ) : null}
               {preNote}
               {d.dependency && d.dependency !== 'Unknown' ? (
                 <div className="dep-block">
@@ -127,6 +183,7 @@ export function DiagnosisScreen({
               <Button block arrow onClick={() => onNavigate?.(`${engineKey}-nextmove`)}>
                 {UI.diagnosis.cta}
               </Button>
+              {onUpdate ? <UpdateEntry onUpdate={onUpdate} /> : null}
               <TrustDisclosure
                 d={d}
                 answerLabels={answerLabels}

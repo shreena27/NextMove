@@ -106,12 +106,12 @@ export const SAFETY_EXEMPTIONS: { at: string; pattern: BannedPatternId; reason: 
   {
     at: 'passport:LADDER_DEFS.passport.caption',
     pattern: 'causal',
-    reason: 'Same false positive as sir:s-notice.whatToDo: "...Used only as far as your case needs..." describes how much of the ladder applies to this citizen, not a cause.',
+    reason: 'Now mounted (C5, <EscalationLadder>): the caption is rendered citizen-facing text on the casefile screen for the first time. Same false positive as sir:s-notice.whatToDo: "...Used only as far as your case needs..." describes how much of the ladder applies to this citizen, not a cause. The reasoning holds unchanged once live — the pattern\'s problem was never the string\'s visibility, it is that the causal row\'s "as your" alternative over-fires on possessives.',
   },
   {
     at: 'voter:LADDER_DEFS.voter.caption',
     pattern: 'causal',
-    reason: 'Same false positive as passport:LADDER_DEFS.passport.caption and sir:s-notice.whatToDo: "...Used only as far as your case needs" describes how much of the ladder applies to this citizen, not a cause.',
+    reason: 'Now mounted (C5, <EscalationLadder>): the caption is rendered citizen-facing text on the casefile screen for the first time. Same false positive as passport:LADDER_DEFS.passport.caption and sir:s-notice.whatToDo: "...Used only as far as your case needs" describes how much of the ladder applies to this citizen, not a cause. The reasoning holds unchanged once live — the pattern\'s problem was never the string\'s visibility, it is that the causal row\'s "as your" alternative over-fires on possessives.',
   },
   // C4 Task 1 (prep copy port): three more causal-pattern false positives in
   // src/playbooks/prep.ts's PREP map, in two categories.

@@ -1,21 +1,42 @@
 /** Ports the prototype's `renderHome` (design/nextmove-v1-prototype.html,
- *  lines 3136-3171), minus the `savedCard`/`home-cases` casefiles section —
- *  Home ships without casefiles in C3 (C5's own section; recorded deviation
- *  in the task brief). Home renders `topbar(false,false)`: no Back, no
- *  Restart — it is the app's clean-slate landing screen.
+ *  lines 3136-3171), including the `savedCard`/`home-cases` casefiles
+ *  section (Task 11; design note 5). Home renders `topbar(false,false)`:
+ *  no Back, no Restart — it is the app's clean-slate landing screen.
  *
- *  INSERTION POINT FOR C5: the casefiles section (`savedCard`/`home-cases`)
- *  slots in here, immediately after the three service rows, inside the
- *  right column. */
+ *  The casefiles section slots in at the seam this file always carried,
+ *  immediately after the three service rows, inside the right column:
+ *  `open`/`closed` split by `c.outcome`, open cases first (with a
+ *  singular/plural `.list-lead`), closed cases below their own `Closed`
+ *  lead. The whole `.home-cases` wrapper is omitted entirely when both
+ *  lists are empty — never an empty wrapper div, which would add a stray
+ *  layout gap on every citizen's Home screen who has no saved cases (the
+ *  common case, pre-Task-11 and for a while after).
+ *
+ *  `now` (D6, `now?: number`, static `0` default): `CaseCard` needs the
+ *  clock for `daysAgo` (see that file's own header note) and REQUIRES it —
+ *  never a `Date.now()` default inside a component, which oxlint's
+ *  react(purity) rule flags as impure. App.tsx (Task 13) now supplies the
+ *  real clock — the SAME one shared with `CasefileScreen`/`DeadEndScreen`
+ *  in that render pass (App.tsx's own header note explains why one shared
+ *  reading, not a per-component `Date.now()` call, is what matters). The
+ *  `now?`/`= 0` default stays only for callers that don't care about it
+ *  (this file's own test suite's static mounts). */
 import { Topbar } from '../ui/Topbar'
 import { Gems } from '../ui/Gems'
 import { Split } from '../ui/Split'
 import { ICONS } from '../ui/icons'
+import { CaseCard } from '../templates/CaseCard'
 import type { ScreenProps } from './screenProps'
 import { hasAnswers } from './screenProps'
 import { UI } from './screenCopy'
 
-export function Home({ state, dispatch }: ScreenProps) {
+export interface HomeProps extends ScreenProps {
+  now?: number
+}
+
+export function Home({ state, dispatch, now = 0 }: HomeProps) {
+  const open = state.savedCases.filter(c => c.outcome === 'still_open')
+  const closed = state.savedCases.filter(c => c.outcome !== 'still_open')
   return (
     <>
       <Topbar showBack={false} showRestart={false} hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
@@ -57,6 +78,36 @@ export function Home({ state, dispatch }: ScreenProps) {
                 <span className="svc-chevron">{ICONS.chevron}</span>
               </button>
             </div>
+            {open.length || closed.length ? (
+              <div className="home-cases">
+                {open.length ? (
+                  <>
+                    <p className="list-lead">
+                      {(open.length > 1 ? UI.home.casefilesMany : UI.home.casefilesOne).replace('{n}', String(open.length))}
+                    </p>
+                    {open.map(c => (
+                      <CaseCard
+                        key={c.id} case={c} now={now}
+                        onOpen={() => dispatch({ type: 'OPEN_CHECKIN', id: c.id })}
+                      />
+                    ))}
+                  </>
+                ) : null}
+                {closed.length ? (
+                  <>
+                    <p className="list-lead" style={{ color: 'var(--ink-soft)', fontSize: 16 }}>
+                      {UI.home.closedLead}
+                    </p>
+                    {closed.map(c => (
+                      <CaseCard
+                        key={c.id} case={c} now={now}
+                        onOpen={() => dispatch({ type: 'OPEN_CHECKIN', id: c.id })}
+                      />
+                    ))}
+                  </>
+                ) : null}
+              </div>
+            ) : null}
           </>}
         />
       </div>
