@@ -74,8 +74,27 @@ jobs:
       # manual `vercel --prod --scope <team>` redeploy to go live — this
       # step is dead weight until then, not a hard requirement to satisfy
       # right now.
+      #
+      # The `secrets` context cannot be referenced in a step's `if:` at
+      # all (confirmed empirically 2026-09-07 — GitHub rejects the entire
+      # workflow file at parse time, silently, with no useful error
+      # beyond "workflow file issue"; wrapping in ${{ }} doesn't help
+      # either). The fix is the standard one: check the secret inside a
+      # `run:` step (secrets ARE accessible there) and gate the next step
+      # on that step's OUTPUT instead.
+      - name: Check for Vercel deploy secret
+        id: has-vercel-token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -n "$VERCEL_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy to Vercel
-        if: steps.commit.outputs.changed == 'true' && secrets.VERCEL_TOKEN != ''
+        if: steps.commit.outputs.changed == 'true' && steps.has-vercel-token.outputs.present == 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
