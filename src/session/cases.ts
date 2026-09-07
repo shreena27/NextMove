@@ -34,6 +34,8 @@ import { applyEvent } from '../domain/answers'
 import type { CheckinOption } from '../domain/checkinOptions'
 import { checkinOptionsFor } from '../domain/checkinOptions'
 import { ENGINES } from '../playbooks/engines'
+import { SIR_STATES } from '../playbooks/sirPlaybook'
+import { sirCoverage } from '../domain/sirConfig'
 
 /** D3 fix: key-order-independent equality between two answer records. */
 export function sameAnswers(a: AnswerRecord, b: AnswerRecord): boolean {
@@ -68,16 +70,40 @@ export function caseIsSaved(
   )
 }
 
+/** Task 13, design note 1 — SIR phase drift (prototype `loadCase`, 2168-2169):
+ *  "A SIR case stamps its phase id at save. On continue/check-in, if the live
+ *  phase config differs, an interstitial states … and re-diagnoses against
+ *  the current phase before any options are offered." `c.sirPhaseId` is
+ *  already `null` for every non-SIR case (casefile.ts's own `sirPhaseId()`),
+ *  so this returns `false` for passport/voter without a special case.
+ *
+ *  DEVIATION D4 (the third/fourth site in this chunk this exact pattern
+ *  matters): the prototype reads `SIR_STATES[S.answers.sirState].supported`
+ *  then `.phase.id` unguarded — a crash on an unknown `sirState` or a
+ *  supported-but-unconfigured state. This looks the state up defensively and
+ *  gates on `sirCoverage(st) === 'covered'`, never the crashier `.supported`
+ *  alone, before ever reading `.phase!.id` — so an unknown `sirState` value
+ *  (`'atlantis'`), an unsupported one (`'bihar'`), or a missing one all
+ *  leave `phaseDrift` `false` rather than throwing. */
+function phaseDriftFor(c: Casefile): boolean {
+  if (!c.sirPhaseId) return false
+  const st = SIR_STATES[c.answers.sirState]
+  if (!st || sirCoverage(st) !== 'covered') return false
+  return st.phase!.id !== c.sirPhaseId
+}
+
 /** Prototype loadCase() (2160-2171). caseFacts/appliedText/fillsReviewed
- *  (2164) is C8's, not ported. phaseDrift (2168-2169) is Task 13's — this
- *  fragment does not mention it, so it is left standing untouched at
- *  whatever it already was. Returns null when `id` is not found, mirroring
- *  the prototype's own `if(!c) return null`. */
+ *  (2164) is C8's, not ported. `phaseDrift` (2168-2169) is Task 13's own —
+ *  computed by `phaseDriftFor` above, so `loadCase`/`openCheckin`/
+ *  `reopenCase` (which all resolve through this shared fragment) agree on
+ *  it. Returns null when `id` is not found, mirroring the prototype's own
+ *  `if(!c) return null`. */
 export interface LoadCaseFragment {
   activeCaseId: string
   answers: AnswerRecord
   prepChecks: Record<number, boolean>
   prepDraft: null
+  phaseDrift: boolean
 }
 
 function loadCaseFragment(c: Casefile): LoadCaseFragment {
@@ -86,6 +112,7 @@ function loadCaseFragment(c: Casefile): LoadCaseFragment {
     answers: { ...c.answers },
     prepChecks: { ...c.prepChecks },
     prepDraft: null,
+    phaseDrift: phaseDriftFor(c),
   }
 }
 
@@ -138,6 +165,16 @@ export interface BeginWorkingFragment {
   ciReassure: false
   ciJustUpdated: false
   ciSnapshot: null
+  /** A freshly built (or unchanged, reused) working case was just snapshotted
+   *  against the LIVE phase (`caseSnapshot` below), so it can never be
+   *  drifted at the moment of entry — `false`, always. This also stops a
+   *  stale `true` from an unrelated earlier interaction surviving onto a
+   *  brand new working case (session.ts's own `phaseDrift` field is not
+   *  otherwise cleared by an ordinary NAVIGATE). The "reuse an existing
+   *  SAVED case" branch below does NOT set this — it returns
+   *  `openCheckinFragment(saved)`, whose own `loadCaseFragment` computes the
+   *  real answer for that case, which may genuinely be `true`. */
+  phaseDrift: false
 }
 
 export function beginWorkingCheckin(
@@ -174,6 +211,7 @@ export function beginWorkingCheckin(
     workingCase,
     activeCaseId: 'working',
     ciStage: null, ciPending: null, ciReassure: false, ciJustUpdated: false, ciSnapshot: null,
+    phaseDrift: false,
   }
 }
 

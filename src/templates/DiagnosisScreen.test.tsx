@@ -228,6 +228,23 @@ describe('Task 11: the ciJustUpdated undo banner (design note 3.1)', () => {
   })
 })
 
+describe('Task 13: the SIR phase-drift banner', () => {
+  it('renders it when phaseDrift is true', () => {
+    renderFor(sirEngine, { sirState: 'delhi', sirQ1: 'roll_present' }, { phaseDrift: true })
+    expect(screen.getByText(UI.diagnosis.phaseDriftLead)).toBeInTheDocument()
+    expect(document.querySelector('.banner')).toHaveTextContent(UI.diagnosis.phaseDriftBody)
+  })
+
+  it('omits it when phaseDrift is false or absent', () => {
+    const { unmount } = renderFor(sirEngine, { sirState: 'delhi', sirQ1: 'roll_present' }, { phaseDrift: false })
+    expect(screen.queryByText(UI.diagnosis.phaseDriftLead)).toBeNull()
+    unmount()
+
+    renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    expect(screen.queryByText(UI.diagnosis.phaseDriftLead)).toBeNull()
+  })
+})
+
 describe('Task 11: <UpdateEntry> between the CTA and the trust toggle (design note 3.5)', () => {
   it('renders it there — asserting DOM position, not just presence — and it fires onUpdate', () => {
     const onUpdate = vi.fn()

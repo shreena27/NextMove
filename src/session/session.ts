@@ -124,6 +124,17 @@ export interface SessionState {
   /** Also absent from the prototype's `S` literal — assigned ad hoc at
    *  first use (3729). */
   reminderCopied: boolean
+  /** SIR phase drift (Task 13, design note 1): true when the active case's
+   *  stamped `sirPhaseId` no longer matches the live `SIR_STATES` config —
+   *  set by `loadCase`/`openCheckin`/`reopenCase` (session/cases.ts's own
+   *  `phaseDriftFor`) whenever they resolve a case, left `false` by a fresh
+   *  working case (`beginWorkingCheckin`, snapshotted against the live phase
+   *  by construction). Drives two surfaces: the casefile screen's
+   *  interstitial (CasefileScreen.tsx design note 1, replacing the whole
+   *  `.update-mod` — no check-in option is reachable while this is true) and
+   *  the Diagnosis banner (DiagnosisScreen.tsx design note). Cleared by its
+   *  own `PHASE_DRIFT_RECHECK` action (the interstitial's CTA) and by
+   *  RESTART/BACK-to-Home like every other transient field. */
   phaseDrift: boolean
 
   pendingSave: { engineKey: ServiceKey; serviceLabel: string; returnScreen: ScreenId } | null
@@ -194,6 +205,15 @@ export type SessionAction =
   // `updateBracketHint`'s own textarea `oninput`).
   | { type: 'TOGGLE_PREP_STEP'; index: number; now: number }
   | { type: 'SET_PREP_DRAFT'; text: string }
+  // Task 13, design note 2: the SIR phase-drift interstitial's own CTA
+  // (prototype `onclick="S.phaseDrift=false; nav('sir-q1')"`, casefile
+  // 2931) — clears `phaseDrift` and re-diagnoses against the current phase
+  // starting from 'sir-q1'. No cases.ts pure function backs this (design
+  // note 1's "thin arm over a pure function" shape doesn't apply — there is
+  // no case data to touch, only a field clear plus the same nav()-style
+  // treatment NAVIGATE itself applies), so it is a direct reducer arm, like
+  // NAVIGATE's own.
+  | { type: 'PHASE_DRIFT_RECHECK' }
 
 /** Applies a CiFragment (cases.ts) onto SessionState. `navigateTo` decides
  *  the shape: a non-null screen id gets the SAME nav()-style treatment
@@ -393,6 +413,12 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       return { ...s, ...setReminderCopied(a.value) }
     case 'SET_PREP_DRAFT':
       return { ...s, prepDraft: a.text }
+    case 'PHASE_DRIFT_RECHECK':
+      return {
+        ...s, phaseDrift: false,
+        history: [...s.history, s.screen], screen: 'sir-q1',
+        trustOpen: false, restartConfirm: false, removeConfirm: null,
+      }
     case 'TOGGLE_PREP_STEP': {
       const prepChecks = { ...s.prepChecks, [a.index]: !s.prepChecks[a.index] }
       // Prototype togglePrepStep() (3685-3695): "a saved case keeps itself

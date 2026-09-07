@@ -1,13 +1,15 @@
-/** The app router — a `useReducer` over Task 2's session plus a `switch` on
+/** The app router — a `useReducer` over the session plus a `switch` on
  *  `state.screen`, the direct analogue of the prototype's `render()`
- *  (design/nextmove-v1-prototype.html, 3902-3941), carrying only C3's
- *  screens. Screen ids are the prototype's own, so C4/C5 extend the switch
- *  rather than renaming the graph.
+ *  (design/nextmove-v1-prototype.html, 3902-3941). Screen ids are the
+ *  prototype's own; C4 added the three `*-prepare` cases, and Task 13 adds
+ *  the last four (`checkin`/`dead-end`/`case-closed`/`save-done`), which is
+ *  what finally makes every `ScreenId` member a real case below.
  *
  *  Because `state.screen` is the `ScreenId` union (session.ts), the switch
  *  is exhaustiveness-checked: the `default` arm assigns `state.screen` to a
  *  `never`-typed binding, so a screen added to the union without a case
- *  becomes a compile error rather than a silent fallthrough.
+ *  becomes a compile error rather than a silent fallthrough — this is why
+ *  `npm run build` goes fully clean only once this task's four cases exist.
  *
  *  The SIR route is gated in the SIR screens themselves (`SirState`'s
  *  `sirCoverage()` call), not here — this router never calls
@@ -35,6 +37,8 @@
  *  between them yet), so both compute the same `settled`. */
 import { useReducer, useRef, useEffect, type ReactNode } from 'react'
 import { sessionReducer, initialSession, type ScreenId, type SessionAction } from './session/session'
+import { activeCase } from './session/cases'
+import { loadCases, saveCases } from './session/caseStore'
 import { hasAnswers } from './screens/screenProps'
 import { Topbar } from './ui/Topbar'
 import { Banner } from './ui/Banner'
@@ -47,8 +51,12 @@ import { SirState, SirUnsupported, SirQ1 } from './screens/sir/SirScreens'
 import { DiagnosisScreen } from './templates/DiagnosisScreen'
 import { NextMoveScreen } from './templates/NextMoveScreen'
 import { PrepareScreen } from './templates/PrepareScreen'
+import { CasefileScreen } from './templates/CasefileScreen'
+import { DeadEndScreen } from './templates/DeadEndScreen'
+import { CaseClosedScreen } from './templates/CaseClosedScreen'
+import { SaveDoneScreen } from './templates/SaveDoneScreen'
 import { diagnose } from './domain/engine'
-import { passportEngine, voterEngine, sirEngine } from './playbooks/engines'
+import { passportEngine, voterEngine, sirEngine, ENGINES } from './playbooks/engines'
 import { prepPlanFor } from './playbooks/prep'
 import { SIR_STATES, SIR_Q1_OPTIONS_FOR } from './playbooks/sirPlaybook'
 import { labelMap, PASSPORT_Q1_LABELS, PASSPORT_Q2_LABELS, VOTER_Q1_LABELS, VOTER_APPEAL_LABELS } from './screens/labels'
@@ -74,7 +82,31 @@ function RestartToHome({ dispatch }: { dispatch: (action: SessionAction) => void
 }
 
 export default function App() {
-  const [state, dispatch] = useReducer(sessionReducer, initialSession)
+  // Task 13, design note 6: the lazy `useReducer` initializer runs ONCE, at
+  // mount, and is the ONLY place `nm_cases` is ever READ — mirroring the
+  // `useEffect` below, the ONLY place it is ever WRITTEN. A corrupt
+  // `nm_cases` value cannot prevent this from rendering: `loadCases()`
+  // itself fails closed to `[]` (caseStore.ts's own contract), so this
+  // initializer can only ever hand `sessionReducer` a real array, never
+  // throw.
+  const [state, dispatch] = useReducer(sessionReducer, initialSession, s => ({ ...s, savedCases: loadCases() }))
+  useEffect(() => {
+    saveCases(state.savedCases)
+  }, [state.savedCases])
+
+  // D6: the ONE clock this render pass hands to every D6-typed function and
+  // prop below — CaseCard's own header note explains why a shared value
+  // matters here specifically: two CaseCard instances rendered in the SAME
+  // pass (Home's open-cases list) must never read two different `Date.now()`
+  // values and disagree about "how long ago." Every other D6 function/
+  // component in this chunk takes `now` as a REQUIRED prop/argument
+  // specifically so it never has to call `Date.now()` itself (CaseCard.tsx's
+  // own header note: oxlint's react(purity) rule correctly flags that as
+  // impure) — this is the one deliberate exception: App.tsx is the actual
+  // root of the tree, so SOMETHING has to call it for real, exactly once
+  // per render pass, for every one of those props/arguments to share.
+  // oxlint-disable-next-line react/purity -- deliberate, single call site; see comment above
+  const now = Date.now()
 
   const lastScreen = useRef<ScreenId | null>(null)
   // Deliberate ref-during-render read (see header comment): this is what
@@ -102,7 +134,7 @@ export default function App() {
   let body: ReactNode
   switch (state.screen) {
     case 'home':
-      body = <Home state={state} dispatch={dispatch} />
+      body = <Home state={state} dispatch={dispatch} now={now} />
       break
     case 'other-services':
       body = <OtherServices state={state} dispatch={dispatch} />
@@ -157,6 +189,15 @@ export default function App() {
           topbar={topbar(true, true)}
           extraToldUs={extraToldUs}
           onNavigate={screen => dispatch({ type: 'NAVIGATE', screen })}
+          ciJustUpdated={state.ciJustUpdated}
+          ciSnapshot={state.ciSnapshot}
+          onUndo={() => dispatch({ type: 'CI_UNDO' })}
+          onUpdate={() =>
+            dispatch({
+              type: 'BEGIN_WORKING_CHECKIN', engineKey: 'passport', serviceLabel: UI.serviceLabel.passport,
+              returnScreen: 'passport-nextmove', now,
+            })
+          }
         />
       )
       break
@@ -173,6 +214,19 @@ export default function App() {
           onPrepare={() => dispatch({ type: 'NAVIGATE', screen: 'passport-prepare' })}
           topbar={topbar(true, true)}
           dispatch={dispatch}
+          onUpdate={() =>
+            dispatch({
+              type: 'BEGIN_WORKING_CHECKIN', engineKey: 'passport', serviceLabel: UI.serviceLabel.passport,
+              returnScreen: 'passport-nextmove', now,
+            })
+          }
+          savedCases={state.savedCases}
+          onSave={() =>
+            dispatch({
+              type: 'BEGIN_SAVE', engineKey: 'passport', serviceLabel: UI.serviceLabel.passport,
+              returnScreen: 'passport-nextmove', now,
+            })
+          }
         />
       )
       break
@@ -202,6 +256,17 @@ export default function App() {
           prep={prep}
           topbar={topbar(true, true)}
           dispatch={dispatch}
+          prepChecks={state.prepChecks}
+          prepDraft={state.prepDraft}
+          onTogglePrepStep={i => dispatch({ type: 'TOGGLE_PREP_STEP', index: i, now })}
+          onSetPrepDraft={text => dispatch({ type: 'SET_PREP_DRAFT', text })}
+          savedCases={state.savedCases}
+          onSave={() =>
+            dispatch({
+              type: 'BEGIN_SAVE', engineKey: 'passport', serviceLabel: UI.serviceLabel.passport,
+              returnScreen: 'passport-prepare', now,
+            })
+          }
         />
       )
       break
@@ -232,6 +297,15 @@ export default function App() {
           onToggleTrust={() => dispatch({ type: 'TOGGLE_TRUST' })}
           topbar={topbar(true, true)}
           onNavigate={screen => dispatch({ type: 'NAVIGATE', screen })}
+          ciJustUpdated={state.ciJustUpdated}
+          ciSnapshot={state.ciSnapshot}
+          onUndo={() => dispatch({ type: 'CI_UNDO' })}
+          onUpdate={() =>
+            dispatch({
+              type: 'BEGIN_WORKING_CHECKIN', engineKey: 'voter', serviceLabel: UI.serviceLabel.voterServices,
+              returnScreen: 'voter-nextmove', now,
+            })
+          }
         />
       )
       break
@@ -248,6 +322,19 @@ export default function App() {
           onPrepare={() => dispatch({ type: 'NAVIGATE', screen: 'voter-prepare' })}
           topbar={topbar(true, true)}
           dispatch={dispatch}
+          onUpdate={() =>
+            dispatch({
+              type: 'BEGIN_WORKING_CHECKIN', engineKey: 'voter', serviceLabel: UI.serviceLabel.voterServices,
+              returnScreen: 'voter-nextmove', now,
+            })
+          }
+          savedCases={state.savedCases}
+          onSave={() =>
+            dispatch({
+              type: 'BEGIN_SAVE', engineKey: 'voter', serviceLabel: UI.serviceLabel.voterServices,
+              returnScreen: 'voter-nextmove', now,
+            })
+          }
         />
       )
       break
@@ -269,6 +356,17 @@ export default function App() {
           prep={prep}
           topbar={topbar(true, true)}
           dispatch={dispatch}
+          prepChecks={state.prepChecks}
+          prepDraft={state.prepDraft}
+          onTogglePrepStep={i => dispatch({ type: 'TOGGLE_PREP_STEP', index: i, now })}
+          onSetPrepDraft={text => dispatch({ type: 'SET_PREP_DRAFT', text })}
+          savedCases={state.savedCases}
+          onSave={() =>
+            dispatch({
+              type: 'BEGIN_SAVE', engineKey: 'voter', serviceLabel: UI.serviceLabel.voterServices,
+              returnScreen: 'voter-prepare', now,
+            })
+          }
         />
       )
       break
@@ -301,6 +399,16 @@ export default function App() {
           topbar={topbar(true, true)}
           preNote={<Banner><b>{st.name} · {st.phase!.label}:</b> {st.phase!.note}</Banner>}
           onNavigate={screen => dispatch({ type: 'NAVIGATE', screen })}
+          ciJustUpdated={state.ciJustUpdated}
+          ciSnapshot={state.ciSnapshot}
+          onUndo={() => dispatch({ type: 'CI_UNDO' })}
+          onUpdate={() =>
+            dispatch({
+              type: 'BEGIN_WORKING_CHECKIN', engineKey: 'sir', serviceLabel: UI.serviceLabel.sir,
+              returnScreen: 'sir-nextmove', now,
+            })
+          }
+          phaseDrift={state.phaseDrift}
         />
       )
       break
@@ -317,6 +425,19 @@ export default function App() {
           onPrepare={() => dispatch({ type: 'NAVIGATE', screen: 'sir-prepare' })}
           topbar={topbar(true, true)}
           dispatch={dispatch}
+          onUpdate={() =>
+            dispatch({
+              type: 'BEGIN_WORKING_CHECKIN', engineKey: 'sir', serviceLabel: UI.serviceLabel.sir,
+              returnScreen: 'sir-nextmove', now,
+            })
+          }
+          savedCases={state.savedCases}
+          onSave={() =>
+            dispatch({
+              type: 'BEGIN_SAVE', engineKey: 'sir', serviceLabel: UI.serviceLabel.sir,
+              returnScreen: 'sir-nextmove', now,
+            })
+          }
         />
       )
       break
@@ -338,10 +459,77 @@ export default function App() {
           prep={prep}
           topbar={topbar(true, true)}
           dispatch={dispatch}
+          prepChecks={state.prepChecks}
+          prepDraft={state.prepDraft}
+          onTogglePrepStep={i => dispatch({ type: 'TOGGLE_PREP_STEP', index: i, now })}
+          onSetPrepDraft={text => dispatch({ type: 'SET_PREP_DRAFT', text })}
+          savedCases={state.savedCases}
+          onSave={() =>
+            dispatch({
+              type: 'BEGIN_SAVE', engineKey: 'sir', serviceLabel: UI.serviceLabel.sir,
+              returnScreen: 'sir-prepare', now,
+            })
+          }
         />
       )
       break
     }
+
+    case 'checkin': {
+      const c = activeCase(state)
+      if (!c) {
+        body = <RestartToHome dispatch={dispatch} />
+        break
+      }
+      const d = diagnose(ENGINES[c.engineKey], c.answers)
+      body = (
+        <CasefileScreen
+          case={c}
+          d={d}
+          prepChecks={state.prepChecks}
+          savedCases={state.savedCases}
+          now={now}
+          ciPending={state.ciPending}
+          ciPendingIdx={state.ciPendingIdx}
+          ciStage={state.ciStage}
+          ciReassure={state.ciReassure}
+          ciSnapshot={state.ciSnapshot}
+          ciConsecutive={state.ciConsecutive}
+          phaseDrift={state.phaseDrift}
+          reminderCopied={state.reminderCopied}
+          logOpen={state.logOpen}
+          removeConfirm={state.removeConfirm}
+          topbar={topbar(true, false)}
+          dispatch={dispatch}
+        />
+      )
+      break
+    }
+    case 'dead-end': {
+      const c = activeCase(state)
+      if (!c) {
+        body = <RestartToHome dispatch={dispatch} />
+        break
+      }
+      body = (
+        <DeadEndScreen case={c} logOpen={state.logOpen} now={now} topbar={topbar(true, false)} dispatch={dispatch} />
+      )
+      break
+    }
+    case 'case-closed': {
+      // Mirrors the prototype's own lookup (CaseClosedScreen.tsx's header
+      // note): a saved, deliverable_received case matching activeCaseId, or
+      // whatever activeCase() otherwise resolves to (a working case closed
+      // without ever having been saved). Nullable — the component's own
+      // job, not RestartToHome's, to render sensibly for either.
+      const c = state.savedCases.find(x => x.outcome === 'deliverable_received' && x.id === state.activeCaseId)
+        ?? activeCase(state)
+      body = <CaseClosedScreen case={c} logOpen={state.logOpen} topbar={topbar(false, false)} dispatch={dispatch} />
+      break
+    }
+    case 'save-done':
+      body = <SaveDoneScreen pendingSave={state.pendingSave} topbar={topbar(false, false)} dispatch={dispatch} />
+      break
 
     default: {
       const _never: never = state.screen

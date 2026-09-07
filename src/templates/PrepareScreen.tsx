@@ -53,10 +53,10 @@
  *  back to Home", with `stepsDone` = this file's own `done` — see that
  *  render spot below. `onSave`/`savedCases` are optional, same on/off
  *  convention `NextMoveScreen`'s own tail uses (Task 11): the control
- *  renders only once a caller actually wires `onSave`, which App.tsx does
- *  not yet do (Task 13's job) — so every render call in this file and in
- *  App.tsx today, none of which pass `onSave`, keeps behaving exactly as
- *  it did before this task.
+ *  renders only once a caller actually wires `onSave`, which App.tsx now
+ *  does for real (Task 13), passing `returnScreen: '${engineKey}-prepare'`
+ *  per the prototype's own `saveControl(engineKey, serviceLabel,
+ *  engineKey+'-prepare', done)` call (3817).
  *
  *  DESIGN NOTE 4 (`.channel-phone` is optional-by-data, not dead): the
  *  helpline row is conditional on `d.where.phone`, an optional field —
@@ -66,32 +66,28 @@
  *  a future data change happens to leave phone-less rules as the only
  *  ones reachable — the branch is doing its job either way.
  *
- *  DESIGN NOTE 6 (Task 12 — `prepChecks`/`prepDraft` lifted into the
- *  reducer, controlled-with-fallback): C4's local `checks`/`draft`
- *  `useState` reset on unmount, so a Back-then-return lost every tick and
- *  draft edit — a real behaviour gap, not a deliberate one (see this
- *  file's own history before this task). The fix is the SessionState
+ *  DESIGN NOTE 6 (Task 12/13 — `prepChecks`/`prepDraft` lifted into the
+ *  reducer; the gap is now CLOSED). C4's local `checks`/`draft` `useState`
+ *  reset on unmount, so a Back-then-return lost every tick and draft edit —
+ *  a real behaviour gap, not a deliberate one. The fix is the SessionState
  *  fields of the same names (`session.ts`), written through via
- *  `TOGGLE_PREP_STEP`/`SET_PREP_DRAFT`. This component still never reaches
- *  into the session itself: it takes `prepChecks`/`prepDraft` and the two
- *  matching callback props (`onTogglePrepStep`/`onSetPrepDraft`) and, when
- *  a caller supplies them, is driven entirely by them — a parent (App.tsx,
- *  Task 13) supplies the value and re-renders with the reducer's new one
- *  after every dispatch. UNLIKE `DiagnosisScreen`'s `trustOpen`/
- *  `onToggleTrust` (required, no fallback — `DiagnosisScreen.tsx:58-59`),
- *  these four are all OPTIONAL, with the value prop's own presence (not
- *  the callback's) deciding controlled-ness: when a caller does not pass
- *  `prepChecks`/`prepDraft` at all — every one of the ~46 render calls in
- *  this file's own test suite that predates this task, none of which this
- *  task's brief permitted rewriting, and App.tsx's three call sites until
- *  Task 13 wires them — this component falls back to owning the exact
- *  same local state C4 built, so none of that existing behaviour changes.
- *  This is an INTERIM shape, not a pattern to copy elsewhere: Task 13 is
- *  expected to finish wiring App.tsx and then remove the local-state
- *  fallback entirely, at which point these props should become required
- *  like `DiagnosisScreen`'s own. `copied` is untouched either way (design
- *  note 2c above): a 2200ms visual flash was never session state and
- *  still is not. */
+ *  `TOGGLE_PREP_STEP`/`SET_PREP_DRAFT`. This component never reaches into
+ *  the session itself: it takes `prepChecks`/`prepDraft` and the two
+ *  matching callback props (`onTogglePrepStep`/`onSetPrepDraft`) and is
+ *  driven entirely by them — App.tsx (Task 13) supplies the value and
+ *  re-renders with the reducer's new one after every dispatch, the same
+ *  `state.prepChecks`/`state.prepDraft` object every OTHER `*-prepare`
+ *  screen case reads. All four are REQUIRED, no fallback — the same shape
+ *  `DiagnosisScreen`'s own `trustOpen`/`onToggleTrust` already take
+ *  (`DiagnosisScreen.tsx`). Task 12 shipped this as an INTERIM
+ *  controlled-with-local-state-fallback shape (so its own ~46 then-existing
+ *  render calls wouldn't all break before App.tsx's router wiring existed
+ *  to drive them for real) — Task 13 is that wiring, so the fallback and
+ *  its `checksControlled`/`draftControlled`/`localChecks`/`localDraft`
+ *  machinery are gone: the state-loss-on-unmount bug this whole effort
+ *  exists to close is closed, for real, end to end. `copied` is untouched
+ *  either way (design note 2c above): a 2200ms visual flash was never
+ *  session state and still is not. */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Diagnosis } from '../domain/types'
 import type { Casefile } from '../domain/casefile'
@@ -135,17 +131,18 @@ export interface PrepareScreenProps {
    *  `SET_PREP_DRAFT` are NOT dispatched through this — see
    *  `onTogglePrepStep`/`onSetPrepDraft` below and design note 6. */
   dispatch?: (action: SessionAction) => void
-  /** The reducer's `prepChecks`/`prepDraft` (design note 6) — controlled
-   *  when supplied, with a local-state fallback when not (every render
-   *  call in this file's OWN test suite that predates Task 12, and
-   *  App.tsx's three call sites until Task 13 wires them). */
-  prepChecks?: Record<number, boolean>
-  prepDraft?: string | null
+  /** The reducer's `prepChecks`/`prepDraft` (design note 6) — REQUIRED,
+   *  fully controlled, no fallback. `prepDraft` is `null` until the citizen
+   *  edits the draft at least once (session.ts's own `initialSession`); this
+   *  component falls back to `prep.draft ?? ''` for that case, the same
+   *  render-time fallback the old local-state initial value used. */
+  prepChecks: Record<number, boolean>
+  prepDraft: string | null
   /** Fires with the toggled index; the caller is responsible for supplying
    *  `now` (D6 — never an internal `Date.now()`) when it dispatches
    *  `TOGGLE_PREP_STEP`. */
-  onTogglePrepStep?: (index: number) => void
-  onSetPrepDraft?: (text: string) => void
+  onTogglePrepStep: (index: number) => void
+  onSetPrepDraft: (text: string) => void
   /** SaveControl's own inputs (design note 3) — same on/off convention
    *  `NextMoveScreen`'s own `onSave`/`savedCases` use: `onSave` gates
    *  whether `<SaveControl>` renders at all. `answers` is read straight off
@@ -169,39 +166,19 @@ export function PrepareScreen({
   savedCases,
   onSave,
 }: PrepareScreenProps) {
-  // DESIGN NOTE 6 (Task 12): `prepChecks`/`prepDraft` are CONTROLLED when
-  // the caller supplies the value prop — the caller's own presence, not
-  // the matching callback's, decides controlled-ness (same rule a native
-  // `<input value=... />` follows). When not supplied, this component
-  // falls back to owning the exact local state C4 built, so every
-  // existing render call in this file's test suite — and App.tsx's three
-  // call sites, until Task 13 wires the reducer through — keeps behaving
-  // exactly as it did before this task. Local `localDraft`/`localChecks`
-  // are the ONLY state left that resets on unmount; a controlled caller's
-  // own state (the session reducer, in the real app) survives it, which
-  // is the whole point of this task.
-  const [localDraft, setLocalDraft] = useState(prep.draft ?? '')
-  const draftControlled = prepDraft !== undefined
-  const draft = draftControlled ? (prepDraft ?? (prep.draft ?? '')) : localDraft
-  const setDraftValue = (text: string) => {
-    if (draftControlled) onSetPrepDraft?.(text)
-    else setLocalDraft(text)
-  }
+  // DESIGN NOTE 6: `prepChecks`/`prepDraft` are fully controlled — the
+  // reducer (App.tsx, via `state.prepChecks`/`state.prepDraft`) is the only
+  // owner. `prepDraft` starts `null` (session.ts's `initialSession`) until
+  // the citizen's first edit, so the render-time value falls back to the
+  // plan's own raw template, exactly like the old local `useState(prep.draft
+  // ?? '')` initial value did.
+  const draft = prepDraft ?? (prep.draft ?? '')
+  const setDraftValue = (text: string) => onSetPrepDraft(text)
   // null = idle. Any number (0 included) = "just copied, this many blanks
   // were left AT THE MOMENT OF COPYING" — frozen, not live (design note 2c).
-  // Always local — a 2200ms visual flash was never session state (design
-  // note 6).
+  // Always local — a 2200ms visual flash was never session state.
   const [copied, setCopied] = useState<number | null>(null)
-  // Step ticks (design note 6): `Record<number, boolean>`, not `boolean[]`
-  // — the shape `session.ts`'s own `prepChecks` field and `caseSnapshot`
-  // already use, so the controlled and uncontrolled paths share one type.
-  const [localChecks, setLocalChecks] = useState<Record<number, boolean>>({})
-  const checksControlled = prepChecks !== undefined
-  const checks = checksControlled ? prepChecks! : localChecks
-  const toggleStep = (i: number) => {
-    if (checksControlled) onTogglePrepStep?.(i)
-    else setLocalChecks(prev => ({ ...prev, [i]: !prev[i] }))
-  }
+  const toggleStep = (i: number) => onTogglePrepStep(i)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -245,7 +222,7 @@ export function PrepareScreen({
   // render "4 of 3 done"; indexing through `prep.steps.length` cannot, the
   // same form `caseSnapshot`'s own `stepsDone` and `checkinOptionsFor`'s
   // own `done` already use.
-  const done = prep.steps.filter((_, i) => checks[i]).length
+  const done = prep.steps.filter((_, i) => prepChecks[i]).length
 
   const liveBlanks = bracketCount(draft)
   const hint =
@@ -327,12 +304,13 @@ export function PrepareScreen({
               <div className="psteps">
                 {prep.steps.map((s, i) => {
                   const step = typeof s === 'string' ? { text: s } : s
-                  // Coerced to a real boolean: `checks[i]` reads `undefined`
-                  // for an untouched sparse index, and `aria-pressed`
-                  // dropping the attribute entirely (React's own handling of
-                  // an `undefined` prop) is not the same as the locked
-                  // `aria-pressed="false"` every row ships with initially.
-                  const checked = !!checks[i]
+                  // Coerced to a real boolean: `prepChecks[i]` reads
+                  // `undefined` for an untouched sparse index, and
+                  // `aria-pressed` dropping the attribute entirely (React's
+                  // own handling of an `undefined` prop) is not the same as
+                  // the locked `aria-pressed="false"` every row ships with
+                  // initially.
+                  const checked = !!prepChecks[i]
                   return (
                     <div key={i} className={`pstep${checked ? ' done' : ''}`}>
                       <button

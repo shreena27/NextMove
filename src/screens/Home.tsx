@@ -13,17 +13,14 @@
  *  common case, pre-Task-11 and for a while after).
  *
  *  `now` (D6, `now?: number`, static `0` default): `CaseCard` needs the
- *  clock for `daysAgo` (see that file's own header note) and REQUIRES it
- *  — never a `Date.now()` default inside a component, which oxlint's
- *  react(purity) rule flags as impure. Optional here, with a plain
- *  constant fallback (never `Date.now()`), only because App.tsx's router
- *  wiring (Task 13) does not supply it yet — and `state.savedCases` is
- *  always `[]` through every currently-reachable path (no screen yet
- *  writes to it via the real UI, since none of BEGIN_SAVE, the check-in
- *  actions, or the casefile screen is routed in App.tsx's switch until
- *  Task 13), so this fallback is never actually exercised today. Task 13
- *  will pass the real clock the same way it already will for
- *  CasefileScreen. */
+ *  clock for `daysAgo` (see that file's own header note) and REQUIRES it —
+ *  never a `Date.now()` default inside a component, which oxlint's
+ *  react(purity) rule flags as impure. App.tsx (Task 13) now supplies the
+ *  real clock — the SAME one shared with `CasefileScreen`/`DeadEndScreen`
+ *  in that render pass (App.tsx's own header note explains why one shared
+ *  reading, not a per-component `Date.now()` call, is what matters). The
+ *  `now?`/`= 0` default stays only for callers that don't care about it
+ *  (this file's own test suite's static mounts). */
 import { Topbar } from '../ui/Topbar'
 import { Gems } from '../ui/Gems'
 import { Split } from '../ui/Split'

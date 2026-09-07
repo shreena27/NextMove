@@ -10,7 +10,7 @@ import { diagnose } from './engine'
 import { passportEngine, voterEngine, sirEngine } from '../playbooks/engines'
 import { passportPlaybook } from '../playbooks/passportPlaybook'
 import { voterPlaybook } from '../playbooks/voterPlaybook'
-import { sirPlaybook, SIR_STATES } from '../playbooks/sirPlaybook'
+import { sirPlaybook, SIR_STATES, SIR_Q1_OPTIONS_FOR } from '../playbooks/sirPlaybook'
 import { prepPlanFor } from '../playbooks/prep'
 import { guardrailFindings } from '../playbooks/guardrails/suite'
 import { retiredActionFindings } from '../playbooks/guardrails/contentSafety'
@@ -393,6 +393,71 @@ describe('checkinOptions.ts is playbook DATA — the isolation rule holds by con
   it('exports a flattener whose entries all carry a serviceId prefix', () => {
     for (const p of PLAYBOOKS) {
       for (const c of checkinCopyExtras(p)) expect(c.at).toMatch(new RegExp(`^${p.serviceId}:`))
+    }
+  })
+})
+
+// Task 13, design note 4 (13a) — the check-in-side counterpart to
+// prep.test.ts's own "the recorded exceptions are only reachable in a phase
+// no supported state is in" pin. `SIR_Q1_OPTIONS_FOR` is phase-gated
+// structurally (sirPlaybook.ts's own header comment): final-phase rules are
+// unreachable under claims_notice because no Q1 option produces their answer
+// values. A CHECKIN_META key resolves to a rule reachable "in phase P" when
+// SOME sirQ1 answer value P's own Q1 option set offers actually diagnoses
+// into that rule — checked BEHAVIORALLY, through the real diagnose()
+// pipeline, never by inspecting a condition closure.
+describe('SIR check-in reachability (Task 13, design note 4)', () => {
+  function ruleReachableInPhase(ruleId: string, phaseId: string): boolean {
+    const values = Object.keys(SIR_Q1_OPTIONS_FOR[phaseId] ?? {})
+    return values.some(v => diagnose(sirEngine, { sirState: 'delhi', sirQ1: v }).ruleId === ruleId)
+  }
+
+  function ruleFor(checkinKey: string) {
+    return sirPlaybook.rules.find(r => r.state === checkinKey || r.id === checkinKey)
+  }
+
+  // 'S-9' resolves to s-final-unchecked, whose sirQ1==='final_unchecked'
+  // condition only has a matching Q1 option under the final_roll phase — not
+  // reachable while Delhi (the only supported state) sits in claims_notice.
+  // Recorded here, exactly like prep.test.ts's own ACTIONABLE_WITHOUT_PLAN,
+  // so a phase advance is a forcing function, not a silently-shipped dead
+  // check-in option.
+  const CHECKIN_DORMANT_UNTIL_FINAL_ROLL = ['S-9']
+
+  it('every SIR CHECKIN_META key, except the recorded dormant one, resolves to a rule reachable in the currently configured phase', () => {
+    const currentPhaseId = SIR_STATES.delhi.phase!.id
+    const sirKeys = Object.keys(CHECKIN_META).filter(k => /^S-\d/.test(k))
+    expect(sirKeys.length).toBeGreaterThan(0) // guards the fixture — the sweep isn't vacuous
+
+    for (const key of sirKeys) {
+      if (CHECKIN_DORMANT_UNTIL_FINAL_ROLL.includes(key)) continue
+      const rule = ruleFor(key)
+      expect(rule, key).toBeDefined()
+      expect(
+        ruleReachableInPhase(rule!.id, currentPhaseId),
+        `CHECKIN_META['${key}'] resolves to rule '${rule!.id}', which is not reachable in the ` +
+        `currently configured phase ('${currentPhaseId}') — a dead check-in option. If this rule ` +
+        `is meant to only become reachable later, add its key to CHECKIN_DORMANT_UNTIL_FINAL_ROLL ` +
+        'above with a recorded reason, the same way \'S-9\' is.',
+      ).toBe(true)
+    }
+  })
+
+  it("the recorded dormant key is only reachable in a phase no supported state is in — the thing a phase advance breaks", () => {
+    // Mirrors prep.test.ts's own sibling assertion exactly (design note 4's
+    // own naming of it as the counterpart): reads the LIVE config, so it —
+    // not the key-by-key sweep above — is what actually goes red when
+    // SIR_STATES.delhi.phase advances to final_roll.
+    const live = Object.values(SIR_STATES).filter(s => s.supported).map(s => s.phase!.id)
+    expect(live.length).toBeGreaterThan(0)
+    for (const id of live) {
+      expect(
+        id,
+        "A supported state has advanced to final_roll, which makes s-final-unchecked (CHECKIN_META['S-9']) " +
+        'reachable. Its check-in option ships already, but its own diagnosis-reachability was pinned to ' +
+        "false above — this phase advance is a PREREQUISITE to revisit that pin (and this task's own " +
+        'phase-drift interstitial, which now has real cases to exercise). Do not delete this assertion.',
+      ).not.toBe('final_roll')
     }
   })
 })

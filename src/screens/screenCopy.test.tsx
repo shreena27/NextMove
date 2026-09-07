@@ -11,13 +11,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { render, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
+import { useState, type ReactElement } from 'react'
 import { guardrailFindings } from '../playbooks/guardrails/suite'
 import { extraCopy } from '../playbooks/guardrails/contentSafety'
 import { passportPlaybook, PASSPORT_STAGE_SHORT } from '../playbooks/passportPlaybook'
 import { voterPlaybook } from '../playbooks/voterPlaybook'
 import { sirPlaybook, SIR_STATES, SIR_PHASES, sirCopyExtras } from '../playbooks/sirPlaybook'
-import { PREP } from '../playbooks/prep'
+import { PREP, type PrepPlan } from '../playbooks/prep'
+import type { Diagnosis } from '../domain/types'
 import { diagnose } from '../domain/engine'
 import { passportEngine, voterEngine, sirEngine } from '../playbooks/engines'
 import { initialSession, type SessionState } from '../session/session'
@@ -354,8 +355,30 @@ const cfClosedUnresolved: Casefile = {
 const casefileBaseProps = {
   prepChecks: {}, savedCases: [] as Casefile[], now: CASE_NOW,
   ciPending: null, ciPendingIdx: null, ciStage: null, ciReassure: false,
-  ciSnapshot: null, ciConsecutive: false, reminderCopied: false,
+  ciSnapshot: null, ciConsecutive: false, phaseDrift: false, reminderCopied: false,
   logOpen: {}, removeConfirm: null, dispatch: noop,
+}
+
+// PrepareScreen's four now-required controlled props (Task 13's ADDED
+// REQUIREMENT — the local-state fallback is gone). Both `UiChrome()` mounts
+// below are purely presentational (no tick/draft interaction happens in
+// this sweep), so trivial, static values are enough — no stateful wrapper
+// needed here, unlike PrepareScreen.test.tsx's own behavioural tests.
+const prepareControlledProps = {
+  prepChecks: {}, prepDraft: null, onTogglePrepStep: noop, onSetPrepDraft: noop,
+}
+
+/** The one PrepareScreen mount that genuinely edits the draft (the
+ *  `CAPTION_SUBSTITUTIONS` test below, via repeated `fireEvent.change` +
+ *  Copy clicks) needs REAL backing state for `prepDraft` — the same small
+ *  stateful wrapper PrepareScreen.test.tsx's own `ControlledPrepareScreen`
+ *  uses, standing in for the session reducer. `prepChecks`/its toggle are
+ *  static here (this mount never ticks a step). */
+function DraftEditablePrepareScreen(props: { serviceLabel: string; engineKey: 'passport'; d: Diagnosis; prep: PrepPlan }) {
+  const [prepDraft, setPrepDraft] = useState<string | null>(null)
+  return (
+    <PrepareScreen {...props} prepChecks={{}} onTogglePrepStep={noop} prepDraft={prepDraft} onSetPrepDraft={setPrepDraft} />
+  )
 }
 
 function PassportBucketScreens() {
@@ -448,6 +471,15 @@ function UiChrome() {
           for me") branches. */}
       <NextMoveScreen serviceLabel="X" engineKey="passport" d={classifiedDiagnosis} dispatch={noop} />
       <NextMoveScreen serviceLabel="X" engineKey="passport" d={classifiedDiagnosis} hasPrepPlan onPrepare={noop} />
+      {/* Task 13: NextMoveScreen with the new props supplied too (design
+          note 8) — onUpdate/onSave, same convention DiagnosisScreen's own
+          dedicated mount below already uses. Coverage-wise this duplicates
+          what the SaveControl/CasefileScreen mounts already prove, but
+          design note 8 asks for it explicitly. */}
+      <NextMoveScreen
+        serviceLabel="X" engineKey="passport" d={classifiedDiagnosis}
+        onUpdate={noop} savedCases={[]} onSave={noop}
+      />
       {/* C5 Task 11: the ciJustUpdated undo banner (diagnosis.updateRecorded/
           undoUpdate) and the "Add an update" entry point (updateEntry.label)
           — both new optional props, so covered via their own dedicated
@@ -460,6 +492,14 @@ function UiChrome() {
         ciJustUpdated onUndo={noop} onUpdate={noop}
         ciSnapshot={{ answers: caseSnap.answers, prepChecks: {}, casefile: openCase }}
       />
+      {/* Task 13: the SIR phase-drift banner (diagnosis.phaseDriftLead/
+          phaseDriftBody) — its own dedicated mount, same convention as the
+          ciJustUpdated banner just above. */}
+      <DiagnosisScreen
+        serviceLabel="X" engineKey="sir" d={noticeDiagnosis}
+        answerLabels={{}} trustOpen={false} onToggleTrust={noop}
+        phaseDrift
+      />
       {/* Prepare (C4): draft-bearing (real state-5a — channelPhone,
           hintMany, stepsCount, copy and channelOpen all reach real,
           substituted or verbatim text at FIRST RENDER, no interaction
@@ -469,11 +509,11 @@ function UiChrome() {
           on (design notes 4 and 5). */}
       <PrepareScreen
         serviceLabel="X" engineKey="passport" d={helplineDiagnosis} prep={PREP['state-5a']}
-        topbar={topbar(true, true)}
+        topbar={topbar(true, true)} {...prepareControlledProps}
       />
       <PrepareScreen
         serviceLabel="X" engineKey="sir" d={noticeDiagnosis} prep={PREP['s-notice']}
-        topbar={topbar(true, true)}
+        topbar={topbar(true, true)} {...prepareControlledProps}
       />
       {/* C5 Task 8: CaseProgress (prepareStepsK, prepareCount), JourneyLog
           (whoReported/whoDiagnosed/whoOther/note, showAll, collapsedOne/
@@ -517,6 +557,11 @@ function UiChrome() {
           no click needed to reach it (props-driven, unlike PrepareScreen's
           own internal copy state), just its own static mount. */}
       <CasefileScreen case={cfWorking} d={helplineDiagnosis} {...casefileBaseProps} reminderCopied />
+      {/* Task 13: the SIR phase-drift interstitial (casefile.phaseDriftKicker/
+          phaseDriftTitle/phaseDriftBody/phaseDriftCta) — REPLACES the whole
+          update-mod, so this mount's own ciStage/ciPending are irrelevant
+          (the panel they'd open is unreachable while phaseDrift is true). */}
+      <CasefileScreen case={cfWorking} d={helplineDiagnosis} {...casefileBaseProps} phaseDrift />
       <SaveControl engineKey="passport" stepsDone={0} savedCases={[]} answers={caseSnap.answers} onSave={noop} />
       <SaveControl engineKey="passport" stepsDone={2} savedCases={[]} answers={caseSnap.answers} onSave={noop} />
       <SaveControl
@@ -552,6 +597,11 @@ function UiChrome() {
         pendingSave={{ engineKey: 'passport', serviceLabel: UI.serviceLabel.passport, returnScreen: 'passport-nextmove' }}
         dispatch={noop}
       />
+      {/* Task 13: SaveDoneScreen WITHOUT pendingSave too (design note 8) —
+          goHome/crumb/headline/lede are unaffected by pendingSave's
+          presence, so this duplicates coverage the mount above already
+          gives; design note 8 asks for it explicitly regardless. */}
+      <SaveDoneScreen pendingSave={null} dispatch={noop} />
     </>
   )
 }
@@ -722,7 +772,7 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     })
     try {
       const { container: prepContainer } = render(
-        <PrepareScreen serviceLabel="Passport" engineKey="passport" d={helplineDiagnosis} prep={PREP['state-5a']} />,
+        <DraftEditablePrepareScreen serviceLabel="Passport" engineKey="passport" d={helplineDiagnosis} prep={PREP['state-5a']} />,
       )
       // channelPhone, hintMany, stepsCount — no interaction needed, the
       // real state-5a draft ships with brackets and no step is ticked yet.

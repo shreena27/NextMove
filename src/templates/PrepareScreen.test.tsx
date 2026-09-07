@@ -10,9 +10,10 @@
 // Tasks 4 and 5 have since added each import below at the point it was
 // actually needed — the record of that deliberate deferral is kept here.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { useState } from 'react'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { PrepareScreen } from './PrepareScreen'
+import { PrepareScreen, type PrepareScreenProps } from './PrepareScreen'
 import { PREP, VISIT_EXPECT, type PrepPlan } from '../playbooks/prep'
 import { diagnose } from '../domain/engine'
 import { passportEngine, sirEngine } from '../playbooks/engines'
@@ -32,39 +33,107 @@ const helplineD = diagnose(passportEngine, { q1: 'adverse', q2: 'informal' })   
 // visit block, so it is the one fixture that exercises the whole screen.
 const clarifyD = diagnose(passportEngine, { q1: 'adverse', q2: 'no_followup' })
 
+// ADDED REQUIREMENT (Task 13, surfaced in Task 12's review): `prepChecks`/
+// `prepDraft`/`onTogglePrepStep`/`onSetPrepDraft` are now REQUIRED,
+// fully-controlled props (PrepareScreen.tsx's own local-state fallback is
+// gone) — App.tsx (Task 13) is the real owner in production. Every render
+// call in this file that does not itself already supply real, working
+// values for all four (the small handful of Task 12 tests below that
+// exercise the controlled path directly, via their own outer variable/
+// useState) needs SOME backing store for them, or a tick/draft interaction
+// would be a no-op against a value nobody re-renders. `ControlledPrepareScreen`
+// is that store: a small stateful wrapper holding `prepChecks`/`prepDraft`
+// in real `useState` and passing them through as controlled props — the
+// same shape this codebase already uses for testing a controlled component
+// (this file's own pre-existing `it('ticking a step, navigating away and
+// back...')`/`it('controlled draft: ...')` tests below thread an outer
+// `liveChecks` variable / `onSetPrepDraft` spy through in exactly this
+// spirit, just without a component wrapping it). Used everywhere in this
+// file EXCEPT those pre-existing controlled-path tests, which already pass
+// their own real values and stay direct `<PrepareScreen>` calls.
+function ControlledPrepareScreen(
+  props: Omit<PrepareScreenProps, 'prepChecks' | 'prepDraft' | 'onTogglePrepStep' | 'onSetPrepDraft'>,
+) {
+  const [prepChecks, setPrepChecks] = useState<Record<number, boolean>>({})
+  const [prepDraft, setPrepDraft] = useState<string | null>(null)
+  return (
+    <PrepareScreen
+      {...props}
+      prepChecks={prepChecks}
+      prepDraft={prepDraft}
+      onTogglePrepStep={i => setPrepChecks(prev => ({ ...prev, [i]: !prev[i] }))}
+      onSetPrepDraft={setPrepDraft}
+    />
+  )
+}
+
+// ADDED REQUIREMENT, verification (c): a real test proving that navigating
+// away from and back to PrepareScreen preserves ticks and draft text — at
+// minimum through the reducer directly, since this file has no real
+// `<App>` router to navigate through. `prepChecks`/`prepDraft` live in
+// THIS wrapper's own `useState` (standing in for the session reducer, the
+// same way Task 12's own `liveChecks`-closure test above stands in for
+// one) — PrepareScreen itself unmounts and remounts underneath a toggle,
+// exactly as it does in the real app when the router swaps which screen
+// component is behind `state.screen`, while the state that must survive
+// lives one level up, untouched by that unmount.
+function PrepareBackAndForthHarness(
+  props: Omit<PrepareScreenProps, 'prepChecks' | 'prepDraft' | 'onTogglePrepStep' | 'onSetPrepDraft'>,
+) {
+  const [mounted, setMounted] = useState(true)
+  const [prepChecks, setPrepChecks] = useState<Record<number, boolean>>({})
+  const [prepDraft, setPrepDraft] = useState<string | null>(null)
+  return (
+    <>
+      <button onClick={() => setMounted(m => !m)}>toggle away/back</button>
+      {mounted ? (
+        <PrepareScreen
+          {...props}
+          prepChecks={prepChecks}
+          prepDraft={prepDraft}
+          onTogglePrepStep={i => setPrepChecks(prev => ({ ...prev, [i]: !prev[i] }))}
+          onSetPrepDraft={setPrepDraft}
+        />
+      ) : (
+        <div>elsewhere</div>
+      )}
+    </>
+  )
+}
+
 describe('the prepare shell', () => {
   it('crumbs read "<service> · <matched state>" then "Prepare"', () => {
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     expect(screen.getByText(`Passport · ${escalate.label}`)).toBeInTheDocument()
     expect(screen.getByText(UI.phase.prepare)).toBeInTheDocument()
     expect(document.querySelector('.crumb-sq')).toHaveClass('sq-passport')
   })
 
   it('uses the plan title when there is one, and the fallback headline when there is not', () => {
-    const { unmount } = render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    const { unmount } = render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(PREP['state-5b'].title!)
     unmount()
-    render(<PrepareScreen serviceLabel="SIR" engineKey="sir" d={noticeD} prep={PREP['s-notice']} />)
+    render(<ControlledPrepareScreen serviceLabel="SIR" engineKey="sir" d={noticeD} prep={PREP['s-notice']} />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(UI.prepare.headlineFallback)
   })
 
   it('the lede matches whether the plan carries a draft', () => {
-    const { unmount } = render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    const { unmount } = render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     expect(screen.getByText(UI.prepare.ledeDraft)).toBeInTheDocument()
     unmount()
-    render(<PrepareScreen serviceLabel="SIR" engineKey="sir" d={noticeD} prep={PREP['s-notice']} />)
+    render(<ControlledPrepareScreen serviceLabel="SIR" engineKey="sir" d={noticeD} prep={PREP['s-notice']} />)
     expect(screen.getByText(UI.prepare.ledeSteps)).toBeInTheDocument()
   })
 
   it('always shows the trust line — NextMove never submits (locked Non-Goal)', () => {
-    render(<PrepareScreen serviceLabel="SIR" engineKey="sir" d={noticeD} prep={PREP['s-notice']} />)
+    render(<ControlledPrepareScreen serviceLabel="SIR" engineKey="sir" d={noticeD} prep={PREP['s-notice']} />)
     expect(document.querySelector('.prep-trust')).toHaveTextContent(UI.prepare.trust)
   })
 })
 
 describe('the official-channel card', () => {
   it("renders the rule's own where.label, phone and url — nothing re-derived", () => {
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     const card = document.querySelector('.channel-card')!
     expect(card).toHaveTextContent(UI.prepare.channelK)
     expect(card).toHaveTextContent(escalate.where.label)
@@ -78,7 +147,7 @@ describe('the official-channel card', () => {
     // s-notice's real where is { label: "Submit to your BLO / ERO per the
     // notice's instructions" } — no url, no phone. Both optional fields
     // absent, which is what makes it the right negative fixture.
-    render(<PrepareScreen serviceLabel="SIR" engineKey="sir" d={noticeD} prep={PREP['s-notice']} />)
+    render(<ControlledPrepareScreen serviceLabel="SIR" engineKey="sir" d={noticeD} prep={PREP['s-notice']} />)
     expect(document.querySelector('.channel-phone')).toBeNull()
     expect(screen.queryByRole('link', { name: UI.prepare.channelOpen })).toBeNull()
     expect(document.querySelector('.channel-v')).toHaveTextContent(noticeD.where.label)
@@ -89,7 +158,7 @@ describe('the official-channel card', () => {
     // state-5a where.phone '1800-258-1800', and PREP['state-5a'] exists, so
     // this row ships to real citizens today. See design note 5.
     expect(helplineD.where.phone).toBe('1800-258-1800')   // guards the fixture itself
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={helplineD} prep={PREP['state-5a']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={helplineD} prep={PREP['state-5a']} />)
     expect(document.querySelector('.channel-phone'))
       .toHaveTextContent(UI.prepare.channelPhone.replace('{phone}', helplineD.where.phone!))
   })
@@ -97,7 +166,7 @@ describe('the official-channel card', () => {
 
 describe('scope exclusions are structural, not incidental', () => {
   it('ships no save/casefile control (C5) and no fills-review panel (C8)', () => {
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     expect(document.querySelector('.btn-ghost')).toBeNull()
     expect(document.querySelector('.saved-note')).toBeNull()
     expect(document.querySelector('.fill-list')).toBeNull()
@@ -149,13 +218,13 @@ describe('the draft card', () => {
   }
 
   it('is absent when the plan carries no draft (the three SIR plans)', () => {
-    render(<PrepareScreen serviceLabel="SIR" engineKey="sir" d={noticeD} prep={PREP['s-notice']} />)
+    render(<ControlledPrepareScreen serviceLabel="SIR" engineKey="sir" d={noticeD} prep={PREP['s-notice']} />)
     expect(document.querySelector('.prep-card')).toBeNull()
     expect(screen.queryByRole('textbox')).toBeNull()
   })
 
   it('seeds the textarea with the RAW template — no caseFacts substitution (C8)', () => {
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
     expect(ta).toHaveValue(PREP['state-5b'].draft)
     // jest-dom@7's toHaveValue compares with `===` (compareAsSet's non-array
@@ -170,7 +239,7 @@ describe('the draft card', () => {
     // Not a hard-coded number: derived from the data, so this test tracks the
     // locked copy rather than a figure someone typed once. (state-5b ships 6
     // brackets today — assert the derivation, not the 6.)
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     const n = (PREP['state-5b'].draft!.match(/\[[^\]]*\]/g) ?? []).length
     expect(n).toBeGreaterThan(1)
     expect(document.querySelector('.prep-hint'))
@@ -183,7 +252,7 @@ describe('the draft card', () => {
     // leaves the value "one  two " (verified against 14.6.7 in this repo), so
     // bracketCount would see 0 and this test would silently measure nothing.
     // Do not "simplify" this back to userEvent.type. See design note 7.
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria })
 
     fireEvent.change(ta, { target: { value: 'one [a] two [b]' } })
@@ -198,7 +267,7 @@ describe('the draft card', () => {
   })
 
   it('copies the EDITED text, and names the blanks left instead of policing them', async () => {
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria })
     fireEvent.change(ta, { target: { value: 'ready [x] set' } })
     const btn = screen.getByRole('button', { name: UI.prepare.copy })
@@ -211,7 +280,7 @@ describe('the draft card', () => {
   })
 
   it('shows the clean "Copied ✓" state when nothing is left to fill', async () => {
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria })
     fireEvent.change(ta, { target: { value: 'all done' } })
     await userEvent.click(screen.getByRole('button', { name: UI.prepare.copy }))
@@ -222,7 +291,7 @@ describe('the draft card', () => {
 
   it('keeps the count from the MOMENT OF COPYING even if the user edits during the flash', async () => {
     // Prototype captures S.copiedBrackets before the flash (design note 6).
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria })
     fireEvent.change(ta, { target: { value: 'a [x] b [y]' } })
     await userEvent.click(screen.getByRole('button', { name: UI.prepare.copy }))
@@ -240,7 +309,7 @@ describe('the draft card', () => {
     // user-event v14 awaits REAL timers by default and hangs forever under
     // fake ones. Its own setup option is the fix; do not drop it.
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
       target: { value: 'all done' },
     })
@@ -272,7 +341,7 @@ describe('the draft card', () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { unmount } = render(
-      <PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
+      <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
     )
     await user.click(screen.getByRole('button', { name: UI.prepare.copy }))
     unmount()
@@ -291,7 +360,7 @@ describe('the draft card', () => {
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) }, configurable: true,
     })
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
     const selectSpy = vi.spyOn(ta, 'select')
     fireEvent.change(ta, { target: { value: 'all done' } })
@@ -315,7 +384,7 @@ const tickAll = async (n: number) => {
 describe('the step checklist', () => {
   it('renders one tickable row per step, with the counter starting at 0 of N', () => {
     const plan = PREP['state-5b']
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan} />)
     expect(document.querySelectorAll('.pstep-tick')).toHaveLength(plan.steps.length)
     for (const b of document.querySelectorAll('.pstep-tick')) {
       expect(b.tagName).toBe('BUTTON')
@@ -328,7 +397,7 @@ describe('the step checklist', () => {
 
   it('ticking a step flips aria-pressed and the .done class, and advances the counter', async () => {
     const plan = PREP['state-5b']
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan} />)
     const first = document.querySelectorAll('.pstep-tick')[0] as HTMLButtonElement
     await userEvent.click(first)
     expect(first).toHaveAttribute('aria-pressed', 'true')
@@ -345,7 +414,7 @@ describe('the step checklist', () => {
   })
 
   it('a step with a url gets an "Open ↗" link that is a SIBLING of the tick button', () => {
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     const link = screen.getAllByRole('link', { name: UI.prepare.stepOpen })[0]
     expect(link.closest('button')).toBeNull()          // never nested in the button
     expect(link).toHaveAttribute('target', '_blank')
@@ -360,7 +429,7 @@ describe('the step checklist', () => {
     // Assert per-ROW instead of per-plan: the link count matches the url-step
     // count, and each bare step's own row carries no anchor.
     const plan = PREP['state-5b']
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan} />)
     const withUrl = plan.steps.filter(s => typeof s !== 'string').length
     expect(withUrl).toBe(1)
     expect(withUrl).toBeLessThan(plan.steps.length)    // there ARE bare steps to check
@@ -374,7 +443,7 @@ describe('the step checklist', () => {
   it("the done note appears only when every step is ticked, and uses the plan's own text", async () => {
     const plan = PREP['state-5b']                      // carries its own doneNote
     const { unmount } = render(
-      <PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan} />,
+      <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan} />,
     )
     expect(document.querySelector('.psteps-done')).toBeNull()
     await tickAll(plan.steps.length)
@@ -383,13 +452,13 @@ describe('the step checklist', () => {
 
     const noNote = PREP['state-4']                     // carries none -> fallback
     expect(noNote.doneNote).toBeUndefined()
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={noNote} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={noNote} />)
     await tickAll(noNote.steps.length)
     expect(document.querySelector('.psteps-done')).toHaveTextContent(UI.prepare.doneNoteFallback)
   })
 
   it('the check icon is always in the DOM — the lifted CSS does the showing', () => {
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     expect(document.querySelectorAll('.pstep-box svg').length).toBe(PREP['state-5b'].steps.length)
   })
 })
@@ -397,13 +466,13 @@ describe('the step checklist', () => {
 describe('the in-person visit card', () => {
   it('is absent for a plan with no visit block', () => {
     expect(PREP['state-5b'].visit).toBeUndefined()     // guards the fixture
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     expect(document.querySelector('.visit-card')).toBeNull()
     expect(screen.queryByText(UI.prepare.visitTitle)).toBeNull()
   })
 
   it("keeps the rule's verified Carry list and the shared general tips in SEPARATE columns", () => {
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={PREP['state-4']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={PREP['state-4']} />)
     const cols = document.querySelectorAll('.visit-cols > div')
     expect(cols).toHaveLength(2)
     expect(cols[0]).toHaveTextContent(UI.prepare.visitCarry)
@@ -416,7 +485,7 @@ describe('the in-person visit card', () => {
   })
 
   it('always shows the general-advice disclaimer under the card', () => {
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={PREP['state-4']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={PREP['state-4']} />)
     expect(document.querySelector('.visit-note')).toHaveTextContent(UI.prepare.visitNote)
   })
 
@@ -426,14 +495,14 @@ describe('the in-person visit card', () => {
     // locked markup and an `after`-less visit is a legal PrepVisit shape.
     const plan = PREP['state-4']
     const { unmount } = render(
-      <PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={plan} />,
+      <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={plan} />,
     )
     expect(screen.getByText(UI.prepare.visitThen)).toBeInTheDocument()
     expect(document.querySelector('.visit-card')).toHaveTextContent(plan.visit!.after!)
     unmount()
 
     const noAfter = { ...plan, visit: { carry: plan.visit!.carry } }
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={noAfter} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={noAfter} />)
     expect(document.querySelector('.visit-card')).toBeInTheDocument()   // card still shows
     expect(screen.queryByText(UI.prepare.visitThen)).toBeNull()         // heading does not
   })
@@ -443,7 +512,7 @@ describe('the closing control', () => {
   it('"Done, back to Home" dispatches RESTART — never a navigation (scope exclusion 6)', async () => {
     const dispatch = vi.fn()
     render(
-      <PrepareScreen
+      <ControlledPrepareScreen
         serviceLabel="Passport" engineKey="passport" d={escalate}
         prep={PREP['state-5b']} dispatch={dispatch}
       />,
@@ -454,7 +523,7 @@ describe('the closing control', () => {
   })
 
   it('is the last control on the screen — no save control follows it (C5)', () => {
-    render(<PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={PREP['state-4']} />)
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={PREP['state-4']} />)
     const done = screen.getByRole('button', { name: UI.prepare.doneBackHome })
     const controls = Array.from(document.querySelectorAll('button, a[href]'))
     expect(controls[controls.length - 1]).toBe(done)
@@ -493,7 +562,7 @@ describe('INTERACTION_GATED coverage — the five SCREEN_COPY strings a static m
         const noNote = PREP['state-4']
         expect(noNote.doneNote).toBeUndefined()
         const { unmount } = render(
-          <PrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={noNote} />,
+          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={noNote} />,
         )
         await tickAll(noNote.steps.length)
         expect(document.querySelector('.psteps-done')).toHaveTextContent(UI.prepare.doneNoteFallback)
@@ -502,7 +571,7 @@ describe('INTERACTION_GATED coverage — the five SCREEN_COPY strings a static m
       'ui:prepare.hintReady': async () => {
         // A zero-bracket draft — a plain edit, not a click (design note 2b).
         const { unmount } = render(
-          <PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
+          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
         )
         fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
           target: { value: 'nothing left to fill' },
@@ -513,7 +582,7 @@ describe('INTERACTION_GATED coverage — the five SCREEN_COPY strings a static m
       'ui:prepare.copied': async () => {
         // A zero-bracket draft, then a Copy click.
         const { unmount } = render(
-          <PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
+          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
         )
         fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
           target: { value: 'nothing left to fill' },
@@ -525,7 +594,7 @@ describe('INTERACTION_GATED coverage — the five SCREEN_COPY strings a static m
       'ui:prepare.copiedOne': async () => {
         // A Copy click with exactly one blank left.
         const { unmount } = render(
-          <PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
+          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
         )
         fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
           target: { value: 'ready [x] set' },
@@ -539,7 +608,7 @@ describe('INTERACTION_GATED coverage — the five SCREEN_COPY strings a static m
       'ui:prepare.copiedMany': async () => {
         // A Copy click with two blanks left.
         const { unmount } = render(
-          <PrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
+          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
         )
         fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
           target: { value: 'a [x] b [y]' },
@@ -568,11 +637,12 @@ describe('INTERACTION_GATED coverage — the five SCREEN_COPY strings a static m
   })
 })
 
-// Task 12: `prepChecks`/`prepDraft` lifted into the reducer. `PrepareScreen`
-// stays a controlled component when a caller supplies these props (design
-// note 6) — every test above renders with NEITHER supplied, exercising the
-// local-state fallback that keeps this file's existing behaviour identical.
-// These describe blocks exercise the CONTROLLED path specifically.
+// Task 12 lifted `prepChecks`/`prepDraft` into the reducer; Task 13 finished
+// the job (design note 6) — PrepareScreen is now ALWAYS a controlled
+// component (no local-state fallback left to fall back to). Every test
+// above renders through `ControlledPrepareScreen`, this file's own stand-in
+// for the reducer; these describe blocks instead wire the controlled props
+// through directly, to pin the controlled behaviour itself.
 describe('the "done" count is index-based, not Object.values-based (design note 3)', () => {
   it('a stale prepChecks index beyond the plan\'s own step count must not inflate the count', () => {
     // A synthetic 3-step plan (any content works — the point is the STEP
@@ -587,7 +657,8 @@ describe('the "done" count is index-based, not Object.values-based (design note 
     render(
       <PrepareScreen
         serviceLabel="Passport" engineKey="passport" d={escalate} prep={stalePlan}
-        prepChecks={{ 0: true, 3: true }}
+        prepChecks={{ 0: true, 3: true }} prepDraft={null}
+        onTogglePrepStep={() => {}} onSetPrepDraft={() => {}}
       />,
     )
     expect(document.querySelector('.psteps-count')).toHaveTextContent(
@@ -600,7 +671,7 @@ describe('the "done" count is index-based, not Object.values-based (design note 
   })
 })
 
-describe('prepChecks/prepDraft — controlled with a local-state fallback (Task 12, design note 6)', () => {
+describe('prepChecks/prepDraft — fully controlled (Task 12/13, design note 6)', () => {
   it('ticking a step, navigating away and back (unmount/remount with the SAME reducer-held prepChecks) preserves the ticks — the C4 behaviour gap, now closed', async () => {
     // Simulates a real dispatch -> reducer -> new-props cycle without a real
     // reducer: `onTogglePrepStep` mutates this outer, component-external
@@ -615,6 +686,7 @@ describe('prepChecks/prepDraft — controlled with a local-state fallback (Task 
       <PrepareScreen
         serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan}
         prepChecks={liveChecks} onTogglePrepStep={onTogglePrepStep}
+        prepDraft={null} onSetPrepDraft={() => {}}
       />,
     )
 
@@ -639,6 +711,7 @@ describe('prepChecks/prepDraft — controlled with a local-state fallback (Task 
       <PrepareScreen
         serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan}
         prepDraft="edited text" onSetPrepDraft={onSetPrepDraft}
+        prepChecks={{}} onTogglePrepStep={() => {}}
       />,
     )
     const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
@@ -655,9 +728,41 @@ describe('prepChecks/prepDraft — controlled with a local-state fallback (Task 
       <PrepareScreen
         serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan}
         prepDraft={null} onSetPrepDraft={onSetPrepDraft}
+        prepChecks={{}} onTogglePrepStep={() => {}}
       />,
     )
     expect(screen.getByRole('textbox', { name: UI.prepare.draftAria })).toHaveValue(plan.draft)
+  })
+
+  // ADDED REQUIREMENT verification (c): the actual state-loss-on-unmount bug
+  // this whole effort exists to close, proven through a REAL component
+  // unmount/remount — not an outer closure variable standing in for one
+  // (the test above already does that, and is kept) — via
+  // `PrepareBackAndForthHarness`, whose own `prepChecks`/`prepDraft`
+  // `useState` sits ABOVE the toggled `<PrepareScreen>`, exactly where
+  // App.tsx's session reducer sits relative to the real router's
+  // `key={d.ruleId}`-remounted `*-prepare` screen case.
+  it('a real unmount/remount (via PrepareBackAndForthHarness) preserves BOTH ticks and draft text', async () => {
+    const plan = PREP['state-5b'] // carries a draft
+    render(<PrepareBackAndForthHarness serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan} />)
+
+    await userEvent.click(document.querySelectorAll('.pstep-tick')[0])
+    const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria })
+    fireEvent.change(ta, { target: { value: 'my edited draft' } })
+    expect(document.querySelectorAll('.pstep-tick')[0]).toHaveAttribute('aria-pressed', 'true')
+    expect(ta).toHaveValue('my edited draft')
+
+    // "Navigate away": PrepareScreen unmounts entirely (replaced by
+    // "elsewhere" in the DOM) — every local useState it ever had is gone.
+    await userEvent.click(screen.getByRole('button', { name: 'toggle away/back' }))
+    expect(screen.queryByRole('textbox', { name: UI.prepare.draftAria })).toBeNull()
+    expect(screen.getByText('elsewhere')).toBeInTheDocument()
+
+    // "Navigate back": a FRESH PrepareScreen instance, fed the SAME
+    // harness-held prepChecks/prepDraft — both survive.
+    await userEvent.click(screen.getByRole('button', { name: 'toggle away/back' }))
+    expect(document.querySelectorAll('.pstep-tick')[0]).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('textbox', { name: UI.prepare.draftAria })).toHaveValue('my edited draft')
   })
 })
 
@@ -669,6 +774,7 @@ describe('the saveControl tail (Task 12, design note 6 / design note 3)', () => 
       <PrepareScreen
         serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan}
         onSave={onSave} savedCases={[]} prepChecks={{ 0: true }}
+        prepDraft={null} onTogglePrepStep={() => {}} onSetPrepDraft={() => {}}
       />,
     )
     const rightCol = document.querySelector('.split-r')!
@@ -690,7 +796,7 @@ describe('the saveControl tail (Task 12, design note 6 / design note 3)', () => 
 
   it('shows the plain save label when nothing is ticked yet', () => {
     render(
-      <PrepareScreen
+      <ControlledPrepareScreen
         serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']}
         onSave={vi.fn()} savedCases={[]}
       />,
@@ -703,7 +809,7 @@ describe('the saveControl tail (Task 12, design note 6 / design note 3)', () => 
     const snap = caseSnapshot('passport', 'Passport', 'passport-prepare', escalate, answers, {}, 1_760_000_000_000)
     const saved: Casefile = { ...snap, id: 'c1', outcome: 'still_open', lastCheck: null, remindAt: null, log: [] }
     render(
-      <PrepareScreen
+      <ControlledPrepareScreen
         serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']}
         onSave={vi.fn()} savedCases={[saved]}
       />,

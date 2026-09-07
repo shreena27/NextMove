@@ -11,13 +11,17 @@
  *  Passport's `q1` earlier in the same session, then completes a Voter or
  *  SIR diagnosis, produces a `matchedAnswers` that still carries that stale
  *  `q1`, which this file's own maps cannot tell apart from a real Passport
- *  answer. FIX ROUND 1 (Important #1): the caller (DiagnosisScreen.tsx)
- *  now gates the call to `passportTrailFor` on `engineKey === 'passport'`
- *  as the actual safeguard — structural branching the plan's Global
- *  Constraints already permit ("does this service have a case trail?"),
- *  not a new exception. `passportTrailFor` itself is written defensively
- *  (the state-id check is self-sufficient; the stage fallback is not) but
- *  must not be relied on alone to keep the trail off a non-Passport screen.
+ *  answer. FIX ROUND 1 (Important #1): every caller gates the call to
+ *  `passportTrailFor` on `engineKey === 'passport'` as the actual safeguard
+ *  — structural branching the plan's Global Constraints already permit
+ *  ("does this service have a case trail?"), not a new exception. Two
+ *  callers do this today: `DiagnosisScreen.tsx` (the original site) and
+ *  `CasefileScreen.tsx` (C5, Task 9 — `c.engineKey === 'passport' ?
+ *  passportTrailFor(d) : null`, reading the CASE's own engineKey rather
+ *  than a diagnosis-derived one, same gate, same reasoning).
+ *  `passportTrailFor` itself is written defensively (the state-id check is
+ *  self-sufficient; the stage fallback is not) but must not be relied on
+ *  alone to keep the trail off a non-Passport screen.
  *
  *  Task 9's copy sweep: the step labels and the "You are here" marker are
  *  authored, citizen-facing strings, so they live in

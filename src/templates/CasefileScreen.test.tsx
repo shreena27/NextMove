@@ -78,6 +78,7 @@ function baseProps(overrides: Record<string, unknown> = {}) {
     ciReassure: false,
     ciSnapshot: null,
     ciConsecutive: false,
+    phaseDrift: false,
     reminderCopied: false,
     logOpen: {},
     removeConfirm: null,
@@ -490,6 +491,47 @@ describe('open variant — the case is still_open', () => {
     })
     render(<CasefileScreen case={three} d={state1D} {...baseProps()} />)
     expect(screen.getByText(UI.casefile.journeyMany.replace('{n}', '3'))).toBeInTheDocument()
+  })
+})
+
+describe('Task 13: SIR phase drift — the interstitial replaces the whole update-mod', () => {
+  it('renders the interstitial\'s exact strings, and renders NO option rows and NO remind row — "before any options are offered"', () => {
+    const c = makeCase('sir', sirD, sirAnswers)
+    render(<CasefileScreen case={c} d={sirD} {...baseProps({ phaseDrift: true })} />)
+    expect(document.querySelector(SEL.updateMod)).toHaveTextContent(UI.casefile.phaseDriftKicker)
+    expect(document.querySelector(SEL.updateMod)).toHaveTextContent(UI.casefile.phaseDriftTitle)
+    expect(document.querySelector(SEL.updateMod)).toHaveTextContent(UI.casefile.phaseDriftBody)
+    expect(screen.getByRole('button', { name: new RegExp(UI.casefile.phaseDriftCta) })).toBeInTheDocument()
+    // Absences, using the SAME selectors the open-variant tests above
+    // assert PRESENT (this file's own header rule).
+    expect(document.querySelectorAll(SEL.optionRow).length).toBe(0)
+    expect(document.querySelector(SEL.remindRow)).toBeNull()
+    // The ordinary "Add an update" module is gone too — REPLACED, not
+    // layered alongside.
+    expect(screen.queryByText(UI.casefile.whatsHappenedTitle)).toBeNull()
+  })
+
+  it('the ordinary update module renders instead when phaseDrift is false', () => {
+    const c = makeCase('sir', sirD, sirAnswers)
+    render(<CasefileScreen case={c} d={sirD} {...baseProps({ phaseDrift: false })} />)
+    expect(screen.queryByText(UI.casefile.phaseDriftTitle)).toBeNull()
+    expect(document.querySelector(SEL.updateMod)).toHaveTextContent(UI.casefile.whatsHappenedTitle)
+    expect(document.querySelectorAll(SEL.optionRow).length).toBeGreaterThan(0)
+  })
+
+  it('the interstitial\'s CTA dispatches PHASE_DRIFT_RECHECK', () => {
+    const c = makeCase('sir', sirD, sirAnswers)
+    const dispatch = vi.fn()
+    render(<CasefileScreen case={c} d={sirD} {...baseProps({ phaseDrift: true, dispatch })} />)
+    screen.getByRole('button', { name: new RegExp(UI.casefile.phaseDriftCta) }).click()
+    expect(dispatch).toHaveBeenCalledWith({ type: 'PHASE_DRIFT_RECHECK' })
+  })
+
+  it('case-links and the save/remove tail are unaffected by phaseDrift', () => {
+    const c = makeCase('sir', sirD, sirAnswers)
+    render(<CasefileScreen case={c} d={sirD} {...baseProps({ phaseDrift: true })} />)
+    expect(screen.getByRole('button', { name: UI.casefile.diagnosisLink })).toBeInTheDocument()
+    expect(document.querySelector('.case-remove')).toBeInTheDocument()
   })
 })
 

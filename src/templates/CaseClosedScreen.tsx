@@ -8,8 +8,9 @@
  *  (2987) — nullable, NOT required-and-non-nullable like `DeadEndScreen`'s/
  *  `CasefileScreen`'s own `case` prop, because the prototype's own template
  *  literal gates the journey log on it too (`${c ? renderLog(c) : ''}`,
- *  2996). Resolving which case (if any) that lookup finds is Task 13's
- *  router job; this component only renders what it is handed.
+ *  2996). App.tsx's `case-closed` router case (Task 13) resolves which case
+ *  (if any) that lookup finds; this component only renders what it is
+ *  handed.
  *
  *  DESIGN NOTE (Task 10 design note 2 — Open Question 3, RESOLVED; Finding
  *  13): the prototype's lede (2994) ends "...NextMove's part is done; the

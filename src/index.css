@@ -494,11 +494,10 @@ h2.headline{
 /* ---------- prepare: draft + guided submission ----------
    The user reviews, edits, copies, and submits the draft themselves —
    NextMove never files anything. Steps are a tick-off checklist
-   (satisfying, visible progress — persisted in the session reducer as of
-   Task 12, and will survive navigating away and back once Task 13 wires
-   prepChecks/prepDraft/the two callback props into App.tsx; until then,
-   PrepareScreen's local-state fallback is what real usage takes, and it
-   still resets on unmount exactly like before this task). */
+   (satisfying, visible progress — persisted in the session reducer since
+   Task 12 and, as of Task 13's router wiring, genuinely survives navigating
+   away and back: App.tsx now supplies prepChecks/prepDraft/the two callback
+   props for real, and PrepareScreen's own local-state fallback is gone). */
 .prep-card{
   background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
   box-shadow:var(--shadow-float); padding:20px 22px; margin-bottom:26px;

@@ -3,10 +3,11 @@
  *  all three services render through unmodified (implementation plan §1's
  *  central architectural claim, now made executable).
  *
- *  Deliberately NOT ported here (Out of Scope, later chunks): `freshBanner`
- *  (C6) and the `phaseDrift` banner (Task 13, same chunk — both left as
- *  comment seams in the right column below, in the prototype's own order).
- *  The `ciJustUpdated` undo banner and `updateEntry`'s "Add an update"
+ *  Deliberately NOT ported here (Out of Scope, later chunk): `freshBanner`
+ *  (C6, left as a comment seam in the right column below, in the
+ *  prototype's own order). The `phaseDrift` banner is Task 13's own, now
+ *  built (see the `phaseDrift` prop below). The `ciJustUpdated` undo banner
+ *  and `updateEntry`'s "Add an update"
  *  button are Task 11's own (this commit) — see the `ciJustUpdated`/
  *  `ciSnapshot`/`onUndo`/`onUpdate` props below. The escalation ladder is
  *  still out of scope here (`renderLadder` is called only from
@@ -85,13 +86,20 @@ export interface DiagnosisScreenProps {
    *  be something to undo, not merely a flag saying an update happened. */
   ciJustUpdated?: boolean
   ciSnapshot?: CiSnapshot | null
-  /** Fires the reducer's CI_UNDO action. Wiring is Task 13's router job. */
+  /** Fires the reducer's CI_UNDO action. Wired for real in App.tsx (Task 13). */
   onUndo?: () => void
   /** The "Add an update" entry point (design note 3.5; prototype 3607) —
    *  gates whether `<UpdateEntry>` renders at all, same convention `topbar`
    *  already uses on this file. A dumb button: see UpdateEntry.tsx's own
    *  header note for why the routing decision does NOT live here. */
   onUpdate?: () => void
+
+  /** Task 13's SIR phase-drift banner (prototype 3600; `SessionState.
+   *  phaseDrift`). Optional with an `undefined` default, same convention as
+   *  the Task 11 additions above: every pre-existing render call (none of
+   *  which pass this) keeps rendering byte-identical output. Irrelevant to
+   *  (and never true for) a non-SIR diagnosis. */
+  phaseDrift?: boolean
 }
 
 export function DiagnosisScreen({
@@ -109,6 +117,7 @@ export function DiagnosisScreen({
   ciSnapshot,
   onUndo,
   onUpdate,
+  phaseDrift,
 }: DiagnosisScreenProps) {
   // The reveal headline gets the highlighter swipe on its key word — the
   // marker stroke lands where the answer is. UNCLASSIFIED gets no swipe:
@@ -158,10 +167,11 @@ export function DiagnosisScreen({
               {/* DESIGN NOTE (C6): freshBanner(engineKey) slots in here,
                   immediately after the ciJustUpdated banner (prototype
                   3599) — out of this task's scope. */}
-              {/* DESIGN NOTE (Task 13): the phaseDrift banner module wraps
-                  in here, after freshBanner (prototype 3600) — out of this
-                  task's scope; SessionState.phaseDrift has no producer
-                  yet. */}
+              {phaseDrift ? (
+                <Banner>
+                  <b>{UI.diagnosis.phaseDriftLead}</b> {UI.diagnosis.phaseDriftBody}
+                </Banner>
+              ) : null}
               {preNote}
               {d.dependency && d.dependency !== 'Unknown' ? (
                 <div className="dep-block">

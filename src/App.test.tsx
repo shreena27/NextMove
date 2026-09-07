@@ -39,6 +39,11 @@ vi.mock('./session/session', async (importOriginal) => {
 afterEach(() => {
   vi.restoreAllMocks()
   seededScreen.current = undefined
+  // Task 13: App now genuinely reads/writes `nm_cases` via `localStorage`
+  // (the lazy useReducer initializer / the persistence useEffect) — jsdom's
+  // REAL localStorage is shared across every `it()` in this file, so a case
+  // saved by one test would otherwise leak into the next `render(<App/>)`.
+  localStorage.clear()
 })
 
 describe('Passport, end to end — the flow is real, not just unit-tested components', () => {
@@ -245,6 +250,130 @@ describe('Home v2', () => {
     expect(rows.length).toBe(4)
     for (const row of rows) expect(row.tagName).toBe('DIV')
     expect(screen.getAllByText('Coming Soon').length).toBe(4)
+  })
+})
+
+describe('Task 13: the four C5 router cases', () => {
+  it("'checkin' with no active case dispatches RESTART and lands on Home, rendering nothing of the casefile screen", () => {
+    seededScreen.current = 'checkin'
+    render(<App />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    expect(screen.queryByRole('button', { name: /← Back/ })).toBeNull()
+    expect(document.querySelector('.update-mod')).toBeNull()
+  })
+
+  it("'dead-end' with no active case dispatches RESTART and lands on Home", () => {
+    seededScreen.current = 'dead-end'
+    render(<App />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    expect(screen.queryByText(UI.deadEnd.headline)).toBeNull()
+  })
+
+  it("'case-closed' renders (case is nullable — no RestartToHome guard needed)", () => {
+    seededScreen.current = 'case-closed'
+    render(<App />)
+    expect(screen.getByRole('button', { name: UI.caseClosed.backToHome })).toBeInTheDocument()
+  })
+
+  it("'save-done' renders (pendingSave is nullable — no RestartToHome guard needed)", () => {
+    seededScreen.current = 'save-done'
+    render(<App />)
+    expect(screen.getByRole('heading', { name: UI.saveDone.headline })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: UI.saveDone.goHome })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: UI.saveDone.backToCase })).toBeNull()
+  })
+})
+
+describe('Task 13: end to end — Add an update, confirm, and Undo', () => {
+  it('Home -> Passport -> diagnosis -> "Add an update" -> the casefile screen -> pick an option -> confirm -> back on diagnosis with the update recorded -> Undo -> the case restored', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+
+    const before = diagnose(passportEngine, { guardrail: 'no', q1: 'no_contact', q2: 'no_followup' })
+    expect(document.querySelector('.stamp')).toHaveTextContent('WAIT')
+    expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument()
+
+    // "Add an update" — BEGIN_WORKING_CHECKIN, landing on the casefile screen.
+    await userEvent.click(screen.getByRole('button', { name: UI.updateEntry.label }))
+    expect(document.querySelector('.update-mod')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(before.label)
+
+    // Pick the first option ("Police contacted or visited me", state-1's own
+    // CHECKIN_META entry) — opens the confirm panel (an 'event' kind).
+    await userEvent.click(screen.getByRole('button', { name: 'Police contacted or visited me' }))
+    expect(screen.getByText(UI.casefile.confirmQ)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: UI.casefile.confirmYes }))
+
+    // Navigated to passport-diagnosis with the update recorded — a real
+    // diagnosis CHANGE (state-1 WAIT -> state-2 FOLLOW_UP).
+    const after = diagnose(passportEngine, { guardrail: 'no', q1: 'contacted_incomplete', q2: 'no_followup' })
+    expect(after.ruleId).not.toBe(before.ruleId) // guards the fixture — a real change, not a no-op
+    expect(document.querySelector('.stamp')).toHaveTextContent('FOLLOW UP')
+    expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument()
+    expect(screen.getByText(after.explanation)).toBeInTheDocument()
+    expect(screen.getByText(UI.diagnosis.updateRecorded)).toBeInTheDocument()
+
+    // Undo — the case (and the diagnosis it drives) is restored whole.
+    await userEvent.click(screen.getByRole('button', { name: UI.diagnosis.undoUpdate }))
+    expect(document.querySelector('.stamp')).toHaveTextContent('WAIT')
+    expect(screen.getByText(before.explanation)).toBeInTheDocument()
+    expect(screen.queryByText(UI.diagnosis.updateRecorded)).toBeNull()
+  })
+})
+
+describe('Task 13: end to end — save, save-done, Home, and back into the casefile', () => {
+  it('Next Move -> Save this case -> save-done -> Go to Home -> the card is on Home -> tap the card -> the casefile screen', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+
+    await userEvent.click(screen.getByRole('button', { name: UI.saveControl.save }))
+    expect(screen.getByRole('heading', { name: UI.saveDone.headline })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: UI.saveDone.goHome }))
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    const card = document.querySelector('.saved-card')
+    expect(card).toBeInTheDocument()
+    expect(card).toHaveTextContent(UI.serviceLabel.passport)
+
+    await userEvent.click(card!)
+    expect(document.querySelector('.update-mod')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: UI.casefile.diagnosisLink })).toBeInTheDocument()
+  })
+})
+
+describe('Task 13: the localStorage persistence effect (design note 6)', () => {
+  it('nm_cases is written after a save, and read back on a fresh mount', async () => {
+    expect(localStorage.getItem('nm_cases')).toBeNull()
+    const { unmount } = render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+    await userEvent.click(screen.getByRole('button', { name: UI.saveControl.save }))
+
+    const stored = localStorage.getItem('nm_cases')
+    expect(stored).not.toBeNull()
+    expect(JSON.parse(stored!)).toHaveLength(1)
+    unmount()
+
+    // A fresh mount reads it straight back — the lazy useReducer initializer.
+    render(<App />)
+    expect(document.querySelector('.saved-card')).toBeInTheDocument()
+  })
+
+  it('a corrupt nm_cases value does not prevent App rendering Home', () => {
+    localStorage.setItem('nm_cases', '{not valid json')
+    render(<App />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    expect(document.querySelector('.home-cases')).toBeNull()
   })
 })
 

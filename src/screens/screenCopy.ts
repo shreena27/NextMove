@@ -129,6 +129,14 @@ export const UI = {
      *  `undoUpdate` its `.read-change` button label. */
     updateRecorded: 'Update recorded. This is where it leaves your case.',
     undoUpdate: 'Undo that update',
+    /** The SIR phase-drift banner (Task 13, design note 1; prototype
+     *  renderDiagnosis, 3600) — `phaseDriftLead` is the bold lead-in,
+     *  `phaseDriftBody` the plain tail, rendered inside one `<Banner>` the
+     *  same way `updateRecorded`'s own bold/plain split doesn't need
+     *  (single sentence there) but this one does (two, the first bold). */
+    phaseDriftLead: 'The SIR phase changed while this case was saved.',
+    phaseDriftBody:
+      "NextMove re-checked your case against the current phase, so this diagnosis reflects today's rules, not the ones from when you saved.",
   },
   /** `updateEntry` (prototype 2284-2289) — the tracking entry point shared
    *  by Diagnosis (Task 11's own design note 3.5) and Next Move (design
@@ -241,6 +249,15 @@ export const UI = {
     addUpdateKicker: 'Add an update',
     whatsHappenedTitle: "What's happened since?",
     addUpdateLede: 'Pick what actually happened, and your casefile and diagnosis update from it. If none of these fit, "Something else happened" re-checks your case properly.',
+
+    // The SIR phase-drift interstitial (Task 13, design note 2; prototype
+    // 2925-2931) — REPLACES the whole module above when `phaseDrift`, so no
+    // check-in option is reachable before the citizen re-checks their case.
+    phaseDriftKicker: 'Before any update',
+    phaseDriftTitle: 'The SIR phase changed while this case was saved.',
+    phaseDriftBody:
+      "The options and recommendations from when you saved may no longer apply. Answer one question against today's phase and NextMove re-diagnoses your case; your journey record keeps everything you've already done.",
+    phaseDriftCta: "Re-check my case against today's phase",
 
     // The four follow-up panels (2836-2876). `cancel` is ONE registered
     // string reused at its three literal "Cancel" sites within this same

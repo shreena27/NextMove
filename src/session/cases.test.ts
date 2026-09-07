@@ -7,6 +7,7 @@ import type { ServiceEngine } from '../domain/engine'
 import { applyCorrection, applyEvent } from '../domain/answers'
 import { passportEngine, voterEngine, sirEngine } from '../playbooks/engines'
 import { PASSPORT_DEPS } from '../playbooks/passportPlaybook'
+import { SIR_STATES } from '../playbooks/sirPlaybook'
 import { checkinOptionsFor, type CheckinOption } from '../domain/checkinOptions'
 import { ladderFor } from '../templates/ladder'
 import {
@@ -243,6 +244,58 @@ describe('loadCase (design note 6)', () => {
 
   it('returns null for an unknown id', () => {
     expect(loadCase([], 'nope')).toBeNull()
+  })
+})
+
+describe('loadCase — SIR phase drift (Task 13, design note 1; deviation D4)', () => {
+  it('sets phaseDrift when the stamped sirPhaseId differs from the live phase', () => {
+    const c = caseFor('sir', sirEngine, 'SIR', 'sir-nextmove', { sirState: 'delhi', sirQ1: 'roll_present' }, {
+      id: 'c1', sirPhaseId: 'some_other_phase',
+    })
+    const fragment = loadCase([c], 'c1')
+    expect(fragment!.phaseDrift).toBe(true)
+  })
+
+  it('leaves phaseDrift false when the stamped sirPhaseId matches the live phase', () => {
+    const c = caseFor('sir', sirEngine, 'SIR', 'sir-nextmove', { sirState: 'delhi', sirQ1: 'roll_present' }, { id: 'c1' })
+    expect(c.sirPhaseId).toBe(SIR_STATES.delhi.phase!.id) // guards the fixture — not a coincidental match
+    const fragment = loadCase([c], 'c1')
+    expect(fragment!.phaseDrift).toBe(false)
+  })
+
+  it('leaves phaseDrift false for passport and voter cases — sirPhaseId is always null for them', () => {
+    const p = savedCase(PASSPORT_ANSWERS, { id: 'c1' })
+    expect(p.sirPhaseId).toBeNull() // guards the fixture
+    expect(loadCase([p], 'c1')!.phaseDrift).toBe(false)
+
+    const v = caseFor('voter', voterEngine, 'Voter Services', 'voter-nextmove', { voterQ1: 'no_word' }, { id: 'c2' })
+    expect(v.sirPhaseId).toBeNull() // guards the fixture
+    expect(loadCase([v], 'c2')!.phaseDrift).toBe(false)
+  })
+
+  it('deviation D4: does not throw, and leaves phaseDrift false, for an unsupported, unknown, or missing sirState — even carrying a stamped phase id', () => {
+    // Each fixture is given a real, non-null sirPhaseId via overrides
+    // (a plain caseSnapshot for these sirState values would already stamp
+    // null — see casefile.ts's own sirPhaseId()) specifically so the
+    // guard actually gets exercised, not shortcut by phaseDriftFor's own
+    // leading `if (!c.sirPhaseId) return false`.
+    const bihar = caseFor('sir', sirEngine, 'SIR', 'sir-nextmove', { sirState: 'bihar' }, {
+      id: 'c1', sirPhaseId: 'claims_notice',
+    })
+    expect(() => loadCase([bihar], 'c1')).not.toThrow()
+    expect(loadCase([bihar], 'c1')!.phaseDrift).toBe(false)
+
+    const atlantis = caseFor('sir', sirEngine, 'SIR', 'sir-nextmove', { sirState: 'atlantis' }, {
+      id: 'c2', sirPhaseId: 'claims_notice',
+    })
+    expect(() => loadCase([atlantis], 'c2')).not.toThrow()
+    expect(loadCase([atlantis], 'c2')!.phaseDrift).toBe(false)
+
+    const missing = caseFor('sir', sirEngine, 'SIR', 'sir-nextmove', {}, {
+      id: 'c3', sirPhaseId: 'claims_notice',
+    })
+    expect(() => loadCase([missing], 'c3')).not.toThrow()
+    expect(loadCase([missing], 'c3')!.phaseDrift).toBe(false)
   })
 })
 

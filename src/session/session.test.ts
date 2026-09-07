@@ -613,3 +613,47 @@ describe('TOGGLE_PREP_STEP / SET_PREP_DRAFT — PrepareScreen\'s tick/draft stat
     expect(s.savedCases[0].stepsDone).toBe(1) // but the tick DID update
   })
 })
+
+describe('PHASE_DRIFT_RECHECK — the phase-drift interstitial\'s own CTA (Task 13, design note 2)', () => {
+  it('clears phaseDrift and navigates to sir-q1, with the same nav()-style clears every other navigating action applies', () => {
+    const dirty: SessionState = {
+      ...initialSession, screen: 'checkin', history: ['home', 'sir-diagnosis'],
+      phaseDrift: true, trustOpen: true, restartConfirm: true, removeConfirm: 'c1',
+    }
+    const s = r(dirty, { type: 'PHASE_DRIFT_RECHECK' })
+    expect(s.phaseDrift).toBe(false)
+    expect(s.screen).toBe('sir-q1')
+    expect(s.history).toEqual(['home', 'sir-diagnosis', 'checkin'])
+    expect(s.trustOpen).toBe(false)
+    expect(s.restartConfirm).toBe(false)
+    expect(s.removeConfirm).toBeNull()
+  })
+
+  it('touches nothing else — not answers, not savedCases, not any ci* field', () => {
+    const dirty: SessionState = {
+      ...initialSession, screen: 'checkin', phaseDrift: true,
+      answers: { sirState: 'delhi', sirQ1: 'roll_present' }, savedCases: [FIXTURE_CASE],
+      activeCaseId: 'c1', ciReassure: true,
+    }
+    const s = r(dirty, { type: 'PHASE_DRIFT_RECHECK' })
+    expect(s.answers).toEqual(dirty.answers)
+    expect(s.savedCases).toBe(dirty.savedCases)
+    expect(s.activeCaseId).toBe('c1')
+    expect(s.ciReassure).toBe(true)
+  })
+})
+
+describe('BEGIN_WORKING_CHECKIN leaves phaseDrift false for a freshly built/reused working case (Task 13)', () => {
+  it('a brand new working case never carries a stale phaseDrift=true from an earlier interaction', () => {
+    const dirty: SessionState = {
+      ...initialSession, screen: 'sir-diagnosis', phaseDrift: true,
+      answers: { sirState: 'delhi', sirQ1: 'roll_present' },
+    }
+    const s = r(dirty, {
+      type: 'BEGIN_WORKING_CHECKIN', engineKey: 'sir', serviceLabel: 'SIR',
+      returnScreen: 'sir-nextmove', now: 1_760_000_000_000,
+    })
+    expect(s.screen).toBe('checkin')
+    expect(s.phaseDrift).toBe(false)
+  })
+})

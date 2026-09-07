@@ -38,15 +38,18 @@
  *  There is no separate `onNavigate`: `.case-links`' two navigations go
  *  through the same `dispatch` as everything else on this screen.
  *
- *  DESIGN NOTE 1 (the C6 freshBanner / Task 13 phaseDrift seams): both are
- *  left as comment seams only, exactly like `DiagnosisScreen`/
- *  `NextMoveScreen`/`PrepareScreen`'s own `freshBanner` seams — `freshBanner`
- *  is C6's (scope exclusion 2), and the phase-drift MODULE (the prototype's
- *  `S.phaseDrift` branch, 2921-2931) is Task 13's within this same chunk:
- *  this task's own RED list has no bullet for it, and `SessionState.phaseDrift`
- *  has no producer yet (SIR phase-drift detection lands in Task 13). This
- *  file always renders the base `.update-mod`; Task 13 wraps it in the
- *  branch, not this task.
+ *  DESIGN NOTE 1 (the C6 freshBanner seam / Task 13's phaseDrift module,
+ *  now built): `freshBanner` is still just a comment seam (C6's, scope
+ *  exclusion 2) — the first child of the right column, same position it
+ *  takes on Diagnosis/NextMove/Prepare. The phase-drift MODULE (the
+ *  prototype's `S.phaseDrift` branch, 2921-2931) is built below: when
+ *  `phaseDrift` is true, it REPLACES the whole `.update-mod` — same shell
+ *  (`border-color:var(--line-strong)`), its own kicker/title/body and a
+ *  single primary CTA that clears `phaseDrift` and navigates to `'sir-q1'`
+ *  (`PHASE_DRIFT_RECHECK`, session.ts) — so no option row and no remind row
+ *  are reachable while a SIR case's stamped phase has drifted from the live
+ *  config ("before any update" mechanically means "before any options are
+ *  offered").
  *
  *  DESIGN NOTE 2 (the `pickedEcho` line is NOT rendered on the reassure
  *  panel — a literal-transcription call, not the brief's own paraphrase).
@@ -116,6 +119,11 @@ export interface CasefileScreenProps {
   ciReassure: boolean
   ciSnapshot: CiSnapshot | null
   ciConsecutive: boolean
+  /** `SessionState.phaseDrift` (Task 13) — see the file header note. Gates
+   *  the whole `.update-mod` between the phase-drift interstitial and the
+   *  ordinary "Add an update" module; irrelevant to (and never set for) a
+   *  non-SIR case. */
+  phaseDrift: boolean
   /** `SessionState.reminderCopied` — SESSION state, not component-local
    *  `useState` the way `PrepareScreen`'s `copied` is (session/cases.ts's
    *  own `setReminderCopied` doc comment: this screen is reducer-driven,
@@ -143,6 +151,7 @@ export function CasefileScreen({
   ciReassure,
   ciSnapshot,
   ciConsecutive,
+  phaseDrift,
   reminderCopied,
   logOpen,
   removeConfirm,
@@ -376,74 +385,87 @@ export function CasefileScreen({
               {/* DESIGN NOTE 1: freshBanner(c.engineKey) (C6) slots in here,
                   first child of the right column, same seam DiagnosisScreen/
                   NextMoveScreen/PrepareScreen already carry. */}
-              {/* DESIGN NOTE 1: Task 13's phaseDrift module wraps the
-                  .update-mod below in a branch once SIR phase-drift
-                  detection lands — not built here (this task's own scope). */}
-              <div className="update-mod">
-                <div className="um-head">
-                  <span className="dr-icon">{ICONS.pen}</span>
-                  <span>
-                    <span className="um-kicker">{UI.casefile.addUpdateKicker}</span>
-                    <h2 className="um-title">{UI.casefile.whatsHappenedTitle}</h2>
-                  </span>
+              {phaseDrift ? (
+                <div className="update-mod" style={{ borderColor: 'var(--line-strong)' }}>
+                  <div className="um-head">
+                    <span className="dr-icon">{ICONS.pen}</span>
+                    <span>
+                      <span className="um-kicker">{UI.casefile.phaseDriftKicker}</span>
+                      <h2 className="um-title">{UI.casefile.phaseDriftTitle}</h2>
+                    </span>
+                  </div>
+                  <p className="small" style={{ margin: '0 0 14px' }}>{UI.casefile.phaseDriftBody}</p>
+                  <Button block arrow style={{ marginTop: 0 }} onClick={() => dispatch?.({ type: 'PHASE_DRIFT_RECHECK' })}>
+                    {UI.casefile.phaseDriftCta}
+                  </Button>
                 </div>
-                <p className="small" style={{ margin: '0 0 6px' }}>{UI.casefile.addUpdateLede}</p>
-                {panelNode ? <div style={{ marginTop: 14 }}>{panelNode}</div> : null}
-                <div className="answers" style={{ marginTop: panelNode ? '14px' : '8px' }}>
-                  {list.map((o, i) => {
-                    // The picked row is the ONLY filled check while a
-                    // follow-up panel is open; the deliverable option gets
-                    // a butter RING — its old solid fill read as an
-                    // already-selected radio (prototype's own comment).
-                    const picked = ciPending !== null && ciPendingIdx === i
-                    const checkStyle: CSSProperties = picked
-                      ? { background: 'var(--butter)', borderColor: 'var(--ink)' }
-                      : o.k === 'deliverable'
-                        ? { border: '2px solid var(--butter-deep)' }
-                        : {}
-                    return (
-                      <button
-                        className="arow"
-                        key={i}
-                        onClick={() => dispatch?.({ type: 'CI_CHOOSE', index: i, now })}
-                        // Not a radio: each option OPENS A PANEL rather than
-                        // selecting a value from a set (design note 19 of
-                        // the task brief) — aria-current honestly describes
-                        // "this is the row the open panel refers to".
-                        aria-current={picked ? 'true' : undefined}
-                      >
-                        <span className="arow-check" style={checkStyle} />
-                        <span className="arow-body">
-                          <div className="arow-label" style={picked ? { fontWeight: 600 } : undefined}>{o.label}</div>
-                        </span>
-                        <span className="arow-chevron">{ICONS.chevron}</span>
+              ) : (
+                <div className="update-mod">
+                  <div className="um-head">
+                    <span className="dr-icon">{ICONS.pen}</span>
+                    <span>
+                      <span className="um-kicker">{UI.casefile.addUpdateKicker}</span>
+                      <h2 className="um-title">{UI.casefile.whatsHappenedTitle}</h2>
+                    </span>
+                  </div>
+                  <p className="small" style={{ margin: '0 0 6px' }}>{UI.casefile.addUpdateLede}</p>
+                  {panelNode ? <div style={{ marginTop: 14 }}>{panelNode}</div> : null}
+                  <div className="answers" style={{ marginTop: panelNode ? '14px' : '8px' }}>
+                    {list.map((o, i) => {
+                      // The picked row is the ONLY filled check while a
+                      // follow-up panel is open; the deliverable option gets
+                      // a butter RING — its old solid fill read as an
+                      // already-selected radio (prototype's own comment).
+                      const picked = ciPending !== null && ciPendingIdx === i
+                      const checkStyle: CSSProperties = picked
+                        ? { background: 'var(--butter)', borderColor: 'var(--ink)' }
+                        : o.k === 'deliverable'
+                          ? { border: '2px solid var(--butter-deep)' }
+                          : {}
+                      return (
+                        <button
+                          className="arow"
+                          key={i}
+                          onClick={() => dispatch?.({ type: 'CI_CHOOSE', index: i, now })}
+                          // Not a radio: each option OPENS A PANEL rather than
+                          // selecting a value from a set (design note 19 of
+                          // the task brief) — aria-current honestly describes
+                          // "this is the row the open panel refers to".
+                          aria-current={picked ? 'true' : undefined}
+                        >
+                          <span className="arow-check" style={checkStyle} />
+                          <span className="arow-body">
+                            <div className="arow-label" style={picked ? { fontWeight: 600 } : undefined}>{o.label}</div>
+                          </span>
+                          <span className="arow-chevron">{ICONS.chevron}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="remind-row">
+                    <span className="small">{UI.casefile.remindPrompt}</span>
+                    {/* The spec's hard rule: no default, no placeholder date,
+                        no min, no suggested value of any kind (design note 6
+                        of the task brief) — a user-picked date, never an
+                        invented timeline. */}
+                    <input
+                      type="date"
+                      className="remind-input"
+                      aria-label={UI.casefile.checkBackAria}
+                      value={c.remindAt ?? ''}
+                      onChange={e => dispatch?.({ type: 'SET_REMIND', value: e.target.value })}
+                    />
+                  </div>
+                  {c.remindAt ? (
+                    <p className="small" style={{ marginTop: 6 }}>
+                      {UI.casefile.remindLead} <b>{reminderText}</b>
+                      <button className="read-change" style={{ marginLeft: 8 }} onClick={() => copyReminder(reminderText)}>
+                        {reminderCopied ? UI.casefile.copiedLabel : UI.casefile.copyLabel}
                       </button>
-                    )
-                  })}
+                    </p>
+                  ) : null}
                 </div>
-                <div className="remind-row">
-                  <span className="small">{UI.casefile.remindPrompt}</span>
-                  {/* The spec's hard rule: no default, no placeholder date,
-                      no min, no suggested value of any kind (design note 6
-                      of the task brief) — a user-picked date, never an
-                      invented timeline. */}
-                  <input
-                    type="date"
-                    className="remind-input"
-                    aria-label={UI.casefile.checkBackAria}
-                    value={c.remindAt ?? ''}
-                    onChange={e => dispatch?.({ type: 'SET_REMIND', value: e.target.value })}
-                  />
-                </div>
-                {c.remindAt ? (
-                  <p className="small" style={{ marginTop: 6 }}>
-                    {UI.casefile.remindLead} <b>{reminderText}</b>
-                    <button className="read-change" style={{ marginLeft: 8 }} onClick={() => copyReminder(reminderText)}>
-                      {reminderCopied ? UI.casefile.copiedLabel : UI.casefile.copyLabel}
-                    </button>
-                  </p>
-                ) : null}
-              </div>
+              )}
               <div className="case-links">
                 <button
                   className="case-link"
