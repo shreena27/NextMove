@@ -14,9 +14,22 @@
 // `.mockResolvedValue(...)`, since this fake is one long-lived object
 // shared across every test in a file: a non-`Once` override changes the
 // PERSISTENT default and leaks into every later test.
-import { vi } from 'vitest'
+import { vi, type Mock } from 'vitest'
 
 type AuthChangeCallback = (event: string, session: unknown) => void
+
+/** The query-builder object `from(table)` returns. Named and exported so
+ *  Task 7's `caseSync.ts` (the first consumer to actually CALL `from(...)`
+ *  rather than only assert on its own call record) can type the result of
+ *  that call precisely, instead of the untyped `ReturnType<typeof vi.fn>`
+ *  this field used to carry — which TypeScript resolves to a bare,
+ *  non-callable `Mock<Procedure | Constructable>` with no type argument
+ *  supplied, a real gap now that a later task needs to invoke it. */
+export interface SupabaseFromResult {
+  select: ReturnType<typeof vi.fn>
+  upsert: ReturnType<typeof vi.fn>
+  delete: ReturnType<typeof vi.fn>
+}
 
 export interface SupabaseMock {
   auth: {
@@ -28,7 +41,7 @@ export interface SupabaseMock {
     getSession: ReturnType<typeof vi.fn>
     onAuthStateChange: ReturnType<typeof vi.fn>
   }
-  from: ReturnType<typeof vi.fn>
+  from: Mock<(table: string) => SupabaseFromResult>
   /** Fires `event`/`session` at every listener currently subscribed via
    *  `auth.onAuthStateChange` — this is what Task 8's INITIAL_SESSION-vs-
    *  SIGNED_IN test needs: register a listener, then emit each event in
@@ -70,7 +83,12 @@ export function createSupabaseMock(): SupabaseMock {
   const select = vi.fn().mockResolvedValue({ data: [], error: null })
   const upsert = vi.fn().mockResolvedValue({ data: null, error: null })
   const del = vi.fn().mockResolvedValue({ data: null, error: null })
-  const from = vi.fn(() => ({ select, upsert, delete: del }))
+  // `table` is accepted (and ignored) so `from`'s inferred type matches
+  // the exported `SupabaseFromResult`-returning, one-arg `from` shape
+  // real callers use — the same object (select/upsert/del) every call,
+  // matching the real client's own "one query builder per table" shape
+  // closely enough for this fake's purposes.
+  const from = vi.fn((_table: string) => ({ select, upsert, delete: del }))
 
   return {
     auth: {

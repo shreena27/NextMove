@@ -123,3 +123,17 @@ export function loadCases(): Casefile[] {
 export function saveCases(cases: Casefile[]): void {
   store.set(NM_CASES_KEY, cases)
 }
+
+/** C7 Task 7 dependency, pulled forward from Task 8's own file-modification
+ *  scope (docs/superpowers/plans/2026-09-07-c7-auth.md, Task 8 design note
+ *  1: "It gains exactly one function, `clearLocalCases()`
+ *  (`store.del(NM_CASES_KEY)`)"). Task 7's `caseSync.ts` brief names this
+ *  function as an existing export of this file and its single most
+ *  important guarantee — `runSignInMigration` clearing `nm_cases` only
+ *  after a successful server push — cannot be implemented or tested
+ *  without it. Task 7's own report flags this pull-forward explicitly so
+ *  Task 8 does not attempt to re-add it. Fails soft on a throwing/absent
+ *  store, same discipline as `store.del` above. */
+export function clearLocalCases(): void {
+  store.del(NM_CASES_KEY)
+}
