@@ -1,14 +1,43 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { createSupabaseMock, type SupabaseMock } from './test/supabaseMock'
+import type { Casefile } from './domain/casefile'
+
+// Task 8: every test in this file mounts `<App/>`, which now (via the
+// auth-lifecycle effects) calls `getSession()`/`onAuthStateChange()` at
+// mount, whether or not the individual test cares about auth — so the
+// shared fake client is wired up here, at the very top, before `./App`
+// itself is ever imported (mirroring `caseSync.test.ts`'s own established
+// convention for this exact reason: `vi.mock` calls are hoisted above
+// every import regardless of source position, but the module under test
+// must still be imported textually AFTER the mock is registered).
+//
+// `mockClient` is reassigned to a BRAND NEW `createSupabaseMock()` in the
+// file-wide `beforeEach` below rather than reused across tests: this
+// file's own `afterEach` calls `vi.restoreAllMocks()` (needed for the
+// pre-existing `evaluate()` spy test further down), and `vi.fn(impl)`-
+// style mocks — which is what every method on the shared fake is — have
+// no "original" implementation to restore to, so a *reused* instance
+// would be stripped to bare no-op stubs after the FIRST test, crashing
+// every later test's mount (`onAuthStateChange` returning `undefined`
+// instead of `{ data: { subscription } }`, destructured in `auth.ts`
+// outside any try/catch). A fresh instance every test sidesteps this
+// entirely: mocks created inside a `beforeEach` postdate the PREVIOUS
+// test's `restoreAllMocks()` call, so they always start pristine.
+let mockClient: SupabaseMock = createSupabaseMock()
+vi.mock('./session/supabase', () => ({ getClient: () => mockClient }))
+
 import App from './App'
 import { diagnose } from './domain/engine'
 import { passportEngine, voterEngine, sirEngine } from './playbooks/engines'
 import { SIR_STATES } from './playbooks/sirPlaybook'
 import * as evaluateModule from './domain/evaluate'
+import * as caseSyncModule from './session/caseSync'
+import * as caseStoreModule from './session/caseStore'
 import { UI } from './screens/screenCopy'
 import { PREP } from './playbooks/prep'
-import type { ScreenId } from './session/session'
+import type { SessionState } from './session/session'
 
 // Design note 3's no-plan guard (design/nextmove-v1-prototype.html 3749,
 // ported as App.tsx's `RestartToHome`) is reachable only via a direct
@@ -18,32 +47,44 @@ import type { ScreenId } from './session/session'
 // and App.tsx's shape is transcribed exactly per the brief), so the one
 // test below that exercises this seeds the FIRST render's screen id via a
 // scoped module mock instead of adding test-only surface to App itself.
-// `sessionReducer`'s own `RESTART` case is untouched by this: it closes
-// over session.ts's OWN internal `initialSession` binding (same module,
-// no import indirection), never the mocked export read here, so restarting
-// still lands on the real, unmutated clean-slate state — no infinite loop,
-// no stale screen id surviving the restart.
-const seededScreen = vi.hoisted(() => ({ current: undefined as string | undefined }))
+//
+// Task 8 generalises this from a single `screen` seed to an ARBITRARY
+// `Partial<SessionState>` seed (`seededState`, was `seededScreen`): the
+// `TOKEN_REFRESHED`/`USER_UPDATED` tests need to seed `authErr`/`otp`/
+// `authBusy`/`user`/`migration` directly, and no screen built by this
+// point in the branch (`save-case`/`save-otp`/`save-name` are Tasks
+// 11-13's) renders any of those fields, so there is no UI path to reach
+// them yet. Same mechanism, wider payload — `sessionReducer`'s own
+// `RESTART`/`BACK`-to-home arms are STILL untouched by this: they close
+// over session.ts's OWN internal `initialSession` binding (same module, no
+// import indirection), never the mocked export read here, so restarting
+// still lands on the real, unmutated clean-slate state.
+const seededState = vi.hoisted(() => ({ current: undefined as Partial<SessionState> | undefined }))
 vi.mock('./session/session', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./session/session')>()
   return {
     ...actual,
     get initialSession() {
-      return seededScreen.current
-        ? { ...actual.initialSession, screen: seededScreen.current as ScreenId }
-        : actual.initialSession
+      return seededState.current ? { ...actual.initialSession, ...seededState.current } : actual.initialSession
     },
   }
 })
 
+beforeEach(() => {
+  mockClient = createSupabaseMock()
+})
+
 afterEach(() => {
   vi.restoreAllMocks()
-  seededScreen.current = undefined
+  seededState.current = undefined
   // Task 13: App now genuinely reads/writes `nm_cases` via `localStorage`
   // (the lazy useReducer initializer / the persistence useEffect) — jsdom's
   // REAL localStorage is shared across every `it()` in this file, so a case
   // saved by one test would otherwise leak into the next `render(<App/>)`.
   localStorage.clear()
+  // Task 8: a `?code=` test rewrites the address bar; every other test
+  // expects to boot at the bare origin.
+  window.history.replaceState(null, '', '/')
 })
 
 describe('Passport, end to end — the flow is real, not just unit-tested components', () => {
@@ -171,7 +212,7 @@ describe('Prepare (C4), end to end', () => {
   })
 
   it('a direct NAVIGATE to a *-prepare screen with no plan lands back on Home — the design note 3 guard', () => {
-    seededScreen.current = 'sir-prepare'
+    seededState.current = { screen: 'sir-prepare' }
     render(<App />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
     expect(screen.queryByRole('button', { name: /← Back/ })).toBeNull()
@@ -255,7 +296,7 @@ describe('Home v2', () => {
 
 describe('Task 13: the four C5 router cases', () => {
   it("'checkin' with no active case dispatches RESTART and lands on Home, rendering nothing of the casefile screen", () => {
-    seededScreen.current = 'checkin'
+    seededState.current = { screen: 'checkin' }
     render(<App />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
     expect(screen.queryByRole('button', { name: /← Back/ })).toBeNull()
@@ -263,20 +304,20 @@ describe('Task 13: the four C5 router cases', () => {
   })
 
   it("'dead-end' with no active case dispatches RESTART and lands on Home", () => {
-    seededScreen.current = 'dead-end'
+    seededState.current = { screen: 'dead-end' }
     render(<App />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
     expect(screen.queryByText(UI.deadEnd.headline)).toBeNull()
   })
 
   it("'case-closed' renders (case is nullable — no RestartToHome guard needed)", () => {
-    seededScreen.current = 'case-closed'
+    seededState.current = { screen: 'case-closed' }
     render(<App />)
     expect(screen.getByRole('button', { name: UI.caseClosed.backToHome })).toBeInTheDocument()
   })
 
   it("'save-done' renders (pendingSave is nullable — no RestartToHome guard needed)", () => {
-    seededScreen.current = 'save-done'
+    seededState.current = { screen: 'save-done' }
     render(<App />)
     expect(screen.getByRole('heading', { name: UI.saveDone.headline })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: UI.saveDone.goHome })).toBeInTheDocument()
@@ -475,5 +516,496 @@ describe('the settled class: choreography plays on arrival, not on interaction',
     // And moving on clears it again.
     await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
     expect(app).not.toHaveClass('settled')
+  })
+})
+
+// =============================================================================
+// C7 Task 8: the auth lifecycle
+// =============================================================================
+describe('C7 Task 8: the auth lifecycle', () => {
+  const SESSION_USER_ID = '11111111-1111-1111-1111-111111111111'
+
+  function makeSupabaseUser(overrides: Record<string, unknown> = {}) {
+    return {
+      id: SESSION_USER_ID,
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: '2026-01-01T00:00:00.000Z',
+      email: 'ananya@example.com',
+      ...overrides,
+    }
+  }
+
+  function withSession(overrides: Record<string, unknown> = {}) {
+    const user = makeSupabaseUser(overrides)
+    mockClient.auth.getSession.mockResolvedValue({ data: { session: { user } }, error: null })
+    return user
+  }
+
+  function makeCasefile(overrides: Partial<Casefile> = {}): Casefile {
+    return {
+      engineKey: 'passport',
+      serviceLabel: UI.serviceLabel.passport,
+      returnScreen: 'passport-nextmove',
+      answers: { q1: 'adverse', q2: 'informal' },
+      prepChecks: {},
+      savedAt: 1_700_000_000_000,
+      stateLabel: 'Followed up informally, unresolved',
+      rec: 'FOLLOW_UP',
+      whatShort: 'Move to a formal Grievance / CPGRAMS filing',
+      stepsTotal: 5,
+      stepsDone: 1,
+      sirPhaseId: null,
+      id: 'c1700000000000',
+      outcome: 'still_open',
+      lastCheck: null,
+      remindAt: null,
+      log: [{ t: 1_700_000_000_000, kind: 'diagnosed', text: 'Followed up informally, unresolved' }],
+      ...overrides,
+    }
+  }
+
+  function remoteRowFor(c: Casefile, userId = SESSION_USER_ID) {
+    return { user_id: userId, id: c.id, engine_key: c.engineKey, outcome: c.outcome, data: c, updated_at: 'x' }
+  }
+
+  /** Home -> Passport -> a full guardrail/Q1/Q2 flow -> Next Move -> Save.
+   *  The one UI-reachable way, in this branch, to change `state.savedCases`
+   *  after mount — `save-case`/`save-otp`/`save-name` (Tasks 11-13) don't
+   *  exist yet, so this is reused across the push-effect-gate tests below
+   *  as the "the citizen changed something" trigger. */
+  async function saveAPassportCase() {
+    await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+    await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+    await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+    await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+    await userEvent.click(screen.getByRole('button', { name: UI.saveControl.save }))
+  }
+
+  let selectSpy: ReturnType<typeof vi.fn>
+  let upsertSpy: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    const built = mockClient.from('probe')
+    selectSpy = built.select
+    upsertSpy = built.upsert
+    mockClient.from.mockClear()
+    selectSpy.mockResolvedValue({ data: [], error: null })
+    upsertSpy.mockResolvedValue({ data: null, error: null })
+  })
+
+  describe('boot', () => {
+    it('with no session: savedCases renders from localStorage, and no casefiles access happens at all', async () => {
+      const cases = [makeCasefile({ id: 'local-1' })]
+      localStorage.setItem('nm_cases', JSON.stringify(cases))
+
+      render(<App />)
+
+      expect(await screen.findByText('Followed up informally, unresolved')).toBeInTheDocument()
+      expect(document.querySelectorAll('.saved-card')).toHaveLength(1)
+      expect(selectSpy, 'fetchRemoteCases was never called').not.toHaveBeenCalled()
+      expect(mockClient.from, 'no Supabase from() call was made at all').not.toHaveBeenCalled()
+    })
+
+    it('with a session: SIGNED_IN is dispatched, the migration runs, ADOPT_CASES lands merged, and Home renders it', async () => {
+      withSession()
+      const remoteCase = makeCasefile({ id: 'remote-1', stateLabel: 'Remote case', engineKey: 'passport' })
+      selectSpy.mockResolvedValueOnce({ data: [remoteRowFor(remoteCase)], error: null })
+
+      render(<App />)
+
+      expect(await screen.findByText('Remote case')).toBeInTheDocument()
+      expect(document.querySelectorAll('.saved-card')).toHaveLength(1)
+      // The migration's own push (Task 7's own report, finding 1:
+      // pushCases runs unconditionally, even for an empty toUpload).
+      await waitFor(() => expect(upsertSpy).toHaveBeenCalledTimes(1))
+    })
+
+    it('a failing fetchRemoteCases leaves the app rendered, local cases visible, an error surfaced, and migration failed — not done', async () => {
+      const localCases = [makeCasefile({ id: 'local-1', stateLabel: 'Still here locally' })]
+      localStorage.setItem('nm_cases', JSON.stringify(localCases))
+      withSession()
+      selectSpy.mockResolvedValueOnce({ data: null, error: { message: 'timeout' } })
+
+      render(<App />)
+
+      // The migration genuinely ran (proves the mount effect actually
+      // attempted it — not merely "nothing crashed", which an app with no
+      // auth wiring at all would also satisfy).
+      await waitFor(() => expect(selectSpy).toHaveBeenCalled())
+
+      expect(await screen.findByText('Still here locally')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+      // migration:'done' would arm the signed-in push effect against a
+      // server this app never successfully read — proven here by the
+      // absence of any upsert at all (the push-effect-gate tests below pin
+      // the 'failed' gate directly; this is boot's own instance of it).
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(upsertSpy, 'migration must be `failed`, not `done` — `done` would arm the push effect against an unread server').not.toHaveBeenCalled()
+    })
+  })
+
+  describe('the double-fire test, in all three of its real shapes (design note 4)', () => {
+    it('(a) INITIAL_SESSION then SIGNED_IN: runSignInMigration ran exactly once', async () => {
+      const migrationSpy = vi.spyOn(caseSyncModule, 'runSignInMigration')
+      // Boots signed OUT (default) so the mount effect itself contributes
+      // no trigger — isolating this shape to the onAuthChange channel.
+      render(<App />)
+      await waitFor(() => expect(mockClient.auth.getSession).toHaveBeenCalled())
+
+      const user = makeSupabaseUser()
+      mockClient.emitAuthEvent('INITIAL_SESSION', { user })
+      mockClient.emitAuthEvent('SIGNED_IN', { user })
+
+      await waitFor(() => expect(migrationSpy).toHaveBeenCalledTimes(1))
+      // Let any further microtasks settle, then confirm it never ran a
+      // second time — "the second run reads nm_cases after the first
+      // cleared it and produces a merged set missing everything this
+      // device contributed."
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(
+        migrationSpy,
+        'the second run reads nm_cases after the first cleared it and produces a merged set missing everything this device contributed',
+      ).toHaveBeenCalledTimes(1)
+    })
+
+    it('(b) SIGNED_IN emitted twice: the reducer guard still holds it to one', async () => {
+      const migrationSpy = vi.spyOn(caseSyncModule, 'runSignInMigration')
+      render(<App />)
+
+      const user = makeSupabaseUser()
+      mockClient.emitAuthEvent('SIGNED_IN', { user })
+      mockClient.emitAuthEvent('SIGNED_IN', { user })
+
+      await waitFor(() => expect(migrationSpy).toHaveBeenCalledTimes(1))
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(
+        migrationSpy,
+        'the second run reads nm_cases after the first cleared it and produces a merged set missing everything this device contributed',
+      ).toHaveBeenCalledTimes(1)
+    })
+
+    it('(c) the mount effect triggers the migration AND SIGNED_IN fires in the same tick: still exactly one run', async () => {
+      const migrationSpy = vi.spyOn(caseSyncModule, 'runSignInMigration')
+      const user = withSession()
+
+      render(<App />)
+      // Emitted synchronously, right after render — before the mount
+      // effect's own getCurrentUser() promise has had a chance to settle.
+      mockClient.emitAuthEvent('SIGNED_IN', { user })
+
+      await waitFor(() => expect(migrationSpy).toHaveBeenCalledTimes(1))
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(
+        migrationSpy,
+        'the second run reads nm_cases after the first cleared it and produces a merged set missing everything this device contributed',
+      ).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it("the first-sign-in visibility test — C7's headline scenario, asserted at the App level", async () => {
+    const c1 = makeCasefile({ id: 'local-1', engineKey: 'passport', stateLabel: 'Local passport case' })
+    const c2 = makeCasefile({ id: 'local-2', engineKey: 'voter', stateLabel: 'Local voter case' })
+    localStorage.setItem('nm_cases', JSON.stringify([c1, c2]))
+    withSession()
+    selectSpy.mockResolvedValueOnce({ data: [], error: null }) // the account has nothing yet
+
+    render(<App />)
+
+    // Wait for the migration to genuinely SETTLE (nm_cases cleared, proving
+    // this isn't just the pre-migration local render still on screen) —
+    // this is what makes the test fail against a "dispatches `adopted`"
+    // mutant instead of trivially passing off the untouched local set.
+    await waitFor(() => {
+      if (localStorage.getItem('nm_cases') !== null) throw new Error('migration has not cleared nm_cases yet')
+    })
+
+    expect(await screen.findByText('Local passport case')).toBeInTheDocument()
+    expect(
+      screen.getByText('Local voter case'),
+      'ADOPT_CASES receives adopted ∪ toUpload; dispatching `adopted` alone empties Home for exactly the citizen this chunk was built for',
+    ).toBeInTheDocument()
+    expect(document.querySelectorAll('.saved-card')).toHaveLength(2)
+  })
+
+  it('the leak test (D6): adopted server cases never reach nm_cases', async () => {
+    expect.assertions(1)
+    withSession()
+    const remote = [
+      makeCasefile({ id: 'r1', engineKey: 'passport' }),
+      makeCasefile({ id: 'r2', engineKey: 'voter' }),
+      makeCasefile({ id: 'r3', engineKey: 'sir' }),
+    ]
+    selectSpy.mockResolvedValueOnce({ data: remote.map(c => remoteRowFor(c)), error: null })
+
+    render(<App />)
+
+    await waitFor(() => {
+      if (document.querySelectorAll('.saved-card').length !== 3) throw new Error('not adopted yet')
+    })
+
+    const stored = localStorage.getItem('nm_cases')
+    const parsed: unknown[] = stored ? JSON.parse(stored) : []
+    expect(parsed, 'a different account signing in on this browser would migrate these onto itself').toEqual([])
+  })
+
+  it('the failed-migration sign-out test — the second half of the Global Constraint', async () => {
+    expect.assertions(3)
+    const original = [
+      makeCasefile({ id: 'p1', engineKey: 'passport', stateLabel: 'Passport case' }),
+      makeCasefile({ id: 'p2', engineKey: 'voter', stateLabel: 'Voter case' }),
+      makeCasefile({ id: 'p3', engineKey: 'sir', stateLabel: 'SIR case' }),
+    ]
+    localStorage.setItem('nm_cases', JSON.stringify(original))
+    withSession()
+    upsertSpy.mockResolvedValueOnce({ data: null, error: { message: 'network dropped' } })
+    const saveCasesSpy = vi.spyOn(caseStoreModule, 'saveCases')
+
+    render(<App />)
+
+    // The migration reports failure and nm_cases is intact — Task 7's own
+    // guarantee, re-checked here at the App level, before we ever sign out.
+    await waitFor(() => {
+      const stored = localStorage.getItem('nm_cases')
+      if (!stored || JSON.parse(stored).length !== 3) throw new Error('migration has not settled yet')
+    })
+
+    // Sign out. Synchronise on the signed-out persistence effect actually
+    // having fired at least once MORE than it had before (rather than on
+    // `.saved-card`'s count, which reads identically — 3 — both before the
+    // dispatch has been processed at all AND after a CORRECT
+    // implementation settles, so waiting on it alone would pass vacuously
+    // without ever observing the sign-out's own effects apply).
+    const saveCallsBeforeSignOut = saveCasesSpy.mock.calls.length
+    mockClient.emitAuthEvent('SIGNED_OUT', null)
+
+    await waitFor(() => {
+      if (saveCasesSpy.mock.calls.length <= saveCallsBeforeSignOut) throw new Error('sign-out has not been processed yet')
+    })
+
+    const stored = JSON.parse(localStorage.getItem('nm_cases')!)
+    expect(stored).toEqual(original)
+    // `SIGN_OUT` implemented as `savedCases: []` (the pre-fix behaviour)
+    // would have made the signed-out persistence effect call
+    // `saveCases([])`, overwriting the very rows the failure path
+    // protected — assert that never happened, across the whole
+    // interaction, not just after.
+    expect(saveCasesSpy.mock.calls.some(call => call[0].length === 0)).toBe(false)
+    expect(document.querySelectorAll('.saved-card')).toHaveLength(3)
+  })
+
+  it('sign out after a successful migration: savedCases empties, nm_cases empties, and saveCases is never called with the server list', async () => {
+    withSession()
+    const remote = [makeCasefile({ id: 'r1', engineKey: 'passport', stateLabel: 'Remote only case' })]
+    selectSpy.mockResolvedValueOnce({ data: remote.map(c => remoteRowFor(c)), error: null })
+    const saveCasesSpy = vi.spyOn(caseStoreModule, 'saveCases')
+
+    render(<App />)
+
+    expect(await screen.findByText('Remote only case')).toBeInTheDocument()
+
+    mockClient.emitAuthEvent('SIGNED_OUT', null)
+
+    await waitFor(() => {
+      if (document.querySelector('.saved-card') !== null) throw new Error('still rendering the server case')
+    })
+
+    expect(document.querySelectorAll('.saved-card')).toHaveLength(0)
+    const storedAfter = localStorage.getItem('nm_cases')
+    expect(storedAfter === null ? [] : JSON.parse(storedAfter)).toEqual([])
+    // Spied across the WHOLE interaction (from mount), not just after the
+    // sign-out — the payload fix must not resurrect cases that were
+    // legitimately migrated away.
+    for (const call of saveCasesSpy.mock.calls) {
+      expect(call[0].some((c: Casefile) => c.id === 'r1')).toBe(false)
+    }
+  })
+
+  it('sign out then sign in as a second user: the first users cases never appear', async () => {
+    const user1 = withSession({ id: 'user-1', email: 'first@example.com' })
+    const remote1 = [makeCasefile({ id: 'first-case', stateLabel: 'First users case', engineKey: 'passport' })]
+    selectSpy.mockResolvedValueOnce({ data: remote1.map(c => remoteRowFor(c, 'user-1')), error: null })
+
+    render(<App />)
+    expect(await screen.findByText('First users case')).toBeInTheDocument()
+
+    mockClient.emitAuthEvent('SIGNED_OUT', null)
+    await waitFor(() => {
+      if (document.querySelector('.saved-card') !== null) throw new Error('still showing the first user')
+    })
+
+    selectSpy.mockResolvedValueOnce({ data: [], error: null })
+    const user2 = makeSupabaseUser({ id: 'user-2', email: 'second@example.com' })
+    mockClient.auth.getSession.mockResolvedValue({ data: { session: { user: user2 } }, error: null })
+    void user1
+    mockClient.emitAuthEvent('SIGNED_IN', { user: user2 })
+
+    await waitFor(() => expect(selectSpy).toHaveBeenCalledTimes(2))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(screen.queryByText('First users case')).toBeNull()
+    expect(document.querySelectorAll('.saved-card')).toHaveLength(0)
+  })
+
+  it('SIGNED_OUT from another tab: user -> null, Home renders whatever nm_cases holds, and auth.signOut() is never called locally; the event is idempotent', async () => {
+    withSession()
+    selectSpy.mockResolvedValueOnce({ data: [], error: null })
+
+    render(<App />)
+    await waitFor(() => expect(upsertSpy).toHaveBeenCalledTimes(1)) // migration has settled to 'done'
+
+    // Another tab's own sign-out already wrote its post-sign-out local set.
+    const anotherTabsLocalSet = [makeCasefile({ id: 'from-other-tab', stateLabel: 'From another tab' })]
+    localStorage.setItem('nm_cases', JSON.stringify(anotherTabsLocalSet))
+
+    mockClient.emitAuthEvent('SIGNED_OUT', null)
+
+    expect(await screen.findByText('From another tab')).toBeInTheDocument()
+    expect(mockClient.auth.signOut).not.toHaveBeenCalled()
+
+    // Arriving a second time (our own sign-out's own SIGNED_OUT echo, or
+    // another tab's own repeat) must be a no-op, not an error.
+    mockClient.emitAuthEvent('SIGNED_OUT', null)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(screen.getByText('From another tab')).toBeInTheDocument()
+    expect(mockClient.auth.signOut).not.toHaveBeenCalled()
+  })
+
+  it("TOKEN_REFRESHED changes nothing: no migration re-run, no SIGNED_IN-shaped dispatch", async () => {
+    // `authErr`/`otp`/`authBusy` render on no screen built by this point
+    // in the branch (`save-case`/`save-otp`/`save-name` are Tasks 11-13's)
+    // — there is genuinely no DOM to assert those three fields against
+    // yet. What IS observable at the App level, and is the load-bearing
+    // half of the guarantee, is that TOKEN_REFRESHED never re-dispatches
+    // SIGNED_IN or starts a migration; App.tsx's own `TOKEN_REFRESHED` case
+    // is a bare `break` (dispatches nothing at all), which is what makes
+    // the field-level claim true by construction — Task 4's session.test.ts
+    // separately pins that SIGNED_IN is the only action touching those
+    // three fields together.
+    seededState.current = { authErr: 'That doesn\'t look like a full mobile number yet.', otp: '123456', authBusy: true }
+    const migrationSpy = vi.spyOn(caseSyncModule, 'runSignInMigration')
+
+    render(<App />)
+    mockClient.emitAuthEvent('TOKEN_REFRESHED', { user: makeSupabaseUser() })
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(migrationSpy).not.toHaveBeenCalled()
+
+    // Positive control: the subscription channel is genuinely live (this
+    // is what makes the assertion above meaningful rather than trivially
+    // true against an app with no `onAuthChange` wiring at all) — a REAL
+    // `SIGNED_IN` on the SAME channel, right after, does start a migration.
+    mockClient.emitAuthEvent('SIGNED_IN', { user: makeSupabaseUser() })
+    await waitFor(() => expect(migrationSpy).toHaveBeenCalledTimes(1))
+  })
+
+  it('USER_UPDATED refreshes the name via SET_USER_NAME, not SIGNED_IN: no migration re-run', async () => {
+    // Same observability constraint as the TOKEN_REFRESHED test above:
+    // `user.name` renders on no screen built by this point in the branch
+    // (`save-case`/`save-otp`/`save-name` are Tasks 11-13's). The checkable
+    // half here is that USER_UPDATED never dispatches SIGNED_IN (which
+    // would also start a migration) the way a wrongly-handled event would.
+    const migrationSpy = vi.spyOn(caseSyncModule, 'runSignInMigration')
+
+    render(<App />) // boots signed out — the mount effect contributes nothing
+    mockClient.emitAuthEvent('USER_UPDATED', {
+      user: makeSupabaseUser({ user_metadata: { display_name: 'Ananya' } }),
+    })
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(migrationSpy).not.toHaveBeenCalled()
+
+    // Positive control: the subscription channel is genuinely live — a
+    // REAL `SIGNED_IN` on the SAME channel, right after, does start a
+    // migration (this is what makes the assertion above meaningful rather
+    // than trivially true against an app with no `onAuthChange` wiring).
+    mockClient.emitAuthEvent('SIGNED_IN', { user: makeSupabaseUser() })
+    await waitFor(() => expect(migrationSpy).toHaveBeenCalledTimes(1))
+  })
+
+  describe("the push effect's gate (design note 7)", () => {
+    it("during 'running', a savedCases change triggers no upsert", async () => {
+      withSession()
+      // select() never resolves during this test — migration stays
+      // 'running' for its whole duration.
+      let releaseSelect: (v: unknown) => void = () => {}
+      selectSpy.mockImplementationOnce(() => new Promise(resolve => { releaseSelect = resolve }))
+
+      render(<App />)
+      await waitFor(() => expect(selectSpy).toHaveBeenCalled())
+
+      await saveAPassportCase()
+
+      expect(
+        upsertSpy,
+        "this would race the migration's own upsert with the pre-migration local set",
+      ).not.toHaveBeenCalled()
+
+      // Release the hung promise so nothing leaks a pending update into a
+      // later test.
+      releaseSelect({ data: [], error: null })
+      await waitFor(() => expect(upsertSpy).toHaveBeenCalled())
+    })
+
+    it("during 'failed', a savedCases change triggers no upsert", async () => {
+      withSession()
+      selectSpy.mockResolvedValueOnce({ data: null, error: { message: 'timeout' } })
+
+      render(<App />)
+      await waitFor(() => expect(selectSpy).toHaveBeenCalled())
+      await new Promise(resolve => setTimeout(resolve, 0)) // let migration settle to 'failed'
+
+      await saveAPassportCase()
+
+      expect(upsertSpy).not.toHaveBeenCalled()
+    })
+
+    it("only with 'done' does a savedCases change push", async () => {
+      withSession()
+      selectSpy.mockResolvedValueOnce({ data: [], error: null })
+
+      render(<App />)
+      await waitFor(() => expect(upsertSpy).toHaveBeenCalledTimes(1)) // the migration's own (empty) push
+      upsertSpy.mockClear() // isolate the signed-in push effect's own call
+
+      await saveAPassportCase()
+
+      await waitFor(() => expect(upsertSpy).toHaveBeenCalledTimes(1))
+      const pushedRows = upsertSpy.mock.calls[0][0]
+      expect(pushedRows).toHaveLength(1)
+    })
+  })
+
+  describe('?code= stripping (design note 6)', () => {
+    it('a successful exchange: ?code= is removed by history.replaceState and the pathname is preserved', async () => {
+      window.history.pushState({}, '', '/?code=abc123')
+      withSession()
+      selectSpy.mockResolvedValueOnce({ data: [], error: null })
+
+      render(<App />)
+
+      await waitFor(() => {
+        if (window.location.search.includes('code=')) throw new Error('code param not stripped yet')
+      })
+      expect(window.location.pathname).toBe('/')
+      expect(window.location.search).toBe('')
+    })
+
+    it('a failed exchange: ?code= is STILL removed — gating the strip on success leaves a dead code to retry and fail again on every refresh', async () => {
+      window.history.pushState({}, '', '/?code=abc123')
+      mockClient.auth.getSession.mockRejectedValueOnce(new Error('exchange failed'))
+
+      render(<App />)
+
+      await waitFor(() => {
+        if (window.location.search.includes('code=')) throw new Error('code param not stripped yet')
+      })
+      expect(
+        window.location.pathname,
+        'a dead ?code= that survives a failed exchange retries and fails again on every refresh, and the citizen cannot clear it',
+      ).toBe('/')
+      expect(window.location.search).toBe('')
+    })
   })
 })

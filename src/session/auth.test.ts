@@ -313,7 +313,7 @@ describe('a rejected promise (not just a resolved { error }) is also caught — 
 describe('onAuthChange', () => {
   it('receives the normalised AppUser for each emitted event, and stops after unsubscribing', () => {
     const seen: (AppUser | null)[] = []
-    const unsubscribe = onAuthChange(u => seen.push(u))
+    const unsubscribe = onAuthChange((_event, u) => seen.push(u))
 
     mockClient.emitAuthEvent('SIGNED_IN', { user: makeUser({ email: 'ananya@gmail.com' }) })
     expect(seen).toEqual([{ method: 'email', id: 'ananya@gmail.com', name: null }])
@@ -323,5 +323,21 @@ describe('onAuthChange', () => {
     // unchanged — the listener was removed, so the SIGNED_OUT emit above
     // must not have reached it.
     expect(seen).toEqual([{ method: 'email', id: 'ananya@gmail.com', name: null }])
+  })
+
+  // Task 8 design note 5: the raw GoTrue event name must reach the
+  // callback verbatim — App.tsx dispatches differently per named event,
+  // and several distinct events (SIGNED_IN vs. INITIAL_SESSION vs.
+  // TOKEN_REFRESHED) can carry the identical session, so `user` alone
+  // cannot distinguish them.
+  it('passes the raw event name through verbatim, for every named event Task 8 must distinguish', () => {
+    const seenEvents: string[] = []
+    onAuthChange(event => seenEvents.push(event))
+
+    for (const event of ['SIGNED_IN', 'INITIAL_SESSION', 'SIGNED_OUT', 'USER_UPDATED', 'TOKEN_REFRESHED']) {
+      mockClient.emitAuthEvent(event, { user: makeUser() })
+    }
+
+    expect(seenEvents).toEqual(['SIGNED_IN', 'INITIAL_SESSION', 'SIGNED_OUT', 'USER_UPDATED', 'TOKEN_REFRESHED'])
   })
 })

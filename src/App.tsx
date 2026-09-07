@@ -39,6 +39,9 @@ import { useReducer, useRef, useEffect, type ReactNode } from 'react'
 import { sessionReducer, initialSession, type ScreenId, type SessionAction } from './session/session'
 import { activeCase, newCaseId } from './session/cases'
 import { loadCases, saveCases } from './session/caseStore'
+import { getCurrentUser, onAuthChange } from './session/auth'
+import { runSignInMigration, pushCases } from './session/caseSync'
+import type { Casefile } from './domain/casefile'
 import { hasAnswers } from './screens/screenProps'
 import { Topbar } from './ui/Topbar'
 import { Banner } from './ui/Banner'
@@ -91,9 +94,6 @@ export default function App() {
   // initializer can only ever hand `sessionReducer` a real array, never
   // throw.
   const [state, dispatch] = useReducer(sessionReducer, initialSession, s => ({ ...s, savedCases: loadCases() }))
-  useEffect(() => {
-    saveCases(state.savedCases)
-  }, [state.savedCases])
 
   // D6: the ONE clock this render pass hands to every D6-typed function and
   // prop below — CaseCard's own header note explains why a shared value
@@ -106,8 +106,223 @@ export default function App() {
   // impure) — this is the one deliberate exception: App.tsx is the actual
   // root of the tree, so SOMETHING has to call it for real, exactly once
   // per render pass, for every one of those props/arguments to share.
+  // Declared here, before the auth-lifecycle effects below, so the
+  // migration runner (effect 4) can reuse THIS render's clock for
+  // `runSignInMigration(now)` rather than a separate `Date.now()` call.
   // oxlint-disable-next-line react/purity -- deliberate, single call site; see comment above
   const now = Date.now()
+
+  // =========================================================================
+  // C7 Task 8 — the auth lifecycle. Five effects:
+  //   1. Signed-OUT persistence (C5's original effect, now gated).
+  //   2. The mount effect — resolves any session supabase-js already
+  //      restored, and strips a `?code=` param off the address bar.
+  //   3. The `onAuthChange` subscription — every later auth event, named
+  //      explicitly (design note 5).
+  //   4. The migration runner — the only place that ever calls
+  //      `runSignInMigration`.
+  //   5. The signed-IN push effect.
+  // See each effect's own comment for its specific job; the migration
+  // runner's comment explains the double-fire guard's actual mechanism.
+  // =========================================================================
+
+  // 1. Signed-out persistence (C5's effect; design note 7/9's gate).
+  // Without the `user === null` gate, an account's cases would get written
+  // into `nm_cases`, and the next different account to sign in on this
+  // browser would migrate them onto itself — the D6 cross-account leak.
+  // No further exception is needed for a failed migration: `SIGN_OUT`'s
+  // `localCases` payload (design note 9, effect 3's `SIGNED_OUT` case
+  // below) guarantees `state.savedCases` is already exactly what
+  // `nm_cases` should hold by the time this effect ever sees it — `[]`
+  // after a successful migration, the preserved set after a failed one.
+  // Neither can be lost by writing it back over itself.
+  useEffect(() => {
+    if (state.user !== null) return
+    saveCases(state.savedCases)
+  }, [state.savedCases, state.user])
+
+  // `ADOPT_CASES`'s own payload, captured at its one dispatch site (effect
+  // 4 below) — design note 7's push-effect optimisation. The signed-in
+  // push effect (5) skips a push when `state.savedCases` is
+  // REFERENCE-identical to what the migration just adopted: the rows are
+  // byte-identical to what the server already has (upsert-keyed on
+  // `(user_id, id)`), so pushing them straight back is a wasted round
+  // trip, never a correctness issue. This ref is what lets that effect
+  // tell "just adopted" apart from "the citizen changed something."
+  const justAdoptedRef = useRef<Casefile[] | null>(null)
+
+  // 2. The mount effect: resolves whatever session supabase-js already
+  // restored (a real page load, or the PKCE code exchange it just
+  // performed as part of `getCurrentUser()`'s own `getSession()` call),
+  // dispatches `SIGNED_IN` + `MIGRATION_STARTED` when one exists (design
+  // note 3.2), and — unconditionally, once that resolution has settled,
+  // whichever way — strips a `?code=` param from the address bar (design
+  // note 6). Gating the strip on success gets the failure case exactly
+  // backwards: a FAILED exchange is precisely the case that otherwise
+  // leaves a dead `?code=` to retry and fail again on every refresh, with
+  // no way for the citizen to clear it but editing the address bar
+  // themselves. No other file in `src/` reads `window.location` (design
+  // note 6), so this is the app's only interaction with the URL.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const result = await getCurrentUser()
+      if (!cancelled && result.ok && result.user) {
+        dispatch({ type: 'SIGNED_IN', user: result.user })
+        dispatch({ type: 'MIGRATION_STARTED' })
+      }
+      if (window.location.search.includes('code=')) {
+        history.replaceState(null, '', window.location.pathname)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  // 3. Every later auth event, named explicitly (design note 5) — they all
+  // arrive on the same channel, and an unhandled event falling through an
+  // unremarked `default` is a decision made by accident.
+  useEffect(() => {
+    const unsubscribe = onAuthChange((event, user) => {
+      switch (event) {
+        case 'SIGNED_IN':
+          // The main path. Also fires for a sign-in the mount effect (2)
+          // already handled — see effect 4's comment for why that never
+          // runs the migration twice.
+          if (user) {
+            dispatch({ type: 'SIGNED_IN', user })
+            dispatch({ type: 'MIGRATION_STARTED' })
+          }
+          break
+        case 'INITIAL_SESSION':
+          // Ignored: the mount effect (2) already covers the
+          // boot-with-a-session case, and this event's session is the
+          // same one. Removes one of the three triggers at the source —
+          // belt to effect 4's braces, which does not rest on this filter
+          // alone.
+          break
+        case 'SIGNED_OUT':
+          // No `auth.signOut()` call — the sign-out already happened,
+          // here or in another tab; this is what makes a sign-out in a
+          // second tab coherent in this one. It also fires for OUR OWN
+          // sign-out, so this dispatch runs twice; `SIGN_OUT` on an
+          // already-signed-out state resets to the same value, so it is
+          // idempotent by construction. `loadCases()` (never `[]`, never
+          // `state.savedCases`) is design note 9's fix: post-sign-out
+          // `savedCases` becomes exactly what `nm_cases` already holds,
+          // which is what preserves a failed migration's still-local
+          // cases instead of a hardcoded `[]` destroying them.
+          dispatch({ type: 'SIGN_OUT', localCases: loadCases() })
+          break
+        case 'USER_UPDATED':
+          // Not `SIGNED_IN` (Task 4's action list) — `SIGNED_IN` also
+          // clears `authErr`/`otp`/`authBusy`, which would silently wipe
+          // unrelated state when there is no auth flow in progress.
+          // Fired by `setDisplayName`'s `updateUser` call (Task 13); lands
+          // on the same arm as that screen's own optimistic dispatch, with
+          // the same value, so the second is a no-op.
+          dispatch({ type: 'SET_USER_NAME', name: user?.name ?? null })
+          break
+        case 'TOKEN_REFRESHED':
+          // Explicitly ignored: the access token rotated, the user
+          // identity did not. Re-dispatching SIGNED_IN would clear
+          // authErr/otp/authBusy mid-flow; re-running the migration would
+          // be worse.
+          break
+        case 'PASSWORD_RECOVERY':
+        case 'MFA_CHALLENGE_VERIFIED':
+          // Unreachable and ignored: this app ships no password auth and
+          // no MFA (scope exclusion 4). Named so a reader does not have to
+          // re-derive that they are impossible.
+          break
+      }
+    })
+    return unsubscribe
+  }, [])
+
+  // 4. The migration runner — design note 4's single entry point. The
+  // mount effect (2) and the `onAuthChange` subscription's `SIGNED_IN`
+  // case (3) are the ONLY two places that ever dispatch
+  // `MIGRATION_STARTED`, and NEITHER of them calls `runSignInMigration`
+  // directly; this effect is the only place that does.
+  //
+  // The guard is Task 4's reducer arm (`MIGRATION_STARTED` no-ops once
+  // `migration` is already `'running'`/`'done'`), and this effect is what
+  // makes that guard airtight rather than merely advisory: it is keyed on
+  // `[state.migration]`, a PRIMITIVE STRING compared by VALUE, so React
+  // only re-runs it when that value actually changes. However many
+  // `MIGRATION_STARTED` actions land in the same batch — one from the
+  // mount effect, one from `onAuthChange`'s `SIGNED_IN`, even a same-tick
+  // double-fire of both — the reducer applies them in order and the value
+  // transitions from `'idle'`/`'failed'` to `'running'` AT MOST ONCE; this
+  // effect therefore fires at most once per genuine transition, no matter
+  // how many call sites raced to trigger it.
+  //
+  // This is deliberately NOT "a single async function that dispatches
+  // MIGRATION_STARTED and then reads `state.migration` back off a local
+  // variable before proceeding": a plain closure read like that can be
+  // stale exactly where it matters most — the `onAuthChange` subscription
+  // (3) is set up ONCE, in a mount-only effect, so any `state` it closes
+  // over is pinned to that first render and never sees a later
+  // MIGRATION_STARTED transition without a ref. Keying a dedicated effect
+  // on the reducer's OWN field sidesteps that: React always diffs against
+  // the actually-committed value, not a possibly-stale closure, which is
+  // the concrete sense in which "reducer state is shared, inspectable and
+  // assertable" is stronger than a ref here, not just a style preference.
+  //
+  // The concrete harm this prevents: the upsert's idempotence (Task 7
+  // design note 8) means the SERVER'S end state survives a double run, but
+  // a second run would read `nm_cases` AFTER the first cleared it, see an
+  // empty local set, and produce a `merged` that omits everything this
+  // device contributed — which then replaces `savedCases`. The citizen's
+  // cases are on the server and gone from the screen.
+  useEffect(() => {
+    if (state.migration !== 'running') return
+    let cancelled = false
+    void (async () => {
+      const result = await runSignInMigration(now)
+      if (cancelled) return
+      if (result.ok) {
+        justAdoptedRef.current = result.cases
+        dispatch({ type: 'ADOPT_CASES', cases: result.cases })
+      } else {
+        dispatch({ type: 'MIGRATION_FAILED', error: result.error })
+      }
+    })()
+    return () => { cancelled = true }
+    // `now` is intentionally omitted from the dependency array: it is this
+    // RENDER's clock (D6), read once when the effect actually fires (the
+    // render where `state.migration` transitioned to `'running'`), not a
+    // value this effect should re-run for on every later render — adding it
+    // would re-fire this effect on every render once migration is
+    // `'running'`, since `now` changes every render by construction.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- deliberate: `now` is a snapshot, not a re-run trigger; see comment above
+  }, [state.migration])
+
+  // 5. The signed-in push effect — pushes `savedCases` to the server on
+  // change, and must NEVER call `saveCases` (that would resurrect the leak
+  // the split exists to prevent — design note 9's first guarantee: no case
+  // fetched from the account may reach `nm_cases` on the way out).
+  //
+  // Gated on `user !== null && migration === 'done'`: during `'running'`
+  // it would race the migration's own upsert with a `savedCases` that is
+  // still the PRE-migration local set (`SIGNED_IN` lands before
+  // `ADOPT_CASES`); during `'failed'` it would push to a server that just
+  // rejected the write, surfacing the error a second time from a path the
+  // citizen did not trigger. The `justAdoptedRef` check skips the one
+  // harmless-but-wasted push that would otherwise fire immediately after
+  // `ADOPT_CASES` lands the just-adopted set right back into this effect's
+  // own dependency.
+  useEffect(() => {
+    if (state.user === null || state.migration !== 'done') return
+    if (state.savedCases === justAdoptedRef.current) return
+    let cancelled = false
+    void (async () => {
+      const result = await pushCases(state.savedCases)
+      if (cancelled) return
+      if (!result.ok) dispatch({ type: 'MIGRATION_FAILED', error: result.error })
+    })()
+    return () => { cancelled = true }
+  }, [state.savedCases, state.user, state.migration])
 
   const lastScreen = useRef<ScreenId | null>(null)
   // Deliberate ref-during-render read (see header comment): this is what

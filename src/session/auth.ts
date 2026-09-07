@@ -174,10 +174,21 @@ export async function getCurrentUser(): Promise<AuthUserResult> {
  *  `onAuthStateChange` itself never reports an `error` (see supabase-js's
  *  own return type — `{ data: { subscription } }`, no `error` field), so
  *  this is the one function on this surface that is not a discriminated
- *  result. */
-export function onAuthChange(cb: (user: AppUser | null) => void): () => void {
-  const { data } = getClient().auth.onAuthStateChange((_event, session) => {
-    cb(toAppUser(session?.user ?? null))
+ *  result.
+ *
+ *  `event` is passed through VERBATIM (GoTrue's own event name — e.g.
+ *  `'SIGNED_IN'`, `'INITIAL_SESSION'`, `'SIGNED_OUT'`, `'USER_UPDATED'`,
+ *  `'TOKEN_REFRESHED'`) rather than swallowed. Task 8's App.tsx dispatches
+ *  differently per named event (design note 5) — `SIGNED_IN` starts the
+ *  sign-in migration, `INITIAL_SESSION` is deliberately ignored (the mount
+ *  effect already covers that case), `TOKEN_REFRESHED` must not re-run
+ *  either — and none of that is distinguishable from `user` alone, since
+ *  several of these events carry the identical session. (Flagged forward by
+ *  Task 3's own review as work Task 8 would need; done here rather than
+ *  pre-empted there, per that review's own note.) */
+export function onAuthChange(cb: (event: string, user: AppUser | null) => void): () => void {
+  const { data } = getClient().auth.onAuthStateChange((event, session) => {
+    cb(event, toAppUser(session?.user ?? null))
   })
   return () => { data.subscription.unsubscribe() }
 }

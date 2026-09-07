@@ -11,12 +11,18 @@ import { LOG_COPY } from '../domain/casefile'
 const NM_CASE_KEY = 'nm_case'
 const NM_CASES_KEY = 'nm_cases'
 
-/** Browser storage: casefiles live only in this device's browser storage
- *  (device-local, per deviation D2 below — no server-side account exists
- *  yet). Every access is try/catch-guarded: storage can be absent, full, or
- *  throwing outright (Safari private browsing mode), and this app must
- *  never crash because of it — it fails soft instead, exactly as the
- *  prototype's own `store` object does. */
+/** Browser storage: casefiles live in this device's browser storage — the
+ *  device-local half of the account system (deviation D2 below). C7 adds a
+ *  real server-side account (`session/caseSync.ts`'s `fetchRemoteCases`/
+ *  `pushCases`/`runSignInMigration`), but this module deliberately stays
+ *  account-agnostic: `loadCases()`/`saveCases()` behave identically whether
+ *  or not anyone is signed in, and the decision of WHEN to read/write this
+ *  store versus the server — the account gate — lives in `App.tsx`, where
+ *  the auth state actually is (Task 8), not here. Every access is
+ *  try/catch-guarded: storage can be absent, full, or throwing outright
+ *  (Safari private browsing mode), and this app must never crash because of
+ *  it — it fails soft instead, exactly as the prototype's own `store`
+ *  object does. */
 const store = {
   get(key: string): unknown {
     try {
@@ -108,10 +114,15 @@ function migrateLegacyCase(): void {
  *  malformed/hand-edited storage entry) yields `[]`, never a crash
  *  downstream.
  *
- *  C7: account-scoping goes here — `nm_cases` becomes account-scoped
- *  server-side and this device-local set migrates on first sign-in
- *  (roadmap issue #8, C7). Deviation D2: this takes no user argument and
- *  never reads `nm_user` — C5 is explicitly device-local. */
+ *  C7 (Task 8): the account-scoping seam this comment used to name as
+ *  future work is now filled — `nm_cases` migrates onto the account on
+ *  first sign-in via `session/caseSync.ts`'s `runSignInMigration`, called
+ *  from `App.tsx`'s auth lifecycle, and `clearLocalCases()` (below) is how
+ *  that migration empties this store once the server push it depends on has
+ *  succeeded. This function itself did not change: it still takes no user
+ *  argument and never reads `nm_user` (deviation D2) — C5's device-local
+ *  read/write behaviour is exactly what App.tsx now builds the account gate
+ *  on top of, not something this function does itself. */
 export function loadCases(): Casefile[] {
   migrateLegacyCase()
   const raw = store.get(NM_CASES_KEY)
