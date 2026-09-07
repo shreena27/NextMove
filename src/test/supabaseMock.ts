@@ -34,6 +34,16 @@ export interface SupabaseMock {
    *  SIGNED_IN test needs: register a listener, then emit each event in
    *  turn and assert on what the listener saw. */
   emitAuthEvent: (event: string, session: unknown) => void
+  /** Removes every listener registered via `auth.onAuthStateChange`,
+   *  regardless of whether each one's own `unsubscribe()` was ever called.
+   *  The listener set lives in this closure, which `vi.clearAllMocks()` /
+   *  `vi.resetAllMocks()` do NOT touch (it's plain state, not a mock's own
+   *  call/implementation record) — so a test that registers a listener and
+   *  forgets to unsubscribe it would otherwise leak that listener into
+   *  every later test sharing this same `mockClient` instance within a
+   *  file. Call this from a `beforeEach`/`afterEach` in any test file that
+   *  exercises `onAuthChange` more than once, as cheap insurance. */
+  clearAuthListeners: () => void
 }
 
 export function createSupabaseMock(): SupabaseMock {
@@ -77,6 +87,9 @@ export function createSupabaseMock(): SupabaseMock {
     from,
     emitAuthEvent: (event, session) => {
       for (const cb of listeners) cb(event, session)
+    },
+    clearAuthListeners: () => {
+      listeners.clear()
     },
   }
 }

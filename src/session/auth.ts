@@ -77,30 +77,58 @@ export function firstName(u: AppUser): string {
 export type AuthResult = { ok: true } | { ok: false; error: string }
 export type AuthUserResult = { ok: true; user: AppUser | null } | { ok: false; error: string }
 
+/** Every exported network function below runs through this: it converts
+ *  BOTH failure channels a Supabase call can produce into the same
+ *  `{ ok: false, error }` shape — a resolved `{ error }` (handled inline
+ *  in each function already) AND a genuinely thrown/rejected promise
+ *  (handled here). The second case is real, not hypothetical:
+ *  `@supabase/auth-js`'s own internals re-throw anything that isn't
+ *  itself an `AuthError` (a blocked/throwing storage adapter, a
+ *  lock-acquisition failure, ...), so without this wrapper such a
+ *  rejection propagates straight out of e.g. `startPhoneOtp` and becomes
+ *  an unhandled rejection the moment it crosses a React event handler —
+ *  exactly what the discriminated-result design exists to prevent. One
+ *  shared wrapper here instead of nine near-identical try/catches. */
+async function guardResult<R extends AuthResult | AuthUserResult>(fn: () => Promise<R>): Promise<R> {
+  try {
+    return await fn()
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) } as R
+  }
+}
+
 export async function startPhoneOtp(e164: string): Promise<AuthResult> {
-  const { error } = await getClient().auth.signInWithOtp({ phone: e164 })
-  if (error) return { ok: false, error: error.message }
-  return { ok: true }
+  return guardResult(async () => {
+    const { error } = await getClient().auth.signInWithOtp({ phone: e164 })
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  })
 }
 
 /** No `emailRedirectTo` — passing one makes GoTrue send the link template
  *  instead of the code. */
 export async function startEmailOtp(email: string): Promise<AuthResult> {
-  const { error } = await getClient().auth.signInWithOtp({ email })
-  if (error) return { ok: false, error: error.message }
-  return { ok: true }
+  return guardResult(async () => {
+    const { error } = await getClient().auth.signInWithOtp({ email })
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  })
 }
 
 export async function verifyPhoneOtp(e164: string, token: string): Promise<AuthUserResult> {
-  const { data, error } = await getClient().auth.verifyOtp({ phone: e164, token, type: 'sms' })
-  if (error) return { ok: false, error: error.message }
-  return { ok: true, user: toAppUser(data.user) }
+  return guardResult(async () => {
+    const { data, error } = await getClient().auth.verifyOtp({ phone: e164, token, type: 'sms' })
+    if (error) return { ok: false, error: error.message }
+    return { ok: true, user: toAppUser(data.user) }
+  })
 }
 
 export async function verifyEmailOtp(email: string, token: string): Promise<AuthUserResult> {
-  const { data, error } = await getClient().auth.verifyOtp({ email, token, type: 'email' })
-  if (error) return { ok: false, error: error.message }
-  return { ok: true, user: toAppUser(data.user) }
+  return guardResult(async () => {
+    const { data, error } = await getClient().auth.verifyOtp({ email, token, type: 'email' })
+    if (error) return { ok: false, error: error.message }
+    return { ok: true, user: toAppUser(data.user) }
+  })
 }
 
 /** `redirectTo` is `window.location.origin` at the call site: this is a
@@ -108,30 +136,38 @@ export async function verifyEmailOtp(email: string, token: string): Promise<Auth
  *  `window.location`, so the app is served at one origin and returns to
  *  it — no new `/auth/callback` route is invented here. */
 export async function signInWithGoogle(redirectTo: string): Promise<AuthResult> {
-  const { error } = await getClient().auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo },
+  return guardResult(async () => {
+    const { error } = await getClient().auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo },
+    })
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
   })
-  if (error) return { ok: false, error: error.message }
-  return { ok: true }
 }
 
 export async function setDisplayName(name: string): Promise<AuthResult> {
-  const { error } = await getClient().auth.updateUser({ data: { display_name: name } })
-  if (error) return { ok: false, error: error.message }
-  return { ok: true }
+  return guardResult(async () => {
+    const { error } = await getClient().auth.updateUser({ data: { display_name: name } })
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  })
 }
 
 export async function signOut(): Promise<AuthResult> {
-  const { error } = await getClient().auth.signOut()
-  if (error) return { ok: false, error: error.message }
-  return { ok: true }
+  return guardResult(async () => {
+    const { error } = await getClient().auth.signOut()
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  })
 }
 
 export async function getCurrentUser(): Promise<AuthUserResult> {
-  const { data, error } = await getClient().auth.getSession()
-  if (error) return { ok: false, error: error.message }
-  return { ok: true, user: toAppUser(data.session?.user ?? null) }
+  return guardResult(async () => {
+    const { data, error } = await getClient().auth.getSession()
+    if (error) return { ok: false, error: error.message }
+    return { ok: true, user: toAppUser(data.session?.user ?? null) }
+  })
 }
 
 /** Subscribes to auth-state changes; returns an unsubscribe function.

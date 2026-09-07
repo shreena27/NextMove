@@ -25,9 +25,25 @@ vi.mock('@supabase/supabase-js', () => ({
 const mockClient = createSupabaseMock()
 mockCreateClient.mockReturnValue(mockClient)
 
+// Captured HERE, at true module-evaluation ("import") time — immediately
+// after the mocked `createClient` is wired up, before any test or
+// `beforeEach` has run. This is the actual proof that importing
+// `./supabase` alone never constructs a client: `mockCreateClient.mock`
+// state at this exact point is the state left by import-time code only.
+// (Reading `mockCreateClient.mock.calls.length` from INSIDE the first
+// test's body instead — as an earlier version of this file did — is
+// inert: `beforeEach`'s `vi.clearAllMocks()` runs first and would
+// silently wipe any spurious import-time call before the assertion ever
+// saw it, so that version could never fail no matter what `supabase.ts`
+// did. Fix verified by temporarily reintroducing a module-scope
+// `createClient()` call in supabase.ts: the version below now genuinely
+// fails; the old `.not.toHaveBeenCalled()`-in-test-body version did not.)
+const callsAtImportTime = mockCreateClient.mock.calls.length
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockCreateClient.mockReturnValue(mockClient)
+  mockClient.clearAuthListeners()
 })
 
 function makeUser(overrides: Partial<SupabaseUser> = {}): SupabaseUser {
@@ -52,10 +68,12 @@ function makeUser(overrides: Partial<SupabaseUser> = {}): SupabaseUser {
 // ---------------------------------------------------------------------------
 describe('supabase.ts: lazy singleton client', () => {
   it('creates no client at import time; getClient() creates it once and memoizes it', () => {
-    // The module has already been imported (top of this file) by the time
-    // this test body runs — if that import alone had constructed a
-    // client, this assertion would already be failing.
-    expect(mockCreateClient).not.toHaveBeenCalled()
+    // Asserts against the count captured at module-evaluation time (see
+    // the comment on `callsAtImportTime` above), not against
+    // `mockCreateClient`'s live call record — `beforeEach` clears that
+    // before this test body ever runs, which would make a live-record
+    // assertion here pass unconditionally.
+    expect(callsAtImportTime).toBe(0)
 
     const a = getClient()
     const b = getClient()
@@ -264,6 +282,30 @@ describe('every network function fails soft: { ok: false, error } — never a th
     expect.assertions(2)
     mockClient.auth.getSession.mockResolvedValueOnce({ data: { session: null }, error: { message: 'boom' } })
     await expect(getCurrentUser()).resolves.toEqual({ ok: false, error: 'boom' })
+    expect(mockClient.auth.getSession).toHaveBeenCalled()
+  })
+})
+
+// A resolved `{ error }` (above) is not the only way a Supabase call can
+// fail: @supabase/auth-js's own internals re-throw anything that isn't
+// itself an AuthError (a blocked/throwing storage adapter, a
+// lock-acquisition failure, ...), so a genuinely REJECTED promise is a
+// real, reachable case too. Every function funnels through the shared
+// `guardResult` wrapper (auth.ts), so one representative test per return
+// shape (AuthResult / AuthUserResult) proves the wrapper works — it is not
+// re-implemented per function.
+describe('a rejected promise (not just a resolved { error }) is also caught — the wrapper, not per-function duplication', () => {
+  it('startPhoneOtp: signInWithOtp rejecting still resolves to { ok: false }, never propagates', async () => {
+    expect.assertions(2)
+    mockClient.auth.signInWithOtp.mockRejectedValueOnce(new Error('storage adapter blocked'))
+    await expect(startPhoneOtp('+919876543210')).resolves.toEqual({ ok: false, error: 'storage adapter blocked' })
+    expect(mockClient.auth.signInWithOtp).toHaveBeenCalled()
+  })
+
+  it('getCurrentUser: getSession rejecting still resolves to { ok: false }, never propagates', async () => {
+    expect.assertions(2)
+    mockClient.auth.getSession.mockRejectedValueOnce(new Error('lock acquisition failed'))
+    await expect(getCurrentUser()).resolves.toEqual({ ok: false, error: 'lock acquisition failed' })
     expect(mockClient.auth.getSession).toHaveBeenCalled()
   })
 })
