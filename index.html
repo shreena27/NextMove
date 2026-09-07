@@ -5,12 +5,14 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NextMove</title>
-    <!-- Authored markup, not in the prototype (design/nextmove-v1-prototype.html
-         line 103 is the stylesheet link alone) — a recorded deviation, Task 1
-         design note 6. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,800&family=Work+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+    <!-- Fraunces/Work Sans/IBM Plex Mono, self-hosted — a further deviation
+         from design/nextmove-v1-prototype.html line 103 (the stylesheet
+         link alone), which itself already deviated from a fonts.googleapis.com
+         <link> here (Task 1 design note 6). Self-hosting removes a
+         third-party request that sent every citizen's IP to Google on
+         first paint, for a government-guidance product with no consent
+         banner (issue #7's C6 handoff note). @font-face rules + the actual
+         woff2 files live in src/index.css / src/assets/fonts/ instead. -->
   </head>
   <body>
     <div id="root"></div>

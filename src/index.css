@@ -787,3 +787,76 @@ h2.headline{
   .screen,.arow,.stamp,.dep-block,.ct-step,.gem,.mark::after{animation:none;}
   *{transition-duration:1ms !important; animation-duration:1ms !important;}
 }
+
+/* ---------- self-hosted fonts (NOT from the locked prototype) ----------
+   The locked prototype loads Fraunces/Work Sans/IBM Plex Mono from
+   fonts.googleapis.com/fonts.gstatic.com at request time (index.html's own
+   line comment there still records that as the design-lock source). C6
+   (issue #7's handoff note) flagged that as worth removing before this
+   product goes live: a citizen visiting a page about their passport or
+   voter-roll status sends their IP to Google on first paint, for a
+   government-guidance product with no consent banner. Self-hosted here
+   instead, files sourced from the fontsource project's latin-subset woff2s
+   (src/assets/fonts/, same files Google itself would have served for
+   English-only content, picked out by unicode-range) — same visual
+   families/weights/axes, one origin, no third-party request. Fraunces
+   keeps the family name 'Fraunces' (not fontsource's own 'Fraunces
+   Variable') so none of this file's ~12 existing selectors need to change;
+   font-weight:100 900 + format('woff2-variations') preserves the variable
+   opsz axis the design's headline/brand-mark sizing depends on. */
+@font-face{
+  font-family:'Fraunces';
+  font-style:normal;
+  font-display:swap;
+  font-weight:100 900;
+  src:url('./assets/fonts/fraunces-latin-opsz-normal.woff2') format('woff2-variations');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:'Work Sans';
+  font-style:normal;
+  font-display:swap;
+  font-weight:400;
+  src:url('./assets/fonts/work-sans-latin-400-normal.woff2') format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:'Work Sans';
+  font-style:normal;
+  font-display:swap;
+  font-weight:500;
+  src:url('./assets/fonts/work-sans-latin-500-normal.woff2') format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:'Work Sans';
+  font-style:normal;
+  font-display:swap;
+  font-weight:600;
+  src:url('./assets/fonts/work-sans-latin-600-normal.woff2') format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:'IBM Plex Mono';
+  font-style:normal;
+  font-display:swap;
+  font-weight:400;
+  src:url('./assets/fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:'IBM Plex Mono';
+  font-style:normal;
+  font-display:swap;
+  font-weight:500;
+  src:url('./assets/fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:'IBM Plex Mono';
+  font-style:normal;
+  font-display:swap;
+  font-weight:600;
+  src:url('./assets/fonts/ibm-plex-mono-latin-600-normal.woff2') format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
