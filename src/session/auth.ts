@@ -13,7 +13,7 @@
 // (`{ ok: true, ... } | { ok: false, error: string }`) rather than
 // throwing — the screens render an error string, and a rejected promise
 // crossing a React event handler is an unhandled rejection nobody sees.
-import type { User as SupabaseUser } from '@supabase/supabase-js'
+import type { User as SupabaseUser, AuthChangeEvent } from '@supabase/supabase-js'
 import { getClient } from './supabase'
 
 /** The prototype's own `S.user` shape (2122, 2140), kept verbatim so every
@@ -185,8 +185,18 @@ export async function getCurrentUser(): Promise<AuthUserResult> {
  *  either — and none of that is distinguishable from `user` alone, since
  *  several of these events carry the identical session. (Flagged forward by
  *  Task 3's own review as work Task 8 would need; done here rather than
- *  pre-empted there, per that review's own note.) */
-export function onAuthChange(cb: (event: string, user: AppUser | null) => void): () => void {
+ *  pre-empted there, per that review's own note.)
+ *
+ *  Typed `AuthChangeEvent` (supabase-js's own 7-member union), not `string`
+ *  — Task 8 fix round 1, Finding 4: `auth.ts` already imports type-only
+ *  shapes from `@supabase/supabase-js` elsewhere (`SupabaseUser` above), so
+ *  this is consistent with an existing pattern, not a new one. The payoff
+ *  is at the CALL site: App.tsx's `switch (event)` over exactly these 7
+ *  names becomes exhaustiveness-checked by `tsc`, the same discipline this
+ *  project already applies to `ScreenId`/`SessionAction` — an unknown or
+ *  typo'd event name is now a compile error, not a silent no-op falling
+ *  through an unremarked case. */
+export function onAuthChange(cb: (event: AuthChangeEvent, user: AppUser | null) => void): () => void {
   const { data } = getClient().auth.onAuthStateChange((event, session) => {
     cb(event, toAppUser(session?.user ?? null))
   })

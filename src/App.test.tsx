@@ -37,7 +37,7 @@ import * as caseSyncModule from './session/caseSync'
 import * as caseStoreModule from './session/caseStore'
 import { UI } from './screens/screenCopy'
 import { PREP } from './playbooks/prep'
-import type { SessionState } from './session/session'
+import type { SessionState, SessionAction } from './session/session'
 
 // Design note 3's no-plan guard (design/nextmove-v1-prototype.html 3749,
 // ported as App.tsx's `RestartToHome`) is reachable only via a direct
@@ -60,12 +60,26 @@ import type { SessionState } from './session/session'
 // import indirection), never the mocked export read here, so restarting
 // still lands on the real, unmutated clean-slate state.
 const seededState = vi.hoisted(() => ({ current: undefined as Partial<SessionState> | undefined }))
+// Task 8 fix round 1, Finding 1: `<App/>` exposes no dispatch, and neither
+// `authErr`/`otp`/`authBusy` nor `user.name` render on any screen built by
+// this point in the branch — so the ONLY way to prove exactly which
+// actions the `onAuthChange` handler dispatched (not just "a migration
+// eventually ran or didn't", which the reducer's own `MIGRATION_STARTED`
+// no-op guard can make ambiguous between "the bug fired first" and "only
+// the later, correct trigger fired") is to record every action the real
+// reducer actually receives. Wraps `sessionReducer` — delegates to the
+// UNMODIFIED real implementation every time, purely an observation point.
+const dispatchedActions = vi.hoisted(() => ({ current: [] as SessionAction[] }))
 vi.mock('./session/session', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./session/session')>()
   return {
     ...actual,
     get initialSession() {
       return seededState.current ? { ...actual.initialSession, ...seededState.current } : actual.initialSession
+    },
+    sessionReducer: (s: SessionState, a: SessionAction) => {
+      dispatchedActions.current.push(a)
+      return actual.sessionReducer(s, a)
     },
   }
 })
@@ -77,6 +91,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks()
   seededState.current = undefined
+  dispatchedActions.current = []
   // Task 13: App now genuinely reads/writes `nm_cases` via `localStorage`
   // (the lazy useReducer initializer / the persistence useEffect) — jsdom's
   // REAL localStorage is shared across every `it()` in this file, so a case
@@ -703,6 +718,37 @@ describe('C7 Task 8: the auth lifecycle', () => {
         'the second run reads nm_cases after the first cleared it and produces a merged set missing everything this device contributed',
       ).toHaveBeenCalledTimes(1)
     })
+
+    it("(d) SIGNED_IN arrives again after migration:'done' (a real supabase-js shape — tab focus / cross-tab session recovery): still exactly one run", async () => {
+      const migrationSpy = vi.spyOn(caseSyncModule, 'runSignInMigration')
+      const user = withSession()
+      selectSpy.mockResolvedValueOnce({ data: [], error: null })
+
+      render(<App />)
+      await waitFor(() => expect(migrationSpy).toHaveBeenCalledTimes(1))
+      // Synchronise on `ADOPT_CASES` having actually reached the reducer —
+      // proof the migration settled all the way to `'done'`, not merely
+      // that `runSignInMigration` was called.
+      await waitFor(() => {
+        if (!dispatchedActions.current.some(a => a.type === 'ADOPT_CASES')) {
+          throw new Error('migration has not settled to done yet')
+        }
+      })
+
+      mockClient.emitAuthEvent('SIGNED_IN', { user })
+      // Synchronise on the SECOND SIGNED_IN having genuinely reached the
+      // reducer (a reliable positive signal this event was fully
+      // processed) before checking that no second migration ran.
+      await waitFor(() => {
+        const signedInCount = dispatchedActions.current.filter(a => a.type === 'SIGNED_IN').length
+        if (signedInCount < 2) throw new Error('the second SIGNED_IN has not been processed yet')
+      })
+
+      expect(
+        migrationSpy,
+        'a real supabase-js SIGNED_IN re-emission (tab focus / cross-tab session recovery) after the migration already completed must not re-run it',
+      ).toHaveBeenCalledTimes(1)
+    })
   })
 
   it("the first-sign-in visibility test — C7's headline scenario, asserted at the App level", async () => {
@@ -873,55 +919,82 @@ describe('C7 Task 8: the auth lifecycle', () => {
   })
 
   it("TOKEN_REFRESHED changes nothing: no migration re-run, no SIGNED_IN-shaped dispatch", async () => {
-    // `authErr`/`otp`/`authBusy` render on no screen built by this point
-    // in the branch (`save-case`/`save-otp`/`save-name` are Tasks 11-13's)
-    // — there is genuinely no DOM to assert those three fields against
-    // yet. What IS observable at the App level, and is the load-bearing
-    // half of the guarantee, is that TOKEN_REFRESHED never re-dispatches
-    // SIGNED_IN or starts a migration; App.tsx's own `TOKEN_REFRESHED` case
-    // is a bare `break` (dispatches nothing at all), which is what makes
-    // the field-level claim true by construction — Task 4's session.test.ts
-    // separately pins that SIGNED_IN is the only action touching those
-    // three fields together.
-    seededState.current = { authErr: 'That doesn\'t look like a full mobile number yet.', otp: '123456', authBusy: true }
+    // Task 8 fix round 1, Finding 1: `authErr`/`otp`/`authBusy` render on no
+    // screen built by this point in the branch (`save-case`/`save-otp`/
+    // `save-name` are Tasks 11-13's) — there is genuinely no DOM to assert
+    // those three fields against yet. The original version of this test
+    // asserted only "migration was not called" after a bare `setTimeout(
+    // resolve, 0)` — the reviewer found BOTH of these were real gaps: (1) a
+    // single macrotask tick is not reliably enough time for the
+    // dispatch -> re-render -> effect-4 cycle to have run, so a mutated
+    // TOKEN_REFRESHED handler that WRONGLY re-dispatches SIGNED_IN could
+    // still read as "not called yet" at that checkpoint; (2) even with
+    // enough time, "migration ran exactly once" cannot distinguish "only
+    // the later, correct SIGNED_IN fired" from "the buggy TOKEN_REFRESHED
+    // fired FIRST and the later SIGNED_IN's own MIGRATION_STARTED was
+    // suppressed by the reducer's own (correct) no-op guard" — both produce
+    // an identical migration-call-count of 1.
+    //
+    // The fix removes the timing dependency entirely rather than widening
+    // it: `dispatchedActions` (this file's own reducer-wrapping mock,
+    // above) records every action the REAL reducer receives, so instead of
+    // inferring what happened from a side effect's call count, this reads
+    // the dispatch log directly. `SIGNED_IN` is emitted as a positive
+    // control (proving the channel is live) and its own effects are waited
+    // on via a reliable positive signal (`migrationSpy` having run) — by
+    // that point ANY earlier-queued TOKEN_REFRESHED-driven dispatch would
+    // also have been processed (dispatches queued before a render are
+    // applied by the reducer in order), so the log is complete.
     const migrationSpy = vi.spyOn(caseSyncModule, 'runSignInMigration')
 
     render(<App />)
     mockClient.emitAuthEvent('TOKEN_REFRESHED', { user: makeSupabaseUser() })
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    expect(migrationSpy).not.toHaveBeenCalled()
-
-    // Positive control: the subscription channel is genuinely live (this
-    // is what makes the assertion above meaningful rather than trivially
-    // true against an app with no `onAuthChange` wiring at all) — a REAL
-    // `SIGNED_IN` on the SAME channel, right after, does start a migration.
+    // Positive control, emitted right after (not separately awaited first):
+    // the subscription channel is genuinely live — a real SIGNED_IN on the
+    // same channel does start a migration.
     mockClient.emitAuthEvent('SIGNED_IN', { user: makeSupabaseUser() })
     await waitFor(() => expect(migrationSpy).toHaveBeenCalledTimes(1))
+
+    const signedInDispatches = dispatchedActions.current.filter(a => a.type === 'SIGNED_IN')
+    expect(
+      signedInDispatches,
+      'TOKEN_REFRESHED must not re-dispatch SIGNED_IN — the reducer\'s own MIGRATION_STARTED guard makes a duplicate migration call count alone unable to catch this, since the guard suppresses the second run either way',
+    ).toHaveLength(1) // exactly the one from the positive control
+    const migrationStartedDispatches = dispatchedActions.current.filter(a => a.type === 'MIGRATION_STARTED')
+    expect(migrationStartedDispatches).toHaveLength(1)
   })
 
   it('USER_UPDATED refreshes the name via SET_USER_NAME, not SIGNED_IN: no migration re-run', async () => {
-    // Same observability constraint as the TOKEN_REFRESHED test above:
-    // `user.name` renders on no screen built by this point in the branch
-    // (`save-case`/`save-otp`/`save-name` are Tasks 11-13's). The checkable
-    // half here is that USER_UPDATED never dispatches SIGNED_IN (which
-    // would also start a migration) the way a wrongly-handled event would.
+    // Task 8 fix round 1, Finding 1: same fix as the TOKEN_REFRESHED test
+    // above, plus a genuine gap the original version had regardless of
+    // timing — its assertions never actually checked that `SET_USER_NAME`
+    // was dispatched at all, so a USER_UPDATED handler mutated to a bare
+    // no-op (dispatching nothing) passed the old assertions just as well as
+    // a correct one; "no migration re-run" is satisfied by BOTH a correct
+    // handler and a silently-broken one. The dispatch log closes this: it
+    // asserts `SET_USER_NAME` was dispatched, with the right name, exactly
+    // once, in addition to the no-extra-SIGNED_IN check.
     const migrationSpy = vi.spyOn(caseSyncModule, 'runSignInMigration')
 
     render(<App />) // boots signed out — the mount effect contributes nothing
     mockClient.emitAuthEvent('USER_UPDATED', {
       user: makeSupabaseUser({ user_metadata: { display_name: 'Ananya' } }),
     })
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    expect(migrationSpy).not.toHaveBeenCalled()
-
-    // Positive control: the subscription channel is genuinely live — a
-    // REAL `SIGNED_IN` on the SAME channel, right after, does start a
-    // migration (this is what makes the assertion above meaningful rather
-    // than trivially true against an app with no `onAuthChange` wiring).
+    // Positive control, same channel, right after.
     mockClient.emitAuthEvent('SIGNED_IN', { user: makeSupabaseUser() })
     await waitFor(() => expect(migrationSpy).toHaveBeenCalledTimes(1))
+
+    const setUserNameDispatches = dispatchedActions.current.filter(a => a.type === 'SET_USER_NAME')
+    expect(
+      setUserNameDispatches,
+      'USER_UPDATED must refresh the name via SET_USER_NAME — a handler that silently dispatches nothing is indistinguishable from a correct one by migration-call-count alone',
+    ).toHaveLength(1)
+    expect((setUserNameDispatches[0] as { name: string | null }).name).toBe('Ananya')
+    const signedInDispatches = dispatchedActions.current.filter(a => a.type === 'SIGNED_IN')
+    expect(
+      signedInDispatches,
+      'USER_UPDATED must not be handled as SIGNED_IN — that would also clear authErr/otp/authBusy, which Task 4\'s action list reserves for a real sign-in',
+    ).toHaveLength(1) // exactly the one from the positive control
   })
 
   describe("the push effect's gate (design note 7)", () => {

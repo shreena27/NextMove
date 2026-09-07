@@ -234,6 +234,15 @@ export default function App() {
           // no MFA (scope exclusion 4). Named so a reader does not have to
           // re-derive that they are impossible.
           break
+        default: {
+          // Task 8 fix round 1, Finding 4: `onAuthChange`'s `event` is now
+          // typed `AuthChangeEvent` (supabase-js's own 7-member union), so
+          // this switch is exhaustiveness-checked the same way the screen
+          // router below is — a name added to that union without a case
+          // here becomes a compile error, not a silent no-op.
+          const _never: never = event
+          throw new Error(`unhandled auth event: ${String(_never)}`)
+        }
       }
     })
     return unsubscribe
@@ -275,6 +284,23 @@ export default function App() {
   // empty local set, and produce a `merged` that omits everything this
   // device contributed — which then replaces `savedCases`. The citizen's
   // cases are on the server and gone from the screen.
+  //
+  // Task 8 fix round 1, Finding 2 — the guard is genuinely TWO layers, not
+  // one, and both are load-bearing for different trigger shapes: THIS
+  // EFFECT's own `[state.migration]` value-comparison stops every
+  // SAME-BATCH-OR-EARLIER double-fire (mount + onAuthChange racing before
+  // the migration completes — shapes (a)/(b)/(c) below), because a
+  // `MIGRATION_STARTED` dispatched while already `'running'` produces the
+  // SAME string value, which React's dependency diff treats as unchanged.
+  // But `SIGNED_IN` can also arrive AFTER a migration has already settled
+  // to `'done'` — a real supabase-js shape (tab focus, cross-tab session
+  // recovery) — and THAT case has no same-value protection to lean on:
+  // without the reducer's own status check also covering `'done'`, this
+  // effect's dependency array would see a genuine `'done'` -> `'running'`
+  // VALUE CHANGE and correctly (from its own narrow perspective) fire
+  // again. Verified directly: deleting the reducer's status check while
+  // leaving this effect exactly as it is left shapes (a)/(b)/(c) green but
+  // fails a fourth, dedicated test for this exact shape.
   useEffect(() => {
     if (state.migration !== 'running') return
     let cancelled = false
