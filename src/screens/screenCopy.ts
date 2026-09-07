@@ -81,6 +81,9 @@ export const UI = {
   common: {
     backToHome: 'Back to Home',
   },
+  footer: {
+    copyright: '© 2026 NextMove. All rights reserved.',
+  },
   home: {
     hero: {
       lead: "Know what's",

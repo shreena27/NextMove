@@ -37,6 +37,7 @@ import {
 import { VoterEntry, VoterQ1, VoterQ2 } from './voter/VoterScreens'
 import { SirState, SirUnsupported, SirReverifying, SirQ1 } from './sir/SirScreens'
 import { Topbar } from '../ui/Topbar'
+import { Footer } from '../ui/Footer'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { DiagnosisScreen } from '../templates/DiagnosisScreen'
 import { NextMoveScreen } from '../templates/NextMoveScreen'
@@ -470,6 +471,7 @@ function UiChrome() {
     <>
       <Topbar showBack showRestart hasAnswers={false} restartConfirm={false} dispatch={noop} />
       <Topbar showBack showRestart hasAnswers restartConfirm dispatch={noop} />
+      <Footer />
       <Home state={initialSession} dispatch={noop} />
       <OtherServices state={initialSession} dispatch={noop} />
       <PhaseEyebrow service={UI.serviceLabel.sir} />

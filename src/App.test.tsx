@@ -307,6 +307,11 @@ describe('Home v2', () => {
     for (const row of rows) expect(row.tagName).toBe('DIV')
     expect(screen.getAllByText('Coming Soon').length).toBe(4)
   })
+
+  it('renders the site footer', () => {
+    render(<App />)
+    expect(screen.getByText('© 2026 NextMove. All rights reserved.')).toBeInTheDocument()
+  })
 })
 
 describe('Task 13: the four C5 router cases', () => {

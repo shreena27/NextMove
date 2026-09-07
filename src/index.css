@@ -160,9 +160,16 @@ body{
 .stage{
   max-width:1460px; margin:0 auto; padding:56px 48px 90px; position:relative;
 }
+.footer{
+  display:flex; justify-content:center;
+  padding:20px 40px; border-top:1px solid var(--line);
+  font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.02em;
+  color:var(--ink-soft);
+}
 @media (max-width:600px){
   .topbar{padding:14px 18px;}
   .stage{padding:24px 18px 70px;}
+  .footer{padding:16px 18px;}
 }
 
 /* ---------- desktop split: context left, action right ----------

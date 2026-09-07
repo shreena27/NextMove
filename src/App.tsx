@@ -44,6 +44,7 @@ import { runSignInMigration, pushCases } from './session/caseSync'
 import type { Casefile } from './domain/casefile'
 import { hasAnswers } from './screens/screenProps'
 import { Topbar } from './ui/Topbar'
+import { Footer } from './ui/Footer'
 import { Banner } from './ui/Banner'
 import { Home } from './screens/Home'
 import { OtherServices } from './screens/OtherServices'
@@ -845,6 +846,7 @@ export default function App() {
   return (
     <div id="app" className={settled ? 'app settled' : 'app'}>
       {body}
+      <Footer />
     </div>
   )
 }
