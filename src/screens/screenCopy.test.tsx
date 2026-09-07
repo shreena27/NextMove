@@ -53,6 +53,8 @@ import { SaveControl } from '../templates/SaveControl'
 import { DeadEndScreen } from '../templates/DeadEndScreen'
 import { CaseClosedScreen } from '../templates/CaseClosedScreen'
 import { SaveDoneScreen } from '../templates/SaveDoneScreen'
+import { SaveCaseScreen } from '../templates/SaveCaseScreen'
+import { SaveOtpScreen } from '../templates/SaveOtpScreen'
 
 const noop = () => {}
 
@@ -568,6 +570,15 @@ function topbar(showBack: boolean, showRestart: boolean) {
 }
 
 function UiChrome() {
+  // Task 12's SaveOtpScreen fixture below needs a deadline just under
+  // 1000ms from the REAL clock (its live countdown reads `Date.now()`
+  // directly, design note 4 — CASE_NOW is a fixed fixture timestamp long
+  // past by the time this suite runs, so it cannot stand in here). Computed
+  // once, outside the JSX, so the one-off `Date.now()` read is not itself
+  // flagged as an impure call "during render" (this is a plain function
+  // call producing a fixture, not an actually re-rendering component).
+  // oxlint-disable-next-line react/purity -- one-off test fixture value, not a live render read; see comment above
+  const otpAlmostDueBy = Date.now() + 950
   return (
     <>
       <Topbar showBack showRestart hasAnswers={false} restartConfirm={false} dispatch={noop} />
@@ -738,6 +749,51 @@ function UiChrome() {
           presence, so this duplicates coverage the mount above already
           gives; design note 8 asks for it explicitly regardless. */}
       <SaveDoneScreen pendingSave={null} dispatch={noop} />
+      {/* Task 12: SaveCaseScreen (Task 11) and SaveOtpScreen (Task 12),
+          wired in per the deferral this file's own INTERACTION_GATED
+          comment and CAPTION_SUBSTITUTIONS both left for "once SaveOtp/
+          SaveCase exist". Three SaveCaseScreen mounts cover every branch a
+          static render can reach: phone with no error (crumb/headline/
+          lede/trust/google/divider/fieldLabelMobile/placeholderMobile/
+          send/switchToEmail/authNote), email with its own error set
+          (fieldLabelEmail/placeholderEmail/switchToMobile/errors.email),
+          and phone with the OTHER error (errors.mobile) — both errors are
+          reachable as plain controlled props (SaveCaseScreen.test.tsx's own
+          Fix Round 1, Finding 3 precedent), no click needed. */}
+      <SaveCaseScreen authMethod="phone" authId="" authErr={null} authBusy={false} now={CASE_NOW} dispatch={noop} />
+      <SaveCaseScreen
+        authMethod="email" authId="" authErr={UI.saveCase.errors.email} authBusy={false} now={CASE_NOW}
+        dispatch={noop}
+      />
+      <SaveCaseScreen
+        authMethod="phone" authId="" authErr={UI.saveCase.errors.mobile} authBusy={false} now={CASE_NOW}
+        dispatch={noop}
+      />
+      {/* SaveOtpScreen: one mount with errors.code set (also covers
+          crumbTail/headline/fieldLabel/placeholder/verify/resendPrompt, all
+          reachable together since none of those depend on authErr), one
+          with otpResent (resendSent — a controlled prop, no click needed,
+          same reasoning as the errors above), and one whose
+          otpCooldownUntil sits just under 1000ms from the REAL clock (not
+          CASE_NOW, which is a fixed fixture timestamp long past by the time
+          this suite runs against the real `Date.now()` this component
+          reads for its live countdown — design note 4) so resendWaitOne
+          renders without needing fake timers here. saveOtp.lede
+          (CAPTION_TEMPLATES) and resendWaitMany (CAPTION_TEMPLATES) get
+          their own dedicated, fake-timer-backed render checks in
+          CAPTION_SUBSTITUTIONS below, not here. */}
+      <SaveOtpScreen
+        authMethod="phone" authId="+919876543210" otp="" authErr={UI.saveOtp.errors.code} authBusy={false}
+        otpResent={false} otpCooldownUntil={null} now={CASE_NOW} dispatch={noop}
+      />
+      <SaveOtpScreen
+        authMethod="phone" authId="+919876543210" otp="" authErr={null} authBusy={false}
+        otpResent otpCooldownUntil={null} now={CASE_NOW} dispatch={noop}
+      />
+      <SaveOtpScreen
+        authMethod="phone" authId="+919876543210" otp="" authErr={null} authBusy={false}
+        otpResent={false} otpCooldownUntil={otpAlmostDueBy} now={CASE_NOW} dispatch={noop}
+      />
     </>
   )
 }
@@ -809,13 +865,15 @@ const CAPTION_TEMPLATES = new Set([
   // account.casefilesOne/Many interpolate the signed-in citizen's own open
   // casefile count, same category as home.casefilesOne/Many above.
   //
-  // None of the four screens (SaveCase/SaveOtp/SaveName/SaveDone) or the
-  // account popover exist yet (Tasks 11-15 build them), so these four
-  // entries have no substituted-form RENDER assertion below yet — only the
-  // key-equality check against CAPTION_SUBSTITUTIONS. That is the same
-  // documented, expected gap as the per-bucket coverage sweep's new
-  // failures (task-10-brief.md design note 9 / the GREEN note); a render
-  // assertion for each is added alongside its screen.
+  // UPDATED (Task 12): SaveCaseScreen (Task 11) and SaveOtpScreen (Task 12)
+  // now exist and are wired into UiChrome() / their own dedicated mounts
+  // below — 'ui:saveOtp.lede' and 'ui:saveOtp.resendWaitMany' both now have
+  // real substituted-form RENDER assertions (see CAPTION_SUBSTITUTIONS'
+  // own `it` below), not just the key-equality check. 'ui:account.
+  // casefilesOne'/'casefilesMany' are the only two of the original four
+  // still gapped — the account popover is Task 15's own build; that
+  // remaining gap is the SAME documented, expected condition (task-10-
+  // brief.md design note 9 / the GREEN note), now scoped to just those two.
   'ui:saveOtp.lede',
   'ui:saveOtp.resendWaitMany',
   'ui:account.casefilesOne',
@@ -837,21 +895,36 @@ const CAPTION_TEMPLATES = new Set([
 // `[...INTERACTION_GATED]`, the same pattern `CAPTION_SUBSTITUTIONS` below
 // already uses for `CAPTION_TEMPLATES`.
 //
-// C7 Task 10 deliberately does NOT add `ui:saveOtp.errors.code`,
-// `ui:saveCase.errors.mobile`/`.email`, `ui:saveOtp.resendWaitMany`/
-// `resendWaitOne`, or `ui:saveOtp.resendSent` to INTERACTION_GATED here,
-// even though task-10-brief.md design note 9 names all five as "likely
-// candidates" for it. Gating requires "a real interaction test elsewhere"
-// (this file's own rule, enforced by the equality check `Record` its own
-// header note describes) — SaveOtp/SaveCase don't exist as components yet
-// (Task 12), so no such test can exist yet either. Gating them now, before
-// their covering test exists, would be exactly the workaround the brief
-// warns against ("do not put these new entries into INTERACTION_GATED
-// merely to dodge [the coverage sweep]"). They are left as ordinary bucket
-// entries instead, which means the per-bucket sweep below is expected to
-// go red for them too, same as every other unmounted C7 entry — Task 12
-// gates them for real once SaveOtp/SaveCase exist and their own
-// interaction test can cover them.
+// UPDATED (Task 12 — resolves Task 10's own deferred question, task-10-
+// brief.md design note 9's "likely candidates" list). Now that SaveCase/
+// SaveOtp actually exist, each of the five was checked against the real
+// rule this file's own header note states: gate ONLY what a static mount
+// genuinely cannot produce, never merely what is "fiddly" to mount. Result
+// — NONE of the five needed gating, because both screens are fully
+// controlled components (SaveCaseScreen.tsx design note 3 / SaveOtpScreen.
+// tsx's own header note): every field a "real interaction" would normally
+// be needed to reach is instead a plain prop, settable directly, exactly
+// the precedent SaveCaseScreen.test.tsx's own Fix Round 1, Finding 3
+// already established for `ui:saveCase.errors.email` (a dedicated render
+// test with `authErr` set directly, no click).
+//   - `ui:saveOtp.errors.code`, `ui:saveCase.errors.mobile`/`.email`,
+//     `ui:saveOtp.resendSent` — all reachable by setting `authErr`/
+//     `otpResent` directly; covered by UiChrome()'s own SaveCaseScreen/
+//     SaveOtpScreen mounts above, same as every other prop-driven branch
+//     in this file (e.g. the `reminderCopied`/`phaseDrift` CasefileScreen
+//     mounts).
+//   - `ui:saveOtp.resendWaitOne` — reachable by setting `otpCooldownUntil`
+//     to just under 1000ms from the REAL clock at mount time (SaveOtp
+//     Screen's countdown reads `Date.now()` directly, design note 4) —
+//     still zero interaction, just a controlled prop; covered by its own
+//     UiChrome() mount.
+//   - `ui:saveOtp.resendWaitMany` — already in CAPTION_TEMPLATES (it
+//     interpolates {n}), so it was never a candidate for THIS set; its
+//     substituted form gets its own dedicated, fake-timer-pinned render
+//     check in CAPTION_SUBSTITUTIONS' own `it` below, for the same
+//     no-interaction reason as the other four.
+// `ui:account.casefilesOne`/`casefilesMany`/the whole `account.*` subtree
+// remain ungated AND unmounted — Task 15's own job, not this task's.
 
 const SCREENS: [keyof typeof SCREEN_COPY, () => ReactElement][] = [
   ['passport', PassportBucketScreens],
@@ -961,28 +1034,33 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     'sir:reverifying.headline': SIR_COPY.reverifying.headline.replace('{state}', 'Delhi'),
     'sir:reverifying.lede': SIR_COPY.reverifying.lede.replace('{state}', 'Delhi').replace('{date}', ''),
     'sir:reverifying.verifiedNote': SIR_COPY.reverifying.verifiedNote.replace('{date}', SOURCES_VERIFIED),
-    // C7 (Task 10) — SaveOtp/account popover don't exist yet (Tasks 12/15),
-    // so these substituted forms have no covering render assertion below
-    // yet, unlike every entry above. Supplying the substituted expectation
-    // now (rather than deferring it too) still forces the SHAPE of the
-    // interpolation to be decided here, and keeps this Record's own
-    // Object.keys(...) === [...CAPTION_TEMPLATES] pin meaningful.
-    'ui:saveOtp.lede': UI.saveOtp.lede.replace('{dest}', '+91 98765 43210'),
+    // C7 (Task 10 registered these; Task 12 closes SaveOtp's own gap below —
+    // account.casefilesOne/Many stay deferred, Task 15's job, same reason
+    // this comment gave originally: the account popover isn't built yet).
+    // 'ui:saveOtp.lede': CORRECTED from Task 10's own placeholder value
+    // ('+91 98765 43210', a guess at a "naturally formatted" phone number
+    // made before SaveOtpScreen existed to test it against). The real,
+    // mandated derivation (SaveOtpScreen.tsx design note 1 / D12) is
+    // `'+91 ' + authId.slice(3)` — a single contiguous 10-digit block, ONE
+    // space total, reproducing the prototype's own rendered string exactly.
+    // The placeholder's extra inner space was simply never exercised by a
+    // render until now; task-12-brief.md's own RED item 1 pins the corrected
+    // form directly on SaveOtpScreen.test.tsx too.
+    'ui:saveOtp.lede': UI.saveOtp.lede.replace('{dest}', '+91 9876543210'),
     'ui:saveOtp.resendWaitMany': UI.saveOtp.resendWaitMany.replace('{n}', '5'),
     'ui:account.casefilesOne': UI.account.casefilesOne.replace('{n}', '1'),
     'ui:account.casefilesMany': UI.account.casefilesMany.replace('{n}', '2'),
   }
 
   it('CAPTION_SUBSTITUTIONS covers exactly CAPTION_TEMPLATES, and each substituted form actually renders', async () => {
-    // NOTE (C7 Task 10): the key-equality check below covers all of
-    // CAPTION_TEMPLATES, including the four new 'ui:saveOtp.lede'/
-    // 'ui:saveOtp.resendWaitMany'/'ui:account.casefilesOne'/
-    // 'ui:account.casefilesMany' entries — but the render assertions that
-    // follow, for entries whose screens already exist, do NOT yet cover
-    // those four (SaveOtp and the account popover aren't built until Tasks
-    // 12/15). That gap is expected and documented at each entry's own
-    // comment in the CAPTION_TEMPLATES/CAPTION_SUBSTITUTIONS declarations
-    // above — do not add fake mounts here to paper over it.
+    // NOTE (C7 Task 10/12): the key-equality check below covers all of
+    // CAPTION_TEMPLATES, including 'ui:saveOtp.lede'/'ui:saveOtp.
+    // resendWaitMany'/'ui:account.casefilesOne'/'ui:account.casefilesMany'
+    // — but the render assertions that follow do NOT yet cover the account
+    // pair (the account popover isn't built until Task 15; that gap is
+    // expected and documented at its own entry's comment above — do not add
+    // a fake mount here to paper over it). SaveOtp's own two ARE now
+    // covered below (Task 12), off dedicated `<SaveOtpScreen>` renders.
     expect(Object.keys(CAPTION_SUBSTITUTIONS).sort()).toEqual([...CAPTION_TEMPLATES].sort())
 
     const { container: trustContainer } = render(
@@ -1062,6 +1140,35 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     expect(sirContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['sir:reverifying.headline'])
     expect(sirContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['sir:reverifying.lede'])
     expect(sirContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['sir:reverifying.verifiedNote'])
+
+    // C7 (Task 12) — SaveOtpScreen. `lede`'s `{dest}` substitution needs no
+    // clock at all (design note 1 / D12), so it renders off a plain mount.
+    // `resendWaitMany`'s `{n}` substitution is the ONE CAPTION_TEMPLATES
+    // entry in this whole file that is genuinely wall-clock-LIVE rather
+    // than driven by an injected `now`/date prop (SaveOtpScreen.tsx's own
+    // design note 4) — a fake, pinned clock is what makes '5' the exactly
+    // right, non-flaky answer here, not a coincidence of real elapsed time.
+    const { container: otpLedeContainer } = render(
+      <SaveOtpScreen
+        authMethod="phone" authId="+919876543210" otp="" authErr={null} authBusy={false}
+        otpResent={false} otpCooldownUntil={null} now={CASE_NOW} dispatch={noop}
+      />,
+    )
+    expect(otpLedeContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:saveOtp.lede'])
+
+    vi.useFakeTimers()
+    vi.setSystemTime(CASE_NOW)
+    try {
+      const { container: otpWaitContainer } = render(
+        <SaveOtpScreen
+          authMethod="phone" authId="+919876543210" otp="" authErr={null} authBusy={false}
+          otpResent={false} otpCooldownUntil={CASE_NOW + 5000} now={CASE_NOW} dispatch={noop}
+        />,
+      )
+      expect(otpWaitContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:saveOtp.resendWaitMany'])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   // `INTERACTION_GATED` needs no membership pin here (fix-round review

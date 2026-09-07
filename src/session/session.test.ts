@@ -856,12 +856,21 @@ describe('Auth-flow field setters — thin arms, prototype-mirrored', () => {
 describe('AUTH_ID_SUBMITTED — the successful half of authSubmitId (prototype 2113)', () => {
   it('lands on save-otp with otp cleared, authErr null, and the normalised id written', () => {
     const dirty: SessionState = { ...initialSession, screen: 'save-case', otp: 'stale', authErr: 'stale error' }
-    const s = r(dirty, { type: 'AUTH_ID_SUBMITTED', authId: '+919876543210' })
+    const s = r(dirty, { type: 'AUTH_ID_SUBMITTED', authId: '+919876543210', otpCooldownUntil: 1_726_000_060_000 })
     expect(s.screen).toBe('save-otp')
     expect(s.otp).toBe('')
     expect(s.authErr).toBeNull()
     expect(s.authId).toBe('+919876543210')
   })
+
+  it(
+    'also arms otpCooldownUntil with the supplied deadline (Task 12, design note 6) — GoTrue\'s rate-limit ' +
+    'window starts at THIS send, so the resend control must already be disabled on arrival, not only after a resend',
+    () => {
+      const s = r(initialSession, { type: 'AUTH_ID_SUBMITTED', authId: '+919876543210', otpCooldownUntil: 1_726_000_060_000 })
+      expect(s.otpCooldownUntil).toBe(1_726_000_060_000)
+    },
+  )
 })
 
 describe('SIGNED_IN (prototype authVerifyOtp, 2122)', () => {

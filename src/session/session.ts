@@ -326,8 +326,14 @@ export type SessionAction =
   | { type: 'SET_AUTH_BUSY'; value: boolean }
   // The successful half of authSubmitId (prototype 2113) — the reducer
   // never validates; auth.ts's normalisePhone/isValidEmail (pure, tested
-  // there) decide what reaches this action.
-  | { type: 'AUTH_ID_SUBMITTED'; authId: string }
+  // there) decide what reaches this action. `otpCooldownUntil` is Task 12's
+  // own addition (design note 6): GoTrue's `max_frequency` clock starts at
+  // THIS send, which is why the cooldown must be armed here too, not only
+  // on a resend — the caller (SaveCaseScreen) computes
+  // `now + OTP_RESEND_COOLDOWN_MS` and supplies it, the same D6
+  // injected-clock convention `SET_OTP_COOLDOWN` already uses; the reducer
+  // still never reads `Date.now()` itself.
+  | { type: 'AUTH_ID_SUBMITTED'; authId: string; otpCooldownUntil: number }
   // Prototype authVerifyOtp (2119-2128)'s user-write half. Deliberately
   // does NOT start the migration (design note 7) — that is Task 7/8's own
   // MIGRATION_STARTED, dispatched separately, because the two are
@@ -645,9 +651,13 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       // authSubmitId's success path (2104-2113) ends in `nav('save-otp')` —
       // the SAME nav()-style treatment every other navigating arm applies,
       // plus the auth-specific writes design note 7 calls out (id written,
-      // otp cleared, authErr cleared).
+      // otp cleared, authErr cleared). `otpCooldownUntil` (Task 12, design
+      // note 6): armed on THIS transition too, not only on a resend — the
+      // citizen arrives at save-otp with GoTrue's rate-limit window already
+      // running from the send that just happened, so an unarmed resend
+      // control here would let their first tap burn on a rejection.
       return {
-        ...s, authId: a.authId, authErr: null, otp: '',
+        ...s, authId: a.authId, authErr: null, otp: '', otpCooldownUntil: a.otpCooldownUntil,
         history: [...s.history, s.screen], screen: 'save-otp',
         trustOpen: false, restartConfirm: false, removeConfirm: null, acctOpen: false,
       }

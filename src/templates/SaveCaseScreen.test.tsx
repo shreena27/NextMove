@@ -17,6 +17,14 @@ import { SaveCaseScreen } from './SaveCaseScreen'
 import { UI } from '../screens/screenCopy'
 import { sessionReducer, initialSession, type SessionState } from '../session/session'
 import * as authModule from '../session/auth'
+import { OTP_RESEND_COOLDOWN_MS } from '../session/auth'
+
+// Task 12 (design note 6): a fixed clock for every `now` prop below —
+// `AUTH_ID_SUBMITTED` now carries `otpCooldownUntil`, computed at the call
+// site per D6, never read off `Date.now()` inside SaveCaseScreen itself.
+// Same literal `session.test.ts`'s own SET_OTP_COOLDOWN test already uses,
+// for a single shared fixture timestamp across the auth test files.
+const NOW = 1_726_000_000_000
 
 vi.mock('../session/auth', async importOriginal => {
   const actual = await importOriginal<typeof import('../session/auth')>()
@@ -55,6 +63,7 @@ function Controlled({ seed }: { seed?: Partial<SessionState> }) {
       authId={state.authId}
       authErr={state.authErr}
       authBusy={state.authBusy}
+      now={NOW}
       dispatch={dispatch}
     />
   )
@@ -83,6 +92,7 @@ function ControlledWithBack({ seed }: { seed?: Partial<SessionState> }) {
         authId={state.authId}
         authErr={state.authErr}
         authBusy={state.authBusy}
+        now={NOW}
         dispatch={dispatch}
       />
     </div>
@@ -97,7 +107,7 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
     'renders the crumb, headline, lede, the whole trust paragraph, the Google button, the divider, the phone ' +
     'label + placeholder, the send button, the switch link and the note — all from UI.saveCase',
     () => {
-      render(<SaveCaseScreen authMethod="phone" authId="" authErr={null} authBusy={false} dispatch={vi.fn()} />)
+      render(<SaveCaseScreen authMethod="phone" authId="" authErr={null} authBusy={false} now={NOW} dispatch={vi.fn()} />)
       expect(document.querySelector('.crumbs')).toHaveTextContent(UI.saveCase.crumb)
       expect(document.querySelector('.crumb-sq')).toHaveClass('sq-butter')
       expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(UI.saveCase.headline)
@@ -132,7 +142,7 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
   it('a short phone number dispatches SET_AUTH_ERR with the exact registered string and does not call startPhoneOtp', async () => {
     expect.assertions(2)
     const dispatch = vi.fn()
-    render(<SaveCaseScreen authMethod="phone" authId="98765" authErr={null} authBusy={false} dispatch={dispatch} />)
+    render(<SaveCaseScreen authMethod="phone" authId="98765" authErr={null} authBusy={false} now={NOW} dispatch={dispatch} />)
     await userEvent.click(sendBtnName())
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_AUTH_ERR', error: UI.saveCase.errors.mobile })
     expect(startPhoneOtp).not.toHaveBeenCalled()
@@ -141,12 +151,14 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
   it("a valid phone calls startPhoneOtp with the normalised E.164 value ('+919876543210' from '98765 43210'), then dispatches AUTH_ID_SUBMITTED", async () => {
     const dispatch = vi.fn()
     render(
-      <SaveCaseScreen authMethod="phone" authId="98765 43210" authErr={null} authBusy={false} dispatch={dispatch} />,
+      <SaveCaseScreen authMethod="phone" authId="98765 43210" authErr={null} authBusy={false} now={NOW} dispatch={dispatch} />,
     )
     await userEvent.click(sendBtnName())
     expect(startPhoneOtp).toHaveBeenCalledWith('+919876543210')
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_AUTH_BUSY', value: true })
-    expect(dispatch).toHaveBeenCalledWith({ type: 'AUTH_ID_SUBMITTED', authId: '+919876543210' })
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'AUTH_ID_SUBMITTED', authId: '+919876543210', otpCooldownUntil: NOW + OTP_RESEND_COOLDOWN_MS,
+    })
     // Fix Round 1, Finding 1: the SUCCESS path must clear authBusy too, not
     // just the failure path — see the dedicated Back-button repro test
     // below (`Fix Round 1` describe block) for why a stuck `true` here is a
@@ -157,7 +169,7 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
   it('a malformed email dispatches the email error; a valid one calls startEmailOtp', async () => {
     const dispatch = vi.fn()
     const { rerender } = render(
-      <SaveCaseScreen authMethod="email" authId="not-an-email" authErr={null} authBusy={false} dispatch={dispatch} />,
+      <SaveCaseScreen authMethod="email" authId="not-an-email" authErr={null} authBusy={false} now={NOW} dispatch={dispatch} />,
     )
     await userEvent.click(sendBtnName())
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_AUTH_ERR', error: UI.saveCase.errors.email })
@@ -166,12 +178,14 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
     dispatch.mockClear()
     rerender(
       <SaveCaseScreen
-        authMethod="email" authId="citizen@example.com" authErr={null} authBusy={false} dispatch={dispatch}
+        authMethod="email" authId="citizen@example.com" authErr={null} authBusy={false} now={NOW} dispatch={dispatch}
       />,
     )
     await userEvent.click(sendBtnName())
     expect(startEmailOtp).toHaveBeenCalledWith('citizen@example.com')
-    expect(dispatch).toHaveBeenCalledWith({ type: 'AUTH_ID_SUBMITTED', authId: 'citizen@example.com' })
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'AUTH_ID_SUBMITTED', authId: 'citizen@example.com', otpCooldownUntil: NOW + OTP_RESEND_COOLDOWN_MS,
+    })
     // Fix Round 1, Finding 1: same clear on the email success branch.
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_AUTH_BUSY', value: false })
   })
@@ -179,17 +193,19 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
   it('Enter in the field does the same as clicking send', async () => {
     const dispatch = vi.fn()
     render(
-      <SaveCaseScreen authMethod="phone" authId="9876543210" authErr={null} authBusy={false} dispatch={dispatch} />,
+      <SaveCaseScreen authMethod="phone" authId="9876543210" authErr={null} authBusy={false} now={NOW} dispatch={dispatch} />,
     )
     const input = screen.getByLabelText(UI.saveCase.fieldLabelMobile)
     fireEvent.keyDown(input, { key: 'Enter' })
     await waitFor(() => expect(startPhoneOtp).toHaveBeenCalledWith('+919876543210'))
-    expect(dispatch).toHaveBeenCalledWith({ type: 'AUTH_ID_SUBMITTED', authId: '+919876543210' })
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'AUTH_ID_SUBMITTED', authId: '+919876543210', otpCooldownUntil: NOW + OTP_RESEND_COOLDOWN_MS,
+    })
   })
 
   it('a non-Enter key in the field does not submit', () => {
     const dispatch = vi.fn()
-    render(<SaveCaseScreen authMethod="phone" authId="9876543210" authErr={null} authBusy={false} dispatch={dispatch} />)
+    render(<SaveCaseScreen authMethod="phone" authId="9876543210" authErr={null} authBusy={false} now={NOW} dispatch={dispatch} />)
     const input = screen.getByLabelText(UI.saveCase.fieldLabelMobile)
     fireEvent.keyDown(input, { key: 'a' })
     expect(startPhoneOtp).not.toHaveBeenCalled()
@@ -198,7 +214,7 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
 
   it('the Google button calls signInWithGoogle with window.location.origin', async () => {
     const dispatch = vi.fn()
-    render(<SaveCaseScreen authMethod="phone" authId="" authErr={null} authBusy={false} dispatch={dispatch} />)
+    render(<SaveCaseScreen authMethod="phone" authId="" authErr={null} authBusy={false} now={NOW} dispatch={dispatch} />)
     await userEvent.click(googleBtnName())
     expect(signInWithGoogle).toHaveBeenCalledWith(window.location.origin)
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_AUTH_BUSY', value: true })
@@ -206,7 +222,7 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
 
   it('with authBusy: true, the send and Google buttons are disabled and a click calls nothing', async () => {
     const dispatch = vi.fn()
-    render(<SaveCaseScreen authMethod="phone" authId="9876543210" authErr={null} authBusy dispatch={dispatch} />)
+    render(<SaveCaseScreen authMethod="phone" authId="9876543210" authErr={null} authBusy now={NOW} dispatch={dispatch} />)
     const sendBtn = sendBtnName()
     const googleBtn = googleBtnName()
     expect(sendBtn).toBeDisabled()
@@ -222,7 +238,7 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
     startPhoneOtp.mockResolvedValueOnce({ ok: false, error: 'network down' })
     const dispatch = vi.fn()
     render(
-      <SaveCaseScreen authMethod="phone" authId="9876543210" authErr={null} authBusy={false} dispatch={dispatch} />,
+      <SaveCaseScreen authMethod="phone" authId="9876543210" authErr={null} authBusy={false} now={NOW} dispatch={dispatch} />,
     )
     await userEvent.click(sendBtnName())
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_AUTH_ERR', error: 'network down' })
@@ -232,7 +248,7 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
   it('a failing signInWithGoogle surfaces the error and clears authBusy (design note 6 — Google\'s error path ships and is tested now too)', async () => {
     signInWithGoogle.mockResolvedValueOnce({ ok: false, error: 'oauth unavailable' })
     const dispatch = vi.fn()
-    render(<SaveCaseScreen authMethod="phone" authId="" authErr={null} authBusy={false} dispatch={dispatch} />)
+    render(<SaveCaseScreen authMethod="phone" authId="" authErr={null} authBusy={false} now={NOW} dispatch={dispatch} />)
     await userEvent.click(googleBtnName())
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_AUTH_ERR', error: 'oauth unavailable' })
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_AUTH_BUSY', value: false })
@@ -241,7 +257,7 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
   it('the error node has role="alert"; the label is associated with the input (query by label text)', () => {
     render(
       <SaveCaseScreen
-        authMethod="phone" authId="" authErr={UI.saveCase.errors.mobile} authBusy={false} dispatch={vi.fn()}
+        authMethod="phone" authId="" authErr={UI.saveCase.errors.mobile} authBusy={false} now={NOW} dispatch={vi.fn()}
       />,
     )
     expect(screen.getByRole('alert')).toHaveTextContent(UI.saveCase.errors.mobile)
@@ -288,7 +304,7 @@ describe('Fix Round 1 (review of 84b6b31)', () => {
     'attribute on the buttons — Enter never goes through either button)',
     () => {
       const dispatch = vi.fn()
-      render(<SaveCaseScreen authMethod="phone" authId="9876543210" authErr={null} authBusy dispatch={dispatch} />)
+      render(<SaveCaseScreen authMethod="phone" authId="9876543210" authErr={null} authBusy now={NOW} dispatch={dispatch} />)
       const input = screen.getByLabelText(UI.saveCase.fieldLabelMobile)
       fireEvent.keyDown(input, { key: 'Enter' })
       expect(startPhoneOtp).not.toHaveBeenCalled()
@@ -299,7 +315,7 @@ describe('Fix Round 1 (review of 84b6b31)', () => {
   it('Finding 3 — UI.saveCase.errors.email is genuinely rendered, not just dispatched as an action payload', () => {
     render(
       <SaveCaseScreen
-        authMethod="email" authId="" authErr={UI.saveCase.errors.email} authBusy={false} dispatch={vi.fn()}
+        authMethod="email" authId="" authErr={UI.saveCase.errors.email} authBusy={false} now={NOW} dispatch={vi.fn()}
       />,
     )
     expect(screen.getByRole('alert')).toHaveTextContent(UI.saveCase.errors.email)

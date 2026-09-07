@@ -79,7 +79,7 @@
  *  citizen did not navigate to is announced, not just displayed. */
 import type { ReactNode } from 'react'
 import type { SessionAction, SessionState } from '../session/session'
-import { normalisePhone, isValidEmail, startPhoneOtp, startEmailOtp, signInWithGoogle } from '../session/auth'
+import { normalisePhone, isValidEmail, startPhoneOtp, startEmailOtp, signInWithGoogle, OTP_RESEND_COOLDOWN_MS } from '../session/auth'
 import { Split } from '../ui/Split'
 import { Crumbs } from '../ui/Crumbs'
 import { Button } from '../ui/Button'
@@ -93,13 +93,21 @@ export interface SaveCaseScreenProps {
   authId: SessionState['authId']
   authErr: SessionState['authErr']
   authBusy: SessionState['authBusy']
+  /** Task 12 addition (design note 6): stamps `AUTH_ID_SUBMITTED`'s new
+   *  `otpCooldownUntil` field (`now + OTP_RESEND_COOLDOWN_MS`) — the SAME
+   *  D6 injected-clock convention every other `now`-bearing dispatch in
+   *  this codebase uses (PrepareScreen's `onTogglePrepStep`, CaseCard),
+   *  never an internal `Date.now()` call here. Required, not optional: a
+   *  screen with no wired caller still needs a real clock value to compute
+   *  a real deadline from. */
+  now: number
   /** Rendered first, matching the prototype's own `topbar(true,false)` at
    *  the top of `renderSaveCase`, line 3824. */
   topbar?: ReactNode
   dispatch?: (action: SessionAction) => void
 }
 
-export function SaveCaseScreen({ authMethod, authId, authErr, authBusy, topbar, dispatch }: SaveCaseScreenProps) {
+export function SaveCaseScreen({ authMethod, authId, authErr, authBusy, now, topbar, dispatch }: SaveCaseScreenProps) {
   const isPhone = authMethod === 'phone'
 
   const handleSend = async () => {
@@ -124,7 +132,9 @@ export function SaveCaseScreen({ authMethod, authId, authErr, authBusy, topbar, 
       // 'save-otp' (see the file header's own updated note, and the
       // ControlledWithBack repro in SaveCaseScreen.test.tsx).
       dispatch?.({ type: 'SET_AUTH_BUSY', value: false })
-      dispatch?.({ type: 'AUTH_ID_SUBMITTED', authId: e164 })
+      // Task 12, design note 6: arms the cooldown on THIS send, not only on
+      // a later resend — GoTrue's rate-limit clock starts here.
+      dispatch?.({ type: 'AUTH_ID_SUBMITTED', authId: e164, otpCooldownUntil: now + OTP_RESEND_COOLDOWN_MS })
     } else {
       if (!isValidEmail(authId)) {
         dispatch?.({ type: 'SET_AUTH_ERR', error: UI.saveCase.errors.email })
@@ -139,7 +149,7 @@ export function SaveCaseScreen({ authMethod, authId, authErr, authBusy, topbar, 
       }
       // Fix Round 1, Finding 1: same clear on the email success branch.
       dispatch?.({ type: 'SET_AUTH_BUSY', value: false })
-      dispatch?.({ type: 'AUTH_ID_SUBMITTED', authId })
+      dispatch?.({ type: 'AUTH_ID_SUBMITTED', authId, otpCooldownUntil: now + OTP_RESEND_COOLDOWN_MS })
     }
   }
 

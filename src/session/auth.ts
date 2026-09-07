@@ -62,6 +62,19 @@ export function isValidEmail(raw: string): boolean {
   return raw.includes('@') && raw.includes('.')
 }
 
+/** D2's OTP-resend cooldown window (Task 12). Measured against this repo's
+ *  own `supabase/config.toml`, not assumed: `[auth.email] max_frequency =
+ *  "1s"` and `[auth.sms] max_frequency = "5s"` LOCALLY — but 60s is the
+ *  hosted-platform default, which is what production actually runs (plan
+ *  doc, design note 5 / task-12-brief.md design note 5). The UI is built
+ *  for the production value; local dev will not exercise it naturally,
+ *  which is exactly why SaveOtpScreen's own cooldown tests use fake timers
+ *  over the state rather than the local stack's real rate limit. Shared by
+ *  both `SaveCaseScreen` (arms the cooldown on the INITIAL send, design
+ *  note 6) and `SaveOtpScreen` (arms it again on every resend) so the two
+ *  screens can never disagree on the window's length. */
+export const OTP_RESEND_COOLDOWN_MS = 60_000
+
 /** Transcribed from 2146-2151, operating on `AppUser.id`. */
 export function maskId(u: AppUser): string {
   if (u.method === 'phone') return '+91 •••••• ' + u.id.slice(-3)
