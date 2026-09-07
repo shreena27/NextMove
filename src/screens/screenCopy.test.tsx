@@ -55,6 +55,7 @@ import { CaseClosedScreen } from '../templates/CaseClosedScreen'
 import { SaveDoneScreen } from '../templates/SaveDoneScreen'
 import { SaveCaseScreen } from '../templates/SaveCaseScreen'
 import { SaveOtpScreen } from '../templates/SaveOtpScreen'
+import { SaveNameScreen } from '../templates/SaveNameScreen'
 
 const noop = () => {}
 
@@ -794,6 +795,19 @@ function UiChrome() {
         authMethod="phone" authId="+919876543210" otp="" authErr={null} authBusy={false}
         otpResent={false} otpCooldownUntil={otpAlmostDueBy} now={CASE_NOW} dispatch={noop}
       />
+      {/* Task 13: SaveNameScreen — TWO mounts, one per branch (mid-save/
+          standalone), since design note 1 branches the crumbs, the lede
+          clause and both buttons on `midSave = !!pendingSave`. Both are
+          fully controlled components (no interaction needed for any of the
+          11 ui:saveName.* strings — headline/ledeStem/fieldLabel/
+          placeholder are shared, the other 8 split evenly across these two
+          mounts), same reasoning as the SaveCaseScreen/SaveOtpScreen mounts
+          above. */}
+      <SaveNameScreen
+        pendingSave={{ engineKey: 'passport', serviceLabel: UI.serviceLabel.passport, returnScreen: 'passport-nextmove' }}
+        pendingName="" now={CASE_NOW} dispatch={noop}
+      />
+      <SaveNameScreen pendingSave={null} pendingName="" now={CASE_NOW} dispatch={noop} />
     </>
   )
 }
