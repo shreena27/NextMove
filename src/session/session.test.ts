@@ -248,18 +248,18 @@ describe('C5 ScreenId additions', () => {
       .toEqual(['checkin', 'dead-end', 'case-closed', 'save-done'])
   })
 
-  it('C7/C6/C8 screen ids are NOT part of this union yet (negative type-check)', () => {
+  it('C7/C8 screen ids are NOT part of this union yet (negative type-check)', () => {
     // @ts-expect-error 'save-case' is C7's — not on ScreenId until then
     r(initialSession, { type: 'NAVIGATE', screen: 'save-case' })
     // @ts-expect-error 'save-otp' is C7's — not on ScreenId until then
     r(initialSession, { type: 'NAVIGATE', screen: 'save-otp' })
     // @ts-expect-error 'save-name' is C7's — not on ScreenId until then
     r(initialSession, { type: 'NAVIGATE', screen: 'save-name' })
-    // @ts-expect-error 'sir-reverifying' is C6's — not on ScreenId until then
-    r(initialSession, { type: 'NAVIGATE', screen: 'sir-reverifying' })
     // @ts-expect-error 'interp-confirm' is C8's — not on ScreenId until then
     r(initialSession, { type: 'NAVIGATE', screen: 'interp-confirm' })
   })
+  // 'sir-reverifying' (C6) moved out of this negative check — it is a real
+  // ScreenId now (this chunk); routing coverage lives in sirFlow.test.tsx.
 })
 
 describe('BEGIN_WORKING_CHECKIN / OPEN_CHECKIN reducer wiring (thin arms over cases.ts, design notes 3 and 8)', () => {

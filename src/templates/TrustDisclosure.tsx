@@ -27,12 +27,16 @@
  *  itself never imports the guardrail harness — so importing it here does
  *  not violate this file's own MUST-NOT-import-guardrails rule above. */
 import type { Diagnosis } from '../domain/types'
+import { verifiedDateFor } from '../domain/freshness'
 import { UI } from '../screens/screenCopy'
 
 /** Last human verification of `sources/manifest.json` (prototype line 2018).
- *  Project metadata, not a government-process claim — C6's freshness job is
- *  what will eventually keep this current (this task's design note 8);
- *  pinned against the manifest itself by TrustDisclosure.test.tsx. */
+ *  Project metadata, not a government-process claim; pinned against the
+ *  manifest itself by TrustDisclosure.test.tsx. The static fallback for a
+ *  document C6's freshness job doesn't cover (the two web-page sources,
+ *  and the superseded schedule PDF — all check:"manual"/"none" in
+ *  manifest.json) — see `verifiedDateFor` below, which now sources the
+ *  date LIVE, per document, for everything the freshness job does cover. */
 export const SOURCES_VERIFIED = '5 Sep 2026'
 
 export interface TrustDisclosureProps {
@@ -78,7 +82,10 @@ export function TrustDisclosure({ d, answerLabels, extraToldUs, open, onToggle }
               {d.source.quote ? <div className="source-quote">"{d.source.quote}"</div> : null}
               {d.source.docId !== null ? (
                 <div className="small" style={{ marginTop: 5, color: 'var(--ink-faint)' }}>
-                  {UI.trust.verifiedOn.replace('{date}', SOURCES_VERIFIED)}
+                  {UI.trust.verifiedOn.replace(
+                    '{date}',
+                    verifiedDateFor(d.source.docId) ?? SOURCES_VERIFIED,
+                  )}
                 </div>
               ) : null}
             </div>

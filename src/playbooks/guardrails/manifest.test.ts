@@ -1,7 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import { loadManifest, loadSourceText, squash, canonicalDate, canonicalInterval } from './manifest'
+// A plain JSON import — the SAME mechanism the real client bundle uses
+// (domain/freshness.ts), not a second file-reading code path to keep in
+// sync. Reads the actual committed bytes at test-run time either way.
+import freshnessData from '../../../sources/freshness.json'
+import type { FreshnessFile } from '../../domain/freshness'
 
 const manifest = loadManifest()
+// Same reason domain/freshness.ts casts this: the JSON import's inferred
+// type is a LITERAL snapshot of today's committed content (status narrowed
+// to whatever's actually in the file right now), so `doc.status ===
+// 'changed'` below would be a TypeScript error the moment the committed
+// data only ever says "ok".
+const freshness = freshnessData as FreshnessFile
 
 describe('manifest structure', () => {
   it('every rules entry names a document that exists', () => {
@@ -43,6 +54,29 @@ describe('manifest structure', () => {
     // "verified" it is a LIVE entry no shipped rule claims, so Task 7's
     // cross-playbook orphan sweep fails.
     expect(manifest.rules['s-5-dormant-final-roll'].status).toBe('dormant')
+  })
+})
+
+describe('sources/freshness.json (C6)', () => {
+  it('every document key is a real manifest.json document — no stale/typo\'d key silently ignored by the client', () => {
+    for (const docId of Object.keys(freshness.documents)) {
+      expect(manifest.documents[docId], `freshness.documents["${docId}"]`).toBeDefined()
+    }
+  })
+
+  it('only auto/local-check documents ever appear — a manual/none document should never be machine-checked', () => {
+    for (const docId of Object.keys(freshness.documents)) {
+      const mode = manifest.documents[docId].check
+      expect(['auto', 'local'], `manifest.documents["${docId}"].check`).toContain(mode)
+    }
+  })
+
+  it('a changed document carries a changedOn date and a live hash — never a bare status with nothing to show', () => {
+    for (const [docId, doc] of Object.entries(freshness.documents)) {
+      if (doc.status !== 'changed') continue
+      expect(doc.changedOn, `freshness.documents["${docId}"].changedOn`).toBeTruthy()
+      expect(doc.liveSha256, `freshness.documents["${docId}"].liveSha256`).toBeTruthy()
+    }
   })
 })
 

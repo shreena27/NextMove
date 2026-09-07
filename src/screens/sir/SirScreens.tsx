@@ -1,8 +1,9 @@
 /** Ports the prototype's SIR state-select, unsupported-coverage, and Q1
- *  screens (design/nextmove-v1-prototype.html, lines 3483-3563).
- *  `renderSirReverifying` (3505-3523) is NOT ported — it is C6's freshness
- *  landing, layered on top of this same coverage boundary later without
- *  changing sirCoverage()'s signature.
+ *  screens (design/nextmove-v1-prototype.html, lines 3483-3563), plus
+ *  (C6) `renderSirReverifying` (3505-3523) — the source-freshness landing
+ *  layered on top of this same coverage boundary, without changing
+ *  sirCoverage()'s own signature (its own header comment named this exact
+ *  extension point).
  *
  *  LOAD-BEARING ORDERING (C2 handoff, stated as a MUST): the router calls
  *  sirCoverage() BEFORE anything else. sirEngine has no coverage gate of its
@@ -14,6 +15,14 @@
  *  sir-q1, which is only reachable for a covered state. Pinned by
  *  sirFlow.test.tsx's spy test (AC-S-5, C2's deferred guardrail).
  *
+ *  C6 EXTENDS this same onSelect, never a second gate elsewhere: a
+ *  COVERED state additionally routes to 'sir-reverifying' instead of
+ *  'sir-q1' when degradedFor(sirPlaybook.rules) is true (prototype's
+ *  sirStateAnswer, 3497-3501, checks both in the same function) — an
+ *  unsupported state still always routes to 'sir-unsupported' regardless
+ *  of freshness, exactly as the prototype's own `if` ordering does
+ *  (freshness is only ever checked for an already-supported state).
+ *
  *  Government-process meaning never lives here — see VoterScreens.tsx's
  *  identical note. `describeBlock` is deliberately not ported, same reason
  *  as the other C3 screens. */
@@ -24,9 +33,11 @@ import { PhaseEyebrow } from '../../ui/Crumbs'
 import { Button } from '../../ui/Button'
 import type { ScreenProps } from '../screenProps'
 import { hasAnswers } from '../screenProps'
-import { SIR_STATES, SIR_Q1_OPTIONS_FOR } from '../../playbooks/sirPlaybook'
+import { SIR_STATES, SIR_Q1_OPTIONS_FOR, sirPlaybook } from '../../playbooks/sirPlaybook'
 import { sirCoverage, optionsForPhase } from '../../domain/sirConfig'
+import { degradedFor, changedOnFor } from '../../domain/freshness'
 import { UI, SIR_COPY } from '../screenCopy'
+import { SOURCES_VERIFIED } from '../../templates/TrustDisclosure'
 
 export function SirState({ state, dispatch }: ScreenProps) {
   const onSelect = (k: string) => {
@@ -35,7 +46,11 @@ export function SirState({ state, dispatch }: ScreenProps) {
     // top-of-file note. Never a `.supported` check inlined here: sirCoverage
     // is the one place that decision is allowed to live.
     const coverage = sirCoverage(SIR_STATES[k])
-    dispatch({ type: 'NAVIGATE', screen: coverage === 'covered' ? 'sir-q1' : 'sir-unsupported' })
+    const screen =
+      coverage !== 'covered' ? 'sir-unsupported'
+      : degradedFor(sirPlaybook.rules) ? 'sir-reverifying'
+      : 'sir-q1'
+    dispatch({ type: 'NAVIGATE', screen })
   }
   return (
     <>
@@ -77,6 +92,43 @@ export function SirUnsupported({ state, dispatch }: ScreenProps) {
               <div className="handoff-note">{SIR_COPY.unsupported.handoffNoteLead} {st.name} {SIR_COPY.unsupported.handoffNoteTail}</div>
             </div>
           </div>
+          <Button variant="secondary" block onClick={() => dispatch({ type: 'RESTART' })}>{UI.common.backToHome}</Button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+/** C6: the freshness landing for an otherwise-covered state (prototype
+ *  `renderSirReverifying`, 3505-3523) — reachable only via SirState's
+ *  onSelect above, never directly, so `changedOnFor` always finds at least
+ *  one changed document here (that's WHY onSelect routed here). Falls back
+ *  to null only if this screen were somehow reached with a state answered
+ *  differently since — a same-shape fallback to '' matches how the
+ *  prototype's own template interpolation has no null-guard either. */
+export function SirReverifying({ state, dispatch }: ScreenProps) {
+  const st = SIR_STATES[state.answers.sirState]
+  const changedOn = changedOnFor(sirPlaybook.rules) ?? ''
+  return (
+    <>
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <div className="stage screen">
+        <div className="narrow">
+          <PhaseEyebrow service={UI.serviceLabel.voterServices} phase={`${UI.serviceLabel.sir} · ${st.name}`} />
+          <h2 className="headline">{SIR_COPY.reverifying.headline.replace('{state}', st.name)}</h2>
+          <p className="lede">
+            {SIR_COPY.reverifying.lede.replace('{state}', st.name).replace('{date}', changedOn)}
+          </p>
+          <div className="nm-field" style={{ borderTop: 'none', paddingTop: 0 }}>
+            <div className="nm-k">{SIR_COPY.reverifying.whereToCheck}</div>
+            <div className="nm-v">
+              <a href="https://voters.eci.gov.in" target="_blank" rel="noopener">{SIR_COPY.reverifying.portalLabel}</a> · <span className="phone">{SIR_COPY.reverifying.helpline}</span>
+              <div className="handoff-note">{SIR_COPY.reverifying.handoffNote}</div>
+            </div>
+          </div>
+          <p className="small" style={{ marginTop: 14 }}>
+            {SIR_COPY.reverifying.verifiedNote.replace('{date}', SOURCES_VERIFIED)}
+          </p>
           <Button variant="secondary" block onClick={() => dispatch({ type: 'RESTART' })}>{UI.common.backToHome}</Button>
         </div>
       </div>

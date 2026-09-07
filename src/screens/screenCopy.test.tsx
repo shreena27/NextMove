@@ -26,7 +26,7 @@ import { caseSnapshot, LOG_COPY, type Casefile } from '../domain/casefile'
 import { checkinOptionsFor } from '../domain/checkinOptions'
 import { fmtDay, fmtRemind } from '../ui/dates'
 import * as LABELS from './labels'
-import { SCREEN_COPY, UI, PASSPORT_COPY, type CopyLocation } from './screenCopy'
+import { SCREEN_COPY, UI, PASSPORT_COPY, SIR_COPY, type CopyLocation } from './screenCopy'
 import { INTERACTION_GATED } from './interactionGated'
 import { Home } from './Home'
 import { OtherServices } from './OtherServices'
@@ -35,13 +35,14 @@ import {
   PassportRecovery, PassportRecoveryPaste, PassportRecoveryShow, PASTE_MATCH_EXAMPLES,
 } from './passport/PassportRecovery'
 import { VoterEntry, VoterQ1, VoterQ2 } from './voter/VoterScreens'
-import { SirState, SirUnsupported, SirQ1 } from './sir/SirScreens'
+import { SirState, SirUnsupported, SirReverifying, SirQ1 } from './sir/SirScreens'
 import { Topbar } from '../ui/Topbar'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { DiagnosisScreen } from '../templates/DiagnosisScreen'
 import { NextMoveScreen } from '../templates/NextMoveScreen'
 import { PrepareScreen } from '../templates/PrepareScreen'
 import { SOURCES_VERIFIED } from '../templates/TrustDisclosure'
+import { verifiedDateFor } from '../domain/freshness'
 import { LADDER_DEFS, LADDER_TAG } from '../templates/ladder'
 import { CaseProgress } from '../templates/CaseProgress'
 import { JourneyLog } from '../templates/JourneyLog'
@@ -357,6 +358,7 @@ const casefileBaseProps = {
   ciPending: null, ciPendingIdx: null, ciStage: null, ciReassure: false,
   ciSnapshot: null, ciConsecutive: false, phaseDrift: false, reminderCopied: false,
   logOpen: {}, removeConfirm: null, dispatch: noop,
+  freshDegraded: false, freshChangedOn: null,
 }
 
 // PrepareScreen's four now-required controlled props (Task 13's ADDED
@@ -428,6 +430,16 @@ function SirBucketScreens() {
     <>
       <SirState state={initialSession} dispatch={noop} />
       <SirUnsupported state={sirUnsupportedState} dispatch={noop} />
+      {/* C6: reuses sirQ1State's 'delhi' answer (the one supported state) —
+          SirReverifying only reads state.answers.sirState, same as
+          SirUnsupported/SirQ1 above. Real freshness.json currently has
+          nothing flagged 'changed', so changedOnFor(sirPlaybook.rules)
+          resolves to null here and the lede's {date} substitutes to ''
+          (see CAPTION_SUBSTITUTIONS' own comment on this below) — the DATE
+          VALUE's correctness is covered separately by domain/freshness.test.ts;
+          this sweep proves the copy is wired to real SCREEN_COPY, not a
+          hand-typed duplicate. */}
+      <SirReverifying state={sirQ1State} dispatch={noop} />
       <SirQ1 state={sirQ1State} dispatch={noop} />
     </>
   )
@@ -499,6 +511,15 @@ function UiChrome() {
         serviceLabel="X" engineKey="sir" d={noticeDiagnosis}
         answerLabels={{}} trustOpen={false} onToggleTrust={noop}
         phaseDrift
+      />
+      {/* C6: freshBanner (freshness.reverifiedLead/reverifiedBody) — its own
+          dedicated mount, same convention as ciJustUpdated/phaseDrift just
+          above. reverifiedBody is a CAPTION_TEMPLATES entry (interpolates
+          {date}); reverifiedLead is plain and must appear verbatim. */}
+      <DiagnosisScreen
+        serviceLabel="X" engineKey="sir" d={noticeDiagnosis}
+        answerLabels={{}} trustOpen={false} onToggleTrust={noop}
+        freshDegraded freshChangedOn="5 Sep 2026"
       />
       {/* Prepare (C4): draft-bearing (real state-5a — channelPhone,
           hintMany, stepsCount, copy and channelOpen all reach real,
@@ -650,6 +671,18 @@ const CAPTION_TEMPLATES = new Set([
   // government-process claim.
   'ui:home.casefilesOne', // interpolates the open-case count (always 1) for {n}
   'ui:home.casefilesMany', // interpolates the open-case count for {n}
+  // C6 (freshBanner). Interpolates the degraded document's own changedOn
+  // date from sources/freshness.json (domain/freshness.ts's changedOnFor)
+  // — real freshness-job metadata, not a government-process claim.
+  'ui:freshness.reverifiedBody', // interpolates changedOnFor(engine.rules) for {date}
+  // C6 (SirReverifying). headline/lede interpolate the SIR state's own
+  // name (from SIR_STATES, config data, not a government-process claim);
+  // lede additionally interpolates changedOnFor for {date}, same category
+  // as freshness.reverifiedBody above. verifiedNote interpolates
+  // SOURCES_VERIFIED, same category as ui:trust.verifiedOn.
+  'sir:reverifying.headline', // interpolates the SIR state's name for {state}
+  'sir:reverifying.lede', // interpolates the SIR state's name for {state} and changedOnFor for {date}
+  'sir:reverifying.verifiedNote', // interpolates SOURCES_VERIFIED for {date}
 ])
 
 // `INTERACTION_GATED` itself (design note 4a: entries no STATIC mount can
@@ -710,7 +743,14 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
   // real click, mocking navigator.clipboard exactly as PrepareScreen.test.tsx
   // does.
   const CAPTION_SUBSTITUTIONS: Record<string, string> = {
-    'ui:trust.verifiedOn': UI.trust.verifiedOn.replace('{date}', SOURCES_VERIFIED),
+    // C6: classifiedDiagnosis cites Citizens_Charter.pdf (state-1), one of
+    // check_freshness.py's covered documents — computed via the SAME
+    // live-then-fallback logic TrustDisclosure.tsx itself uses, not
+    // hardcoded, so this doesn't rot every time the freshness job updates
+    // the committed sources/freshness.json.
+    'ui:trust.verifiedOn': UI.trust.verifiedOn.replace(
+      '{date}', verifiedDateFor(classifiedDiagnosis.source.docId) ?? SOURCES_VERIFIED,
+    ),
     'ui:prepare.channelPhone': UI.prepare.channelPhone.replace('{phone}', helplineDiagnosis.where.phone!),
     'ui:prepare.hintOne': UI.prepare.hintOne.replace('{n}', '1'),
     'ui:prepare.hintMany': UI.prepare.hintMany.replace(
@@ -753,6 +793,21 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     // closedGotItCase] for the plural).
     'ui:home.casefilesOne': UI.home.casefilesOne.replace('{n}', '1'),
     'ui:home.casefilesMany': UI.home.casefilesMany.replace('{n}', '2'),
+    // C6 — matches the literal freshChangedOn="5 Sep 2026" prop the
+    // dedicated UiChrome mount above passes directly (not derived from
+    // freshness.json — this is a component-prop substitution, same
+    // category as ui:card.checkBack's own literal-date prop above).
+    'ui:freshness.reverifiedBody': UI.freshness.reverifiedBody.replace('{date}', '5 Sep 2026'),
+    // C6 — SirReverifying computes changedOnFor(sirPlaybook.rules) itself
+    // (not a prop); real freshness.json currently has nothing 'changed',
+    // so it resolves to null and the component's own `?? ''` fallback
+    // substitutes an empty string here. The date VALUE's correctness is
+    // covered by domain/freshness.test.ts's own dedicated unit tests with
+    // injected 'changed' fixtures — this sweep only proves the copy comes
+    // from real SCREEN_COPY, wired through a real render.
+    'sir:reverifying.headline': SIR_COPY.reverifying.headline.replace('{state}', 'Delhi'),
+    'sir:reverifying.lede': SIR_COPY.reverifying.lede.replace('{state}', 'Delhi').replace('{date}', ''),
+    'sir:reverifying.verifiedNote': SIR_COPY.reverifying.verifiedNote.replace('{date}', SOURCES_VERIFIED),
   }
 
   it('CAPTION_SUBSTITUTIONS covers exactly CAPTION_TEMPLATES, and each substituted form actually renders', async () => {
@@ -827,6 +882,14 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     // C5 Task 11 — Home's casefiles section, off the SAME uiContainer mount.
     expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:home.casefilesOne'])
     expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:home.casefilesMany'])
+    // C6 — freshBanner, off the SAME uiContainer mount (freshDegraded
+    // DiagnosisScreen is part of UiChrome() too).
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:freshness.reverifiedBody'])
+    // C6 — SirReverifying, its own mount (SirBucketScreens, not UiChrome).
+    const { container: sirContainer } = render(SirBucketScreens())
+    expect(sirContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['sir:reverifying.headline'])
+    expect(sirContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['sir:reverifying.lede'])
+    expect(sirContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['sir:reverifying.verifiedNote'])
   })
 
   // `INTERACTION_GATED` needs no membership pin here (fix-round review

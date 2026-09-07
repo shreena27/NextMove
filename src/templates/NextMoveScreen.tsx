@@ -2,9 +2,9 @@
  *  (design/nextmove-v1-prototype.html, lines 3654-3684), the second of the
  *  two templates all three services render through unmodified.
  *
- *  Deliberately NOT ported here (Out of Scope, later chunks): `freshBanner`
- *  (C6 — slots in as the first child of the right column, per this plan's
- *  C6 handoff notes). `updateEntry`'s "Add an update" button and
+ *  `freshBanner` (C6) is now built — the first child of the right column
+ *  (prototype 3671), see the `freshDegraded`/`freshChangedOn` props below.
+ *  `updateEntry`'s "Add an update" button and
  *  `saveControl`'s "Save this case" control are Task 11's own (this
  *  commit, same chunk) — `<UpdateEntry>` renders immediately after the CTA
  *  below, `<SaveControl>` last of all (design note 4; see the `onUpdate`/
@@ -88,6 +88,7 @@ import type { Casefile } from '../domain/casefile'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { Split } from '../ui/Split'
 import { Button } from '../ui/Button'
+import { Banner } from '../ui/Banner'
 import { UpdateEntry } from './UpdateEntry'
 import { SaveControl } from './SaveControl'
 import { UI } from '../screens/screenCopy'
@@ -145,6 +146,12 @@ export interface NextMoveScreenProps {
    *  literal `0`, prototype 2966). */
   savedCases?: Casefile[]
   onSave?: () => void
+
+  /** C6's freshBanner (prototype 3671) — see DiagnosisScreen.tsx's own prop
+   *  of the same name for the full convention (App.tsx-computed, optional,
+   *  `undefined`-default so pre-existing render calls stay byte-identical). */
+  freshDegraded?: boolean
+  freshChangedOn?: string | null
 }
 
 export function NextMoveScreen({
@@ -158,6 +165,8 @@ export function NextMoveScreen({
   onUpdate,
   savedCases,
   onSave,
+  freshDegraded,
+  freshChangedOn,
 }: NextMoveScreenProps) {
   return (
     <>
@@ -173,6 +182,11 @@ export function NextMoveScreen({
           }
           right={
             <>
+              {freshDegraded ? (
+                <Banner>
+                  <b>{UI.freshness.reverifiedLead}</b> {UI.freshness.reverifiedBody.replace('{date}', freshChangedOn ?? '')}
+                </Banner>
+              ) : null}
               <div className="nm-fields">
                 <div className="nm-field">
                   <div className="nm-k">{UI.nextMove.why}</div>

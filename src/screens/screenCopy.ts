@@ -118,6 +118,20 @@ export const UI = {
       domicile: 'Domicile Certificate',
     },
   },
+  /** freshBanner (C6; prototype's freshBanner(), line 2022) — shared by
+   *  Diagnosis/NextMove/Prepare/Casefile, the first child of the right
+   *  column on all four (same position in every one, per the prototype's
+   *  own call sites). `reverifiedLead` is the bold lead-in, `reverifiedBody`
+   *  the plain tail — same one-Banner bold/plain split as
+   *  diagnosis.phaseDriftLead/Body below. `reverifiedBody` is a TEMPLATE:
+   *  interpolates the earliest changedOn among the degraded engine's
+   *  changed documents for {date} — never rendered verbatim, see
+   *  CAPTION_TEMPLATES in screenCopy.test.tsx. */
+  freshness: {
+    reverifiedLead: 'Being re-verified.',
+    reverifiedBody:
+      "An official source behind this guidance changed on {date}. A human is re-checking the affected rules against it. Until that's done, NextMove pauses its case-specific advice here rather than show guidance it can't currently back. For anything urgent, use the official channel directly.", // TEMPLATE
+  },
   diagnosis: {
     headlineFound: 'We found where this is',
     headlineMark: 'waiting',
@@ -530,6 +544,46 @@ export const SIR_COPY = {
     ledeConnective: 'is currently in the',
     ledeTail: "Enumeration and the Draft Roll are both already behind us, so that's what these options reflect.",
     notSure: "I'm not sure",
+  },
+  /** C6's freshness landing (prototype `renderSirReverifying`, 3505-3523) —
+   *  the SAME coverage-boundary visual language as `unsupported` above (a
+   *  temporal boundary instead of a geographic one, per the prototype's own
+   *  comment at that function), with its own distinct copy: `unsupported`
+   *  never reaches this state at all (an unsupported state routes there
+   *  regardless of freshness), and `reverifying`'s handoff note carries no
+   *  state-name interpolation (`unsupported`'s does, since it's explaining
+   *  what ISN'T covered for that specific state; this screen is explaining
+   *  a temporary pause on a state NextMove already covers). `headline` and
+   *  `lede` are TEMPLATEs (interpolate the state's name, and the lede also
+   *  the changed document's date) — never rendered verbatim, see
+   *  CAPTION_TEMPLATES in screenCopy.test.tsx. */
+  reverifying: {
+    headline: 'SIR guidance for {state} is being re-verified.', // TEMPLATE
+    lede:
+      "An official source behind {state}'s SIR guidance changed on {date}. A human is re-checking every affected rule against it. Until that's done, NextMove pauses its case-specific advice here. Showing you guidance it can't currently back would be worse than a short wait.", // TEMPLATE
+    whereToCheck: 'Where to check meanwhile',
+    portalLabel: "Voters' Service Portal — voters.eci.gov.in",
+    helpline: 'Toll-free Voter Helpline: 1950',
+    handoffNote: 'An official ECI channel, always current and straight from the source.',
+    /** {date} interpolates SOURCES_VERIFIED — the static human-captured
+     *  date, NOT the lede's changedOn date above; these are deliberately
+     *  two different dates answering two different questions ("when did a
+     *  source change" vs "when was this guidance last human-verified").
+     *  DEVIATION (D8): the prototype's second sentence — "Re-verification
+     *  usually completes within a day." — is SUBTRACTED. It is an unsourced
+     *  day-count claim about NextMove's own re-verification turnaround, not
+     *  a government process; there is no manifest entry backing it (nor
+     *  could there be — no source document states how long a human
+     *  re-verification takes), and the content-safety scan correctly
+     *  flags it (numericFindings' catch-all, no allowlist path exists for
+     *  this shape by design). Rather than carve out a guardrail exemption
+     *  for an unsourced claim, this drops the clause — "never invent copy"
+     *  forbids authoring an unbacked timeline, not omitting one; same
+     *  reasoning already applied to SaveDoneScreen's OQ1 sentence. Made
+     *  unilaterally by the implementing session, then explicitly confirmed
+     *  with the repo owner (2026-09-07, C6 whole-branch final review) —
+     *  "keep it dropped," no replacement text. */
+    verifiedNote: 'Guidance here was last human-verified on {date}.', // TEMPLATE
   },
 } as const
 
