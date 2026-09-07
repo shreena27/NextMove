@@ -14,10 +14,11 @@
  *  (Task 6) filters out before construction, not a state this component
  *  can be in. Non-nullability is the type-safe form of the same guard.
  *
- *  DESIGN NOTE 1 (the C6 freshBanner seam): `freshBanner(engineKey)` is
- *  prototype line 3770 — the first child of the right column, before the
- *  channel card, the same position it takes on Diagnosis and Next Move.
- *  See the comment at that exact spot below.
+ *  DESIGN NOTE 1 (the C6 freshBanner, now built): prototype line 3770 —
+ *  the first child of the right column, before the channel card, the same
+ *  position it takes on Diagnosis and Next Move. See the `freshDegraded`/
+ *  `freshChangedOn` props below and DiagnosisScreen.tsx's own prop of the
+ *  same name for the full App.tsx-computed convention.
  *
  *  DESIGN NOTE 2 (the C8 fillDraft middle branch is deliberately
  *  unbuilt, not stubbed): the prototype's `renderPrepare` composes a draft
@@ -97,6 +98,7 @@ import { PhaseEyebrow } from '../ui/Crumbs'
 import { Split } from '../ui/Split'
 import { Button } from '../ui/Button'
 import { SaveControl } from './SaveControl'
+import { Banner } from '../ui/Banner'
 import { ICONS } from '../ui/icons'
 import { UI } from '../screens/screenCopy'
 
@@ -150,6 +152,12 @@ export interface PrepareScreenProps {
    *  gives — not re-threaded under a second prop name. */
   savedCases?: Casefile[]
   onSave?: () => void
+
+  /** C6's freshBanner (prototype 3770) — see DiagnosisScreen.tsx's own prop
+   *  of the same name for the full convention (App.tsx-computed, optional,
+   *  `undefined`-default so pre-existing render calls stay byte-identical). */
+  freshDegraded?: boolean
+  freshChangedOn?: string | null
 }
 
 export function PrepareScreen({
@@ -165,6 +173,8 @@ export function PrepareScreen({
   onSetPrepDraft,
   savedCases,
   onSave,
+  freshDegraded,
+  freshChangedOn,
 }: PrepareScreenProps) {
   // DESIGN NOTE 6: `prepChecks`/`prepDraft` are fully controlled — the
   // reducer (App.tsx, via `state.prepChecks`/`state.prepDraft`) is the only
@@ -254,10 +264,11 @@ export function PrepareScreen({
           }
           right={
             <>
-              {/* DESIGN NOTE 1: freshBanner(engineKey) (prototype 3770)
-                  slots in here, first child of the right column, before
-                  the channel card — Task C6's seam, same position it
-                  takes on Diagnosis and Next Move. */}
+              {freshDegraded ? (
+                <Banner>
+                  <b>{UI.freshness.reverifiedLead}</b> {UI.freshness.reverifiedBody.replace('{date}', freshChangedOn ?? '')}
+                </Banner>
+              ) : null}
               <div className="channel-card">
                 <div className="channel-body">
                   <div className="channel-k">{UI.prepare.channelK}</div>

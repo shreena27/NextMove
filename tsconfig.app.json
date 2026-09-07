@@ -7,6 +7,10 @@
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom", "node"],
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
+    /* C6: lets domain/freshness.ts `import` sources/freshness.json (outside
+       `include` below, but resolveJsonModule allows importing any reachable
+       .json regardless — it doesn't need to be added to `include` itself). */
+    "resolveJsonModule": true,
 
     /* Bundler mode */
     "moduleResolution": "bundler",

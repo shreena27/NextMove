@@ -47,7 +47,7 @@ import { OtherServices } from './screens/OtherServices'
 import { PassportGuardrail, PassportOutOfScope, PassportQ1, PassportQ2 } from './screens/passport/PassportScreens'
 import { PassportRecovery, PassportRecoveryPaste, PassportRecoveryShow } from './screens/passport/PassportRecovery'
 import { VoterEntry, VoterQ1, VoterQ2 } from './screens/voter/VoterScreens'
-import { SirState, SirUnsupported, SirQ1 } from './screens/sir/SirScreens'
+import { SirState, SirUnsupported, SirReverifying, SirQ1 } from './screens/sir/SirScreens'
 import { DiagnosisScreen } from './templates/DiagnosisScreen'
 import { NextMoveScreen } from './templates/NextMoveScreen'
 import { PrepareScreen } from './templates/PrepareScreen'
@@ -56,6 +56,7 @@ import { DeadEndScreen } from './templates/DeadEndScreen'
 import { CaseClosedScreen } from './templates/CaseClosedScreen'
 import { SaveDoneScreen } from './templates/SaveDoneScreen'
 import { diagnose } from './domain/engine'
+import { degradedFor, changedOnFor } from './domain/freshness'
 import { passportEngine, voterEngine, sirEngine, ENGINES } from './playbooks/engines'
 import { prepPlanFor } from './playbooks/prep'
 import { SIR_STATES, SIR_Q1_OPTIONS_FOR } from './playbooks/sirPlaybook'
@@ -163,6 +164,8 @@ export default function App() {
       break
     case 'passport-diagnosis': {
       const d = diagnose(passportEngine, state.answers)
+      const freshDegraded = degradedFor(passportEngine.playbook.rules)
+      const freshChangedOn = changedOnFor(passportEngine.playbook.rules)
       const answerLabels = {
         ...labelMap('q1', { ...PASSPORT_Q1_LABELS, not_sure: PASSPORT_COPY.q1.notSure }),
         ...labelMap('q2', PASSPORT_Q2_LABELS),
@@ -198,6 +201,8 @@ export default function App() {
               returnScreen: 'passport-nextmove', now,
             })
           }
+          freshDegraded={freshDegraded}
+          freshChangedOn={freshChangedOn}
         />
       )
       break
@@ -205,6 +210,8 @@ export default function App() {
     case 'passport-nextmove': {
       const d = diagnose(passportEngine, state.answers)
       const prep = prepPlanFor(d)
+      const freshDegraded = degradedFor(passportEngine.playbook.rules)
+      const freshChangedOn = changedOnFor(passportEngine.playbook.rules)
       body = (
         <NextMoveScreen
           serviceLabel={UI.serviceLabel.passport}
@@ -214,6 +221,8 @@ export default function App() {
           onPrepare={() => dispatch({ type: 'NAVIGATE', screen: 'passport-prepare' })}
           topbar={topbar(true, true)}
           dispatch={dispatch}
+          freshDegraded={freshDegraded}
+          freshChangedOn={freshChangedOn}
           onUpdate={() =>
             dispatch({
               type: 'BEGIN_WORKING_CHECKIN', engineKey: 'passport', serviceLabel: UI.serviceLabel.passport,
@@ -238,6 +247,8 @@ export default function App() {
         body = <RestartToHome dispatch={dispatch} />
         break
       }
+      const freshDegraded = degradedFor(passportEngine.playbook.rules)
+      const freshChangedOn = changedOnFor(passportEngine.playbook.rules)
       body = (
         // `key={d.ruleId}` remounts PrepareScreen when the diagnosis changes
         // under it. Before Task 12 this also reset the screen's local
@@ -267,6 +278,8 @@ export default function App() {
               returnScreen: 'passport-prepare', now,
             })
           }
+          freshDegraded={freshDegraded}
+          freshChangedOn={freshChangedOn}
         />
       )
       break
@@ -283,6 +296,8 @@ export default function App() {
       break
     case 'voter-diagnosis': {
       const d = diagnose(voterEngine, state.answers)
+      const freshDegraded = degradedFor(voterEngine.playbook.rules)
+      const freshChangedOn = changedOnFor(voterEngine.playbook.rules)
       const answerLabels = {
         ...labelMap('voterQ1', { ...VOTER_Q1_LABELS, unclassified: VOTER_COPY.q1.notSure }),
         ...labelMap('voterAppealedRaw', VOTER_APPEAL_LABELS),
@@ -306,6 +321,8 @@ export default function App() {
               returnScreen: 'voter-nextmove', now,
             })
           }
+          freshDegraded={freshDegraded}
+          freshChangedOn={freshChangedOn}
         />
       )
       break
@@ -313,6 +330,8 @@ export default function App() {
     case 'voter-nextmove': {
       const d = diagnose(voterEngine, state.answers)
       const prep = prepPlanFor(d)
+      const freshDegraded = degradedFor(voterEngine.playbook.rules)
+      const freshChangedOn = changedOnFor(voterEngine.playbook.rules)
       body = (
         <NextMoveScreen
           serviceLabel={UI.serviceLabel.voterServices}
@@ -322,6 +341,8 @@ export default function App() {
           onPrepare={() => dispatch({ type: 'NAVIGATE', screen: 'voter-prepare' })}
           topbar={topbar(true, true)}
           dispatch={dispatch}
+          freshDegraded={freshDegraded}
+          freshChangedOn={freshChangedOn}
           onUpdate={() =>
             dispatch({
               type: 'BEGIN_WORKING_CHECKIN', engineKey: 'voter', serviceLabel: UI.serviceLabel.voterServices,
@@ -346,6 +367,8 @@ export default function App() {
         body = <RestartToHome dispatch={dispatch} />
         break
       }
+      const freshDegraded = degradedFor(voterEngine.playbook.rules)
+      const freshChangedOn = changedOnFor(voterEngine.playbook.rules)
       body = (
         // See the passport-prepare case's own comment on `key={d.ruleId}`.
         <PrepareScreen
@@ -367,6 +390,8 @@ export default function App() {
               returnScreen: 'voter-prepare', now,
             })
           }
+          freshDegraded={freshDegraded}
+          freshChangedOn={freshChangedOn}
         />
       )
       break
@@ -378,11 +403,16 @@ export default function App() {
     case 'sir-unsupported':
       body = <SirUnsupported state={state} dispatch={dispatch} />
       break
+    case 'sir-reverifying':
+      body = <SirReverifying state={state} dispatch={dispatch} />
+      break
     case 'sir-q1':
       body = <SirQ1 state={state} dispatch={dispatch} />
       break
     case 'sir-diagnosis': {
       const d = diagnose(sirEngine, state.answers)
+      const freshDegraded = degradedFor(sirEngine.playbook.rules)
+      const freshChangedOn = changedOnFor(sirEngine.playbook.rules)
       // Reachable only via sir-q1, which is itself only reachable for a
       // covered, phased state (SirState's sirCoverage() gate) — so
       // st.phase is always defined here.
@@ -409,6 +439,8 @@ export default function App() {
             })
           }
           phaseDrift={state.phaseDrift}
+          freshDegraded={freshDegraded}
+          freshChangedOn={freshChangedOn}
         />
       )
       break
@@ -416,6 +448,8 @@ export default function App() {
     case 'sir-nextmove': {
       const d = diagnose(sirEngine, state.answers)
       const prep = prepPlanFor(d)
+      const freshDegraded = degradedFor(sirEngine.playbook.rules)
+      const freshChangedOn = changedOnFor(sirEngine.playbook.rules)
       body = (
         <NextMoveScreen
           serviceLabel={UI.serviceLabel.sir}
@@ -425,6 +459,8 @@ export default function App() {
           onPrepare={() => dispatch({ type: 'NAVIGATE', screen: 'sir-prepare' })}
           topbar={topbar(true, true)}
           dispatch={dispatch}
+          freshDegraded={freshDegraded}
+          freshChangedOn={freshChangedOn}
           onUpdate={() =>
             dispatch({
               type: 'BEGIN_WORKING_CHECKIN', engineKey: 'sir', serviceLabel: UI.serviceLabel.sir,
@@ -449,6 +485,8 @@ export default function App() {
         body = <RestartToHome dispatch={dispatch} />
         break
       }
+      const freshDegraded = degradedFor(sirEngine.playbook.rules)
+      const freshChangedOn = changedOnFor(sirEngine.playbook.rules)
       body = (
         // See the passport-prepare case's own comment on `key={d.ruleId}`.
         <PrepareScreen
@@ -470,6 +508,8 @@ export default function App() {
               returnScreen: 'sir-prepare', now,
             })
           }
+          freshDegraded={freshDegraded}
+          freshChangedOn={freshChangedOn}
         />
       )
       break
@@ -501,6 +541,8 @@ export default function App() {
       // diagnosis are the SAME computation over the SAME data, by
       // construction, and can never diverge again.
       const d = diagnose(ENGINES[c.engineKey], state.answers)
+      const freshDegraded = degradedFor(ENGINES[c.engineKey].playbook.rules)
+      const freshChangedOn = changedOnFor(ENGINES[c.engineKey].playbook.rules)
       body = (
         <CasefileScreen
           case={c}
@@ -521,6 +563,8 @@ export default function App() {
           removeConfirm={state.removeConfirm}
           topbar={topbar(true, false)}
           dispatch={dispatch}
+          freshDegraded={freshDegraded}
+          freshChangedOn={freshChangedOn}
         />
       )
       break

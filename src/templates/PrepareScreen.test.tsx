@@ -818,3 +818,35 @@ describe('the saveControl tail (Task 12, design note 6 / design note 3)', () => 
     expect(screen.queryByRole('button', { name: UI.saveControl.save })).toBeNull()
   })
 })
+
+describe('C6: the freshBanner, first child of the right column, before the channel card (prototype 3770)', () => {
+  it('renders it when freshDegraded is true, with the changedOn date interpolated', () => {
+    render(
+      <ControlledPrepareScreen
+        serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']}
+        freshDegraded freshChangedOn="3 Sep 2026"
+      />,
+    )
+    expect(screen.getByText(UI.freshness.reverifiedLead)).toBeInTheDocument()
+    expect(document.querySelector('.banner')).toHaveTextContent(
+      UI.freshness.reverifiedBody.replace('{date}', '3 Sep 2026'),
+    )
+    const rightCol = document.querySelector('.split-r')!
+    expect(rightCol.children[0]).toHaveClass('banner')
+    expect(rightCol.children[1]).toHaveClass('channel-card')
+  })
+
+  it('omits it when freshDegraded is false or absent (pre-existing behaviour)', () => {
+    const { unmount } = render(
+      <ControlledPrepareScreen
+        serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']}
+        freshDegraded={false}
+      />,
+    )
+    expect(screen.queryByText(UI.freshness.reverifiedLead)).toBeNull()
+    unmount()
+
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    expect(screen.queryByText(UI.freshness.reverifiedLead)).toBeNull()
+  })
+})

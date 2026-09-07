@@ -3,10 +3,10 @@
  *  all three services render through unmodified (implementation plan §1's
  *  central architectural claim, now made executable).
  *
- *  Deliberately NOT ported here (Out of Scope, later chunk): `freshBanner`
- *  (C6, left as a comment seam in the right column below, in the
- *  prototype's own order). The `phaseDrift` banner is Task 13's own, now
- *  built (see the `phaseDrift` prop below). The `ciJustUpdated` undo banner
+ *  `freshBanner` (C6) is now built — see the `freshDegraded`/`freshChangedOn`
+ *  props below, rendered between the `ciJustUpdated` banner and `phaseDrift`,
+ *  the prototype's own order (renderDiagnosis, 3597-3600). The `phaseDrift`
+ *  banner is Task 13's own (see the `phaseDrift` prop below). The `ciJustUpdated` undo banner
  *  and `updateEntry`'s "Add an update"
  *  button are Task 11's own (this commit) — see the `ciJustUpdated`/
  *  `ciSnapshot`/`onUndo`/`onUpdate` props below. The escalation ladder is
@@ -100,6 +100,19 @@ export interface DiagnosisScreenProps {
    *  which pass this) keeps rendering byte-identical output. Irrelevant to
    *  (and never true for) a non-SIR diagnosis. */
   phaseDrift?: boolean
+
+  /** C6's freshBanner (prototype 3599, freshBanner(engineKey)) — computed
+   *  by App.tsx (domain/freshness.ts's degradedFor/changedOnFor over this
+   *  engine's playbook rules) and handed down as plain values, the same
+   *  convention every other domain-derived prop on this file already uses
+   *  (Diagnosis is always derived fresh at render time, never stored).
+   *  Optional with an `undefined` default, so every pre-existing render
+   *  call (none of which pass these) keeps rendering byte-identical
+   *  output. `freshChangedOn` is only meaningful when `freshDegraded` is
+   *  true; a false/undefined `freshDegraded` renders no banner regardless
+   *  of what `freshChangedOn` holds. */
+  freshDegraded?: boolean
+  freshChangedOn?: string | null
 }
 
 export function DiagnosisScreen({
@@ -118,6 +131,8 @@ export function DiagnosisScreen({
   onUndo,
   onUpdate,
   phaseDrift,
+  freshDegraded,
+  freshChangedOn,
 }: DiagnosisScreenProps) {
   // The reveal headline gets the highlighter swipe on its key word — the
   // marker stroke lands where the answer is. UNCLASSIFIED gets no swipe:
@@ -164,9 +179,11 @@ export function DiagnosisScreen({
                   </button>
                 </Banner>
               ) : null}
-              {/* DESIGN NOTE (C6): freshBanner(engineKey) slots in here,
-                  immediately after the ciJustUpdated banner (prototype
-                  3599) — out of this task's scope. */}
+              {freshDegraded ? (
+                <Banner>
+                  <b>{UI.freshness.reverifiedLead}</b> {UI.freshness.reverifiedBody.replace('{date}', freshChangedOn ?? '')}
+                </Banner>
+              ) : null}
               {phaseDrift ? (
                 <Banner>
                   <b>{UI.diagnosis.phaseDriftLead}</b> {UI.diagnosis.phaseDriftBody}

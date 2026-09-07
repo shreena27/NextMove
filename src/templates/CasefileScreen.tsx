@@ -45,10 +45,10 @@
  *  There is no separate `onNavigate`: `.case-links`' two navigations go
  *  through the same `dispatch` as everything else on this screen.
  *
- *  DESIGN NOTE 1 (the C6 freshBanner seam / Task 13's phaseDrift module,
- *  now built): `freshBanner` is still just a comment seam (C6's, scope
- *  exclusion 2) — the first child of the right column, same position it
- *  takes on Diagnosis/NextMove/Prepare. The phase-drift MODULE (the
+ *  DESIGN NOTE 1 (C6's freshBanner and Task 13's phaseDrift module, both
+ *  now built): `freshBanner` (see the `freshDegraded`/`freshChangedOn`
+ *  props) is the first child of the right column, same position it takes
+ *  on Diagnosis/NextMove/Prepare. The phase-drift MODULE (the
  *  prototype's `S.phaseDrift` branch, 2921-2931) is built below: when
  *  `phaseDrift` is true, it REPLACES the whole `.update-mod` — same shell
  *  (`border-color:var(--line-strong)`), its own kicker/title/body and a
@@ -101,6 +101,7 @@ import { CaseProgress } from './CaseProgress'
 import { EscalationLadder } from './EscalationLadder'
 import { JourneyLog } from './JourneyLog'
 import { SaveControl } from './SaveControl'
+import { Banner } from '../ui/Banner'
 import { UI } from '../screens/screenCopy'
 
 /** The COPY FLASH duration (prototype 3742, reused by copyReminder at
@@ -142,6 +143,16 @@ export interface CasefileScreenProps {
    *  ordinary "Add an update" module; irrelevant to (and never set for) a
    *  non-SIR case. */
   phaseDrift: boolean
+  /** C6's freshBanner (prototype 2924) — computed by App.tsx
+   *  (domain/freshness.ts's degradedFor/changedOnFor over this case's
+   *  engine's playbook rules), same App.tsx-computed convention as `d`
+   *  itself. Required, not optional, matching every other domain-derived
+   *  prop on this file (`d`, `phaseDrift`) — this file has no history of
+   *  optional-prop-added-later evolution the way Diagnosis/NextMove/
+   *  Prepare do, so there is no byte-identical-old-tests concern to
+   *  preserve here. */
+  freshDegraded: boolean
+  freshChangedOn: string | null
   /** `SessionState.reminderCopied` — SESSION state, not component-local
    *  `useState` the way `PrepareScreen`'s `copied` is (session/cases.ts's
    *  own `setReminderCopied` doc comment: this screen is reducer-driven,
@@ -171,6 +182,8 @@ export function CasefileScreen({
   ciSnapshot,
   ciConsecutive,
   phaseDrift,
+  freshDegraded,
+  freshChangedOn,
   reminderCopied,
   logOpen,
   removeConfirm,
@@ -401,9 +414,11 @@ export function CasefileScreen({
           }
           right={
             <>
-              {/* DESIGN NOTE 1: freshBanner(c.engineKey) (C6) slots in here,
-                  first child of the right column, same seam DiagnosisScreen/
-                  NextMoveScreen/PrepareScreen already carry. */}
+              {freshDegraded ? (
+                <Banner>
+                  <b>{UI.freshness.reverifiedLead}</b> {UI.freshness.reverifiedBody.replace('{date}', freshChangedOn ?? '')}
+                </Banner>
+              ) : null}
               {phaseDrift ? (
                 <div className="update-mod" style={{ borderColor: 'var(--line-strong)' }}>
                   <div className="um-head">

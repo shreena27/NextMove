@@ -9,6 +9,7 @@ import { sessionReducer, initialSession } from '../session/session'
 import { labelMap, PASSPORT_Q1_LABELS, PASSPORT_Q2_LABELS, VOTER_Q1_LABELS, VOTER_APPEAL_LABELS } from '../screens/labels'
 import { SIR_Q1_OPTIONS_FOR } from '../playbooks/sirPlaybook'
 import { loadManifest } from '../playbooks/guardrails/manifest'
+import * as freshnessModule from '../domain/freshness'
 
 describe('AC-10: "You told us" shows the real answers given', () => {
   it.each([
@@ -85,8 +86,17 @@ describe('"Based on" — three distinct cases, all three pinned', () => {
     render(<TrustDisclosure d={d} answerLabels={{}} open onToggle={vi.fn()} />)
     expect(screen.getByText(d.source.title, { exact: false })).toBeInTheDocument()
     expect(document.querySelector('.source-quote')).toHaveTextContent(d.source.quote!)
+    // C6: computed via the SAME live-then-fallback logic the component
+    // itself uses, rather than hardcoded — this fixture's docId
+    // (web/grievance_page.txt) happens to be one of the two check:"manual"
+    // web-page sources, so this currently exercises the SOURCES_VERIFIED
+    // fallback specifically (see the dedicated fallback test below), but
+    // the assertion itself doesn't assume which branch and so doesn't rot
+    // if a future manifest change makes this document auto-checked too.
+    const expectedDate = freshnessModule.verifiedDateFor(d.source.docId) ?? SOURCES_VERIFIED
     expect(screen.getByText(
-      /Checked against NextMove's archived copy of this source on 5 Sep 2026\./)).toBeInTheDocument()
+      new RegExp(`Checked against NextMove's archived copy of this source on ${expectedDate}\\.`)))
+      .toBeInTheDocument()
   })
 
   it('a sourced rule WITHOUT a quote shows title + caption and NO .source-quote', () => {
@@ -106,6 +116,35 @@ describe('"Based on" — three distinct cases, all three pinned', () => {
     expect(d.source.docId).toBeNull()            // guard
     render(<TrustDisclosure d={d} answerLabels={{}} open onToggle={vi.fn()} />)
     expect(screen.queryByText(/archived copy/)).toBeNull()
+  })
+})
+
+describe('C6: the "verified on" date is live per-document where the freshness job covers it, static where it does not', () => {
+  it('a document check_freshness.py does NOT cover (check:"manual"/"none" in manifest.json) falls back to the static SOURCES_VERIFIED', () => {
+    // state-dpg-p cites GRIEVANCE ('web/grievance_page.txt'), one of the
+    // two web-page sources — manifest.json marks both check:"manual", so
+    // sources/freshness.json has no entry for it at all.
+    const d = diagnose(passportEngine, { dpgFiled: 'yes' })
+    expect(d.source.docId).toBe('web/grievance_page.txt') // guard
+    expect(freshnessModule.verifiedDateFor(d.source.docId)).toBeNull()     // guard: confirms the fallback path is actually exercised
+    render(<TrustDisclosure d={d} answerLabels={{}} open onToggle={vi.fn()} />)
+    expect(screen.getByText(
+      new RegExp(`Checked against NextMove's archived copy of this source on ${SOURCES_VERIFIED}\\.`)))
+      .toBeInTheDocument()
+  })
+
+  it('a covered document shows the LIVE date, not the static SOURCES_VERIFIED, when the two genuinely differ', () => {
+    // Mocking domain/freshness's verifiedDateFor directly (same vi.spyOn
+    // pattern sirFlow.test.tsx uses for degradedFor) makes this assertion
+    // independent of whatever sources/freshness.json's real committed
+    // content happens to be on the day this runs.
+    const spy = vi.spyOn(freshnessModule, 'verifiedDateFor').mockReturnValue('1 Jan 2027')
+    const d = diagnose(passportEngine, { q1: 'adverse', q2: 'formal_grievance' })
+    render(<TrustDisclosure d={d} answerLabels={{}} open onToggle={vi.fn()} />)
+    expect(screen.getByText(
+      /Checked against NextMove's archived copy of this source on 1 Jan 2027\./)).toBeInTheDocument()
+    expect(screen.queryByText(new RegExp(SOURCES_VERIFIED))).toBeNull()
+    spy.mockRestore()
   })
 })
 

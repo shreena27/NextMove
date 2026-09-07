@@ -83,6 +83,8 @@ function baseProps(overrides: Record<string, unknown> = {}) {
     logOpen: {},
     removeConfirm: null,
     dispatch: noop,
+    freshDegraded: false,
+    freshChangedOn: null,
     ...overrides,
   }
 }
@@ -603,5 +605,45 @@ describe('closed variant — the case is not still_open', () => {
     expect(document.querySelector('.restart-confirm')).toHaveTextContent(UI.casefile.removePrompt)
     screen.getByRole('button', { name: UI.casefile.removeYes }).click()
     expect(dispatch).toHaveBeenCalledWith({ type: 'REMOVE_SAVED', id: 'c1' })
+  })
+})
+
+describe('C6: the freshBanner, first child of the right column (prototype 2924)', () => {
+  it('renders it when freshDegraded is true, with the changedOn date interpolated', () => {
+    const c = makeCase('passport', state1D, state1Answers)
+    render(
+      <CasefileScreen
+        case={c} answers={c.answers} d={state1D}
+        {...baseProps({ freshDegraded: true, freshChangedOn: '3 Sep 2026' })}
+      />,
+    )
+    expect(screen.getByText(UI.freshness.reverifiedLead)).toBeInTheDocument()
+    expect(document.querySelector('.banner')).toHaveTextContent(
+      UI.freshness.reverifiedBody.replace('{date}', '3 Sep 2026'),
+    )
+    const rightCol = document.querySelector('.split-r')!
+    expect(rightCol.children[0]).toHaveClass('banner')
+  })
+
+  it('renders BEFORE the phaseDrift interstitial when both are true', () => {
+    const c = makeCase('sir', sirD, sirAnswers)
+    render(
+      <CasefileScreen
+        case={c} answers={c.answers} d={sirD}
+        {...baseProps({ freshDegraded: true, freshChangedOn: '3 Sep 2026', phaseDrift: true })}
+      />,
+    )
+    const rightCol = document.querySelector('.split-r')!
+    const bannerIdx = Array.from(rightCol.children).findIndex(el => el.classList.contains('banner'))
+    const updateModIdx = Array.from(rightCol.children).findIndex(el => el.classList.contains('update-mod'))
+    expect(bannerIdx).toBeGreaterThanOrEqual(0) // guard
+    expect(updateModIdx).toBeGreaterThan(-1) // guard: the phaseDrift interstitial still rendered
+    expect(bannerIdx).toBeLessThan(updateModIdx)
+  })
+
+  it('omits it when freshDegraded is false (baseProps default — pre-existing behaviour)', () => {
+    const c = makeCase('passport', state1D, state1Answers)
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps()} />)
+    expect(screen.queryByText(UI.freshness.reverifiedLead)).toBeNull()
   })
 })

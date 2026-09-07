@@ -245,6 +245,38 @@ describe('Task 13: the SIR phase-drift banner', () => {
   })
 })
 
+describe('C6: the freshBanner', () => {
+  it('renders it when freshDegraded is true, with the changedOn date interpolated', () => {
+    renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' }, {
+      freshDegraded: true, freshChangedOn: '3 Sep 2026',
+    })
+    expect(screen.getByText(UI.freshness.reverifiedLead)).toBeInTheDocument()
+    expect(document.querySelector('.banner')).toHaveTextContent(
+      UI.freshness.reverifiedBody.replace('{date}', '3 Sep 2026'),
+    )
+  })
+
+  it('omits it when freshDegraded is false or absent (pre-existing behaviour)', () => {
+    const { unmount } = renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' }, { freshDegraded: false })
+    expect(screen.queryByText(UI.freshness.reverifiedLead)).toBeNull()
+    unmount()
+
+    renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    expect(screen.queryByText(UI.freshness.reverifiedLead)).toBeNull()
+  })
+
+  it('renders BEFORE the phaseDrift banner when both are true (prototype 3598-3600 ordering)', () => {
+    renderFor(sirEngine, { sirState: 'delhi', sirQ1: 'roll_present' }, {
+      freshDegraded: true, freshChangedOn: '3 Sep 2026', phaseDrift: true,
+    })
+    const rightCol = document.querySelector('.split-r')!
+    const banners = Array.from(rightCol.querySelectorAll('.banner'))
+    expect(banners).toHaveLength(2) // guard: both really rendered
+    expect(banners[0]).toHaveTextContent(UI.freshness.reverifiedLead)
+    expect(banners[1]).toHaveTextContent(UI.diagnosis.phaseDriftLead)
+  })
+})
+
 describe('Task 11: <UpdateEntry> between the CTA and the trust toggle (design note 3.5)', () => {
   it('renders it there — asserting DOM position, not just presence — and it fires onUpdate', () => {
     const onUpdate = vi.fn()

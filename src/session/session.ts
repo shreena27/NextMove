@@ -28,7 +28,7 @@ export type ScreenId =
   | 'passport-recovery' | 'passport-recovery-paste' | 'passport-recovery-show'
   | 'passport-diagnosis' | 'passport-nextmove' | 'passport-prepare'
   | 'voter-entry' | 'voter-q1' | 'voter-q2' | 'voter-diagnosis' | 'voter-nextmove' | 'voter-prepare'
-  | 'sir-state' | 'sir-unsupported' | 'sir-q1' | 'sir-diagnosis' | 'sir-nextmove' | 'sir-prepare'
+  | 'sir-state' | 'sir-unsupported' | 'sir-reverifying' | 'sir-q1' | 'sir-diagnosis' | 'sir-nextmove' | 'sir-prepare'
   | 'checkin' | 'dead-end' | 'case-closed' | 'save-done'
 // Transcribe the exact id list from the prototype's own switch (3910-3944),
 // taking only C3's screens; do not invent or normalise a name.
@@ -37,9 +37,10 @@ export type ScreenId =
 // anticipation above — nothing else in this file changes for C4 (no new
 // action, no new field, no reducer change; session.test.ts pins that).
 // C5 adds the four ids above (same switch, 3941-3943 plus save-done at
-// 3940) — 'checkin', 'dead-end', 'case-closed', 'save-done'. Deliberately
-// NOT added here: 'save-case' / 'save-otp' / 'save-name' (C7's sign-in +
-// save flow), 'sir-reverifying' (C6's freshness/re-verification screen),
+// 3940) — 'checkin', 'dead-end', 'case-closed', 'save-done'.
+// C6 adds 'sir-reverifying' (freshness/re-verification screen, prototype
+// 3931's 'sir-reverifying' case). Still deliberately NOT added here:
+// 'save-case' / 'save-otp' / 'save-name' (C7's sign-in + save flow),
 // 'interp-confirm' (C8's free-text interpretation confirm) — each belongs
 // to a later chunk and stays off this union until that chunk lands.
 

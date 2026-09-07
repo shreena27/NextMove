@@ -257,3 +257,33 @@ describe('Task 11: <UpdateEntry> then <SaveControl>, after the CTA (design note 
     expect(document.querySelector('.saved-note')).toBeNull()
   })
 })
+
+describe('C6: the freshBanner, first child of the right column (prototype 3671)', () => {
+  it('renders it when freshDegraded is true, with the changedOn date interpolated', () => {
+    const d = diagnose(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    render(
+      <NextMoveScreen
+        serviceLabel="Passport" engineKey="passport" d={d}
+        freshDegraded freshChangedOn="3 Sep 2026"
+      />,
+    )
+    expect(screen.getByText(UI.freshness.reverifiedLead)).toBeInTheDocument()
+    expect(document.querySelector('.banner')).toHaveTextContent(
+      UI.freshness.reverifiedBody.replace('{date}', '3 Sep 2026'),
+    )
+    const rightCol = document.querySelector('.split-r')!
+    expect(rightCol.children[0]).toHaveClass('banner') // first child, per the prototype's own position
+  })
+
+  it('omits it when freshDegraded is false or absent (pre-existing behaviour)', () => {
+    const d = diagnose(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
+    const { unmount } = render(
+      <NextMoveScreen serviceLabel="Passport" engineKey="passport" d={d} freshDegraded={false} />,
+    )
+    expect(screen.queryByText(UI.freshness.reverifiedLead)).toBeNull()
+    unmount()
+
+    render(<NextMoveScreen serviceLabel="Passport" engineKey="passport" d={d} />)
+    expect(screen.queryByText(UI.freshness.reverifiedLead)).toBeNull()
+  })
+})

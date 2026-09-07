@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useReducer } from 'react'
-import { SirState, SirUnsupported, SirQ1 } from './SirScreens'
+import { SirState, SirUnsupported, SirReverifying, SirQ1 } from './SirScreens'
 import { VoterEntry } from '../voter/VoterScreens'
 import { sessionReducer, initialSession, type SessionState, type SessionAction, type ScreenId } from '../../session/session'
 import type { AnswerRecord } from '../../domain/types'
@@ -10,6 +10,7 @@ import { SIR_STATES, SIR_PHASES } from '../../playbooks/sirPlaybook'
 import { sirEngine } from '../../playbooks/engines'
 import { diagnose } from '../../domain/engine'
 import * as evaluateModule from '../../domain/evaluate'
+import * as freshnessModule from '../../domain/freshness'
 
 // ---------------------------------------------------------------------------
 // Rendered-flow tests: same real-reducer harness pattern as passportFlow.test
@@ -33,6 +34,7 @@ function Screen({ state, dispatch }: { state: SessionState; dispatch: (a: Sessio
     case 'voter-entry': return <VoterEntry state={state} dispatch={dispatch} />
     case 'sir-state': return <SirState state={state} dispatch={dispatch} />
     case 'sir-unsupported': return <SirUnsupported state={state} dispatch={dispatch} />
+    case 'sir-reverifying': return <SirReverifying state={state} dispatch={dispatch} />
     case 'sir-q1': return <SirQ1 state={state} dispatch={dispatch} />
     default: return <div data-testid="unbuilt-screen">{state.screen}</div>
   }
@@ -79,6 +81,35 @@ describe("SIR coverage boundary (AC-S-5) — C2's deferred spy test", () => {
     await userEvent.click(screen.getByRole('button', { name: 'Delhi' }))
     expect(readDebug().screen).toBe('sir-q1')
     expect(spy).not.toHaveBeenCalled()
+  })
+
+  // C6: the freshness-degraded reroute, layered onto the SAME onSelect
+  // (this file's own header note) — never a second gate elsewhere.
+  // degradedFor is mocked here (real sources/freshness.json currently has
+  // nothing 'changed') the same way evaluateModule.evaluate is spied on
+  // above — SirScreens.tsx imports it as a named import from
+  // domain/freshness, so vi.spyOn intercepts the exact call the component
+  // makes.
+  it('a COVERED but degraded state routes to sir-reverifying, not sir-q1, and still never evaluates the playbook', async () => {
+    const evaluateSpy = vi.spyOn(evaluateModule, 'evaluate')
+    vi.spyOn(freshnessModule, 'degradedFor').mockReturnValue(true)
+    render(<Harness startScreen="sir-state" />)
+    await userEvent.click(screen.getByRole('button', { name: 'Delhi' }))
+    expect(readDebug().screen).toBe('sir-reverifying')
+    expect(evaluateSpy).not.toHaveBeenCalled()
+    expect(screen.getByText(/is being re-verified/)).toBeInTheDocument()
+  })
+
+  // The prototype's own `if` ordering (sirStateAnswer, 3497-3501) checks
+  // freshness only AFTER confirming a state is supported — an unsupported
+  // state must route to sir-unsupported regardless of what degradedFor
+  // says, never sir-reverifying. Pins that ordering directly rather than
+  // trusting it from reading the code.
+  it('an UNSUPPORTED state still routes to sir-unsupported even when degradedFor is true', async () => {
+    vi.spyOn(freshnessModule, 'degradedFor').mockReturnValue(true)
+    render(<Harness startScreen="sir-state" />)
+    await userEvent.click(screen.getByRole('button', { name: SIR_STATES.bihar.name }))
+    expect(readDebug().screen).toBe('sir-unsupported')
   })
 
   it('the coverage screen never renders a WAIT/FOLLOW UP/ESCALATE/UNCLASSIFIED stamp', () => {
