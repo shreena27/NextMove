@@ -54,6 +54,59 @@ const CASE_OUTCOMES: (CaseOutcome | 'superseded')[] = [
 const SERVICE_KEYS: ServiceKey[] = ['passport', 'voter', 'sir']
 
 /**
+ * If `text` starts a dollar-quoted body (`$tag$...$tag$`, e.g. a plpgsql
+ * function body) at index `i`, returns the index just past its closing
+ * tag; otherwise returns null. Shared by stripSqlComments and
+ * splitSqlStatements so both treat a dollar-quoted body as opaque the
+ * same way — a `;`, `--`, or `/*` inside one is part of the function's
+ * own code, never a statement boundary or a top-level SQL comment.
+ */
+function dollarQuoteEnd(text: string, i: number): number | null {
+  const dollarMatch = /^\$[a-zA-Z_]*\$/.exec(text.slice(i))
+  if (!dollarMatch) return null
+  const tag = dollarMatch[0]
+  const end = text.indexOf(tag, i + tag.length)
+  return end === -1 ? text.length : end + tag.length
+}
+
+/**
+ * Strips SQL line comments (`--`) and C-style block comments, outside
+ * dollar-quoted bodies, before statement-splitting. Without this, a trailing comment
+ * block that happens to mention `set search_path = ''` in prose — exactly
+ * what this migration's own closing comment does, describing the
+ * SECURITY DEFINER guardrail itself — satisfies the guardrail for
+ * anything appended after it, since code and prose were never
+ * distinguished before splitting on `;`. (Found by the Task 2 reviewer:
+ * appending a real unpinned SECURITY DEFINER function after this
+ * migration's text left the guardrail at 0 findings.)
+ */
+function stripSqlComments(text: string): string {
+  let result = ''
+  let i = 0
+  while (i < text.length) {
+    const dqEnd = dollarQuoteEnd(text, i)
+    if (dqEnd !== null) {
+      result += text.slice(i, dqEnd)
+      i = dqEnd
+      continue
+    }
+    if (text[i] === '-' && text[i + 1] === '-') {
+      const eol = text.indexOf('\n', i)
+      i = eol === -1 ? text.length : eol
+      continue
+    }
+    if (text[i] === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2)
+      i = end === -1 ? text.length : end + 2
+      continue
+    }
+    result += text[i]
+    i += 1
+  }
+  return result
+}
+
+/**
  * Splits SQL text into top-level statements on `;`, treating anything
  * inside a `$tag$...$tag$` dollar-quoted body (a plpgsql function body,
  * for instance) as opaque so a `;` inside a function is never mistaken
@@ -65,13 +118,10 @@ function splitSqlStatements(text: string): string[] {
   let current = ''
   let i = 0
   while (i < text.length) {
-    const dollarMatch = /^\$[a-zA-Z_]*\$/.exec(text.slice(i))
-    if (dollarMatch) {
-      const tag = dollarMatch[0]
-      const end = text.indexOf(tag, i + tag.length)
-      const bodyEnd = end === -1 ? text.length : end + tag.length
-      current += text.slice(i, bodyEnd)
-      i = bodyEnd
+    const dqEnd = dollarQuoteEnd(text, i)
+    if (dqEnd !== null) {
+      current += text.slice(i, dqEnd)
+      i = dqEnd
       continue
     }
     const ch = text[i]
@@ -94,10 +144,12 @@ function splitSqlStatements(text: string): string[] {
  * that SAME statement — a SECURITY DEFINER function that doesn't pin its
  * search_path resolves unqualified identifiers against the CALLER's
  * search_path, which the caller controls (a privilege-escalation shape).
+ * Comments are stripped first (see stripSqlComments) so a search_path
+ * pin mentioned only in prose can never satisfy this for real code.
  */
 function securityDefinerFindings(text: string): string[] {
   const findings: string[] = []
-  for (const statement of splitSqlStatements(text)) {
+  for (const statement of splitSqlStatements(stripSqlComments(text))) {
     const hasSecurityDefiner = /security\s+definer/i.test(statement)
     const pinsSearchPath = /set\s+search_path\s*=\s*''/i.test(statement)
     if (hasSecurityDefiner && !pinsSearchPath) {
@@ -129,18 +181,22 @@ describe('supabase/migrations/*.sql — casefiles table, RLS, and the SECURITY D
     })
   })
 
-  it('the UPDATE policy has both USING and WITH CHECK', () => {
+  it('the UPDATE policy has both USING and WITH CHECK, each scoped to the owning user (not merely present)', () => {
     const match = /create policy "own rows: update"[\s\S]*?;/i.exec(sql)
     expect(match, 'the "own rows: update" policy is missing entirely').toBeTruthy()
     const statement = match![0]
+    // Matches the full clause content, not just the "using(" / "with
+    // check(" keywords — a keyword-only check still passes a weakened
+    // `using (true)` or `with check (true)`, which is exactly the
+    // mutation the Task 2 reviewer showed this test used to miss.
     expect(
       statement,
-      'USING gates which existing rows a user may touch — without it the UPDATE policy would not scope by owner at all',
-    ).toMatch(/using\s*\(/i)
+      'USING gates which existing rows a user may touch — without it scoped to the owning user, the UPDATE policy would not scope by owner at all',
+    ).toMatch(/using\s*\(\s*\(select auth\.uid\(\)\)\s*=\s*user_id\s*\)/i)
     expect(
       statement,
-      "without WITH CHECK on UPDATE, a signed-in user can update one of their own rows and reassign its user_id to someone else's account — USING only gates which rows may be touched, WITH CHECK gates what the row may become, and per design note 2 this clause is the SOLE protection against that (a column-level revoke would be a no-op)",
-    ).toMatch(/with check\s*\(/i)
+      "without WITH CHECK scoped to the owning user on UPDATE, a signed-in user can update one of their own rows and reassign its user_id to someone else's account — USING only gates which rows may be touched, WITH CHECK gates what the row may become",
+    ).toMatch(/with check\s*\(\s*\(select auth\.uid\(\)\)\s*=\s*user_id\s*\)/i)
   })
 
   it('the partial unique index guarantees one open case per (user_id, engine_key)', () => {
@@ -251,6 +307,32 @@ describe('supabase/migrations/*.sql — casefiles table, RLS, and the SECURITY D
       `
       const findings = securityDefinerFindings(fixture)
       expect(findings.length, 'a search_path pin in a later, unrelated statement must not satisfy the guardrail for the SECURITY DEFINER statement above it').toBeGreaterThan(0)
+    })
+
+    // The four tests above only ever fed the checker isolated fixture
+    // strings — none of them exercised it against the one input CI
+    // actually feeds it: the REAL migration corpus. This migration's own
+    // closing comment (supabase/migrations/20260907103532_casefiles.sql)
+    // explains the guardrail in prose and, in doing so, literally contains
+    // the text `set search_path = ''`. Before comment-stripping was added
+    // to securityDefinerFindings, that trailing comment satisfied
+    // pinsSearchPath for anything appended after it, so a real violation
+    // appended to the end of the real migration text went uncaught even
+    // though every isolated-fixture test above still passed — proof that
+    // "passes against fixtures" is not the same claim as "works on the
+    // real input", and this test is what closes that gap.
+    it('the checker can fail against the REAL migration corpus (not just an isolated fixture): appending an unpinned security definer to the actual migration SQL is still caught', () => {
+      const violation = `
+        create function public.pwn() returns void
+        language plpgsql
+        security definer
+        as $$ begin update public.casefiles set outcome = 'closed_unresolved'; end; $$;
+      `
+      const findings = securityDefinerFindings(sql + '\n' + violation)
+      expect(
+        findings.length,
+        "appending a real unpinned SECURITY DEFINER violation after the real migration text must still be caught. If it is not, the checker is only ever exercised against isolated fixture strings, not the actual input CI feeds it — and this migration's own trailing comment (which mentions set search_path = '' in prose, describing this very guardrail) can silently satisfy the checker for anything appended after it",
+      ).toBeGreaterThan(0)
     })
   })
 })

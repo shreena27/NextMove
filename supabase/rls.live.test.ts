@@ -140,7 +140,12 @@ describe.skipIf(!process.env.NEXTMOVE_SUPABASE_LIVE)('casefiles RLS — live sta
       .eq('id', caseIdA1)
       .select()
     expect(error, error?.message).toBeNull()
-    expect(data, "B's update must match zero rows — USING scopes the update to B's own rows, and A's row is not one of them").toEqual([])
+    // Not attributed to the UPDATE policy's USING clause specifically:
+    // this file never isolates whether USING or the SELECT policy (also
+    // applied when a RETURNING/select() is requested) is what's zeroing
+    // out the result — see the WITH CHECK test below for that isolation
+    // work. Either way, RLS as a whole must keep B off A's row.
+    expect(data, "B's update must match zero rows — RLS scopes casefiles to the owning user, so B's update touches none of A's rows").toEqual([])
 
     const { data: check } = await clientA.from('casefiles').select('outcome').eq('id', caseIdA1)
     expect(check![0].outcome, "A's row must be unaffected by B's attempted update").toBe('still_open')
@@ -164,33 +169,50 @@ describe.skipIf(!process.env.NEXTMOVE_SUPABASE_LIVE)('casefiles RLS — live sta
 
     // USING (auth.uid() = user_id, evaluated on the OLD row) passes here —
     // A currently owns this row, so the row is visible to the update. The
-    // reassignment is then rejected, evaluated on the NEW row, with a
-    // genuine RLS-violation error (42501) rather than silently affecting
-    // zero rows, because there WAS a matching row; the proposed new state
-    // of it is what's illegal.
+    // reassignment is then rejected with a genuine RLS-violation error
+    // (42501) rather than silently affecting zero rows, because there WAS
+    // a matching row; the proposed new state of it is what's illegal.
     //
-    // EMPIRICAL CORRECTION to design note 2/3's stated mechanism, found
-    // while proving this test's own RED (verified against the live stack,
-    // psql-inspected pg_policy row, not assumed): removing the explicit
-    // `with check (...)` from this UPDATE policy while leaving `using
-    // ((select auth.uid()) = user_id)` in place did NOT reopen this hole —
-    // the update still failed with the same 42501 error. This matches
-    // documented PostgreSQL RLS behaviour: when an UPDATE policy has no
-    // WITH CHECK, Postgres reuses the USING expression as the implicit
-    // check against the NEW row too. So for THIS schema — where the
-    // intended WITH CHECK is textually identical to USING — the explicit
-    // WITH CHECK clause is not the sole thing standing between a citizen
-    // and a cross-account reassignment; Postgres's own fallback already
-    // covers it, doubly. The explicit clause is still correctly required
-    // (self-documenting intent, and it stops mattering only by accident if
-    // USING is ever independently loosened later without WITH CHECK
-    // deliberately following) — it just isn't *provable* as the sole
-    // mechanism via this specific removal experiment, which is why this
-    // comment records what actually happened rather than repeating the
-    // brief's original claim unverified. See the Task 2 completion note
-    // for the full experiment (with-check removed, db reset, re-run,
-    // pg_policy inspected via psql, with-check restored, db reset again).
-    expect(error, 'expected the update to be rejected (either via WITH CHECK directly, or via the USING-as-implicit-check fallback Postgres applies when WITH CHECK is absent); if this is null the reassignment silently succeeded, which is the exact privilege-escalation footgun design note 2 exists to prevent').not.toBeNull()
+    // TWICE-CORRECTED account of the mechanism, both corrections
+    // empirically verified against the live stack rather than assumed:
+    //
+    // 1) The implementer removed this policy's explicit `with check (...)`
+    //    (leaving `using ((select auth.uid()) = user_id)` in place) and
+    //    found the reassignment STILL rejected — psql-inspected
+    //    `pg_policy.polwithcheck` was genuinely null. That matches
+    //    documented PostgreSQL RLS behaviour (an UPDATE policy with no
+    //    WITH CHECK reuses USING as the implicit check on the new row),
+    //    and was read as proof that the explicit clause isn't the sole
+    //    thing blocking reassignment here.
+    // 2) The Task 2 reviewer mutation-tested that claim in isolation and
+    //    found it doesn't hold up: mutating this UPDATE policy to
+    //    `using (true)` with NO with check at all (removing the fallback
+    //    path too) STILL rejects the reassignment — 9/9 green. Only
+    //    loosening the SELECT policy's own `using` clause lets the
+    //    reassignment actually go through (verified via psql: the row
+    //    genuinely moves to B). So in experiment 1, both the UPDATE
+    //    policy's implicit-check fallback AND the SELECT policy applied
+    //    to the touched row would have independently rejected the
+    //    reassignment — the experiment left USING owner-scoped throughout,
+    //    so it could not distinguish which one was actually doing the
+    //    work. The SELECT policy is the layer this specific mutation
+    //    sequence isolates as sufficient on its own; this file does not
+    //    isolate the UPDATE policy's own using/with-check clauses from the
+    //    SELECT policy the same way, so it cannot claim credit for either
+    //    one specifically — a real, documented coverage gap, not a
+    //    vulnerability (every layer involved is present and correct as
+    //    shipped). The explicit WITH CHECK clause stays exactly as
+    //    written regardless: correct practice, self-documenting intent,
+    //    and it stops being redundant the moment USING is ever loosened
+    //    independently without WITH CHECK deliberately following. See the
+    //    Task 2 completion note and its Fix Round 1 section for the full
+    //    experiment history (with-check removed, then using(true) with no
+    //    check, then SELECT loosened — each re-run against a fresh
+    //    `db reset`, pg_policy inspected via psql, all reverted after).
+    expect(
+      error,
+      'expected the reassignment to be rejected by RLS as a whole (the UPDATE policy directly, and/or the SELECT policy applied to the touched row — see the comment above for what this specific test can and cannot isolate); if this is null the reassignment silently succeeded, which is the exact privilege-escalation footgun design note 2 exists to prevent',
+    ).not.toBeNull()
     expect(data).toBeNull()
 
     const { data: check } = await clientA.from('casefiles').select('user_id').eq('id', caseIdA1)
