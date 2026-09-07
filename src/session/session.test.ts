@@ -328,11 +328,15 @@ describe("BEGIN_SAVE (design notes 8-9: completes immediately, no auth detour in
       {
         type: 'BEGIN_SAVE',
         engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
-        now: 1_725_000_000_000,
+        now: 1_725_000_000_000, newId: 'passport-case-uuid',
       },
     )
     expect(s.screen).toBe('save-done')
     expect(s.savedCases).toHaveLength(1)
+    // D4: BEGIN_SAVE threads the injected `newId` straight through to
+    // completeSave — the created case's id is the INJECTED value, never a
+    // timestamp derived inside the reducer.
+    expect(s.savedCases[0].id).toBe('passport-case-uuid')
     expect(s.savedCases[0].engineKey).toBe('passport')
     expect(s.savedCases[0].outcome).toBe('still_open')
     expect(s.activeCaseId).toBe(s.savedCases[0].id)
@@ -745,7 +749,7 @@ describe('Every other navigating arm applies the SAME authErr/acctOpen clears as
       name: 'BEGIN_SAVE',
       run: () => r(withStaleAuthUi(), {
         type: 'BEGIN_SAVE', engineKey: 'passport', serviceLabel: 'Passport',
-        returnScreen: 'passport-nextmove', now: NOW,
+        returnScreen: 'passport-nextmove', now: NOW, newId: 'wiring-test-id',
       }),
     },
     {

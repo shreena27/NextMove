@@ -88,6 +88,7 @@ import type { Casefile } from '../domain/casefile'
 import { CLOSED_TITLE, DELIVERABLE_Q, checkinOptionsFor, type CheckinOption } from '../domain/checkinOptions'
 import type { ScreenId, SessionAction } from '../session/session'
 import type { CiSnapshot } from '../session/cases'
+import { newCaseId } from '../session/cases'
 import { prepPlanFor } from '../playbooks/prep'
 import { Crumbs } from '../ui/Crumbs'
 import { Split } from '../ui/Split'
@@ -558,6 +559,9 @@ export function CasefileScreen({
                         // string type).
                         returnScreen: c.returnScreen as ScreenId,
                         now,
+                        // D4: minted in this onClick, not hoisted next to
+                        // `now` — never called during render.
+                        newId: newCaseId(),
                       })
                     }
                   />

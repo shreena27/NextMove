@@ -264,7 +264,12 @@ export type SessionAction =
   // anywhere in the prototype (loadCase/openCheckin, 2160-2171/2633-2637)
   // — a field nothing reads is a field that rots.
   | { type: 'OPEN_CHECKIN'; id: string }
-  | { type: 'BEGIN_SAVE'; engineKey: ServiceKey; serviceLabel: string; returnScreen: ScreenId; now: number }
+  // D4: `newId` is injected here, the same way `now` already is — the
+  // dispatching onSave handler calls `newCaseId()` (cases.ts's one mint
+  // site) and passes the result; the reducer/completeSave never mints an
+  // id itself. See cases.ts's `newCaseId()` doc comment for the full
+  // reasoning (UUID vs. the old `'c' + now`).
+  | { type: 'BEGIN_SAVE'; engineKey: ServiceKey; serviceLabel: string; returnScreen: ScreenId; now: number; newId: string }
   // The check-in interaction state machine (Task 6; design notes 2-10).
   // Every one of these six is a thin arm over its matching cases.ts pure
   // function, run through applyCiFragment below.
@@ -468,7 +473,7 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
     case 'BEGIN_SAVE': {
       const fragment = completeSave(
         { savedCases: s.savedCases, workingCase: s.workingCase, answers: s.answers, prepChecks: s.prepChecks },
-        { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen, now: a.now },
+        { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen, now: a.now, newId: a.newId },
       )
       return {
         ...s, ...fragment,

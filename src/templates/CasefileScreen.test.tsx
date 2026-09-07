@@ -445,7 +445,7 @@ describe('open variant — the case is still_open', () => {
     expect(screen.queryByRole('button', { name: UI.saveControl.saveWithSteps })).toBeNull()
   })
 
-  it('the working-case tail\'s Save button fires BEGIN_SAVE', () => {
+  it('the working-case tail\'s Save button fires BEGIN_SAVE, with a freshly minted UUID newId (D4)', () => {
     const working = makeCase('passport', state1D, state1Answers, { unsaved: true })
     const dispatch = vi.fn()
     render(<CasefileScreen case={working} answers={working.answers} d={state1D} {...baseProps({ dispatch })} />)
@@ -453,6 +453,7 @@ describe('open variant — the case is still_open', () => {
     expect(dispatch).toHaveBeenCalledWith({
       type: 'BEGIN_SAVE', engineKey: 'passport', serviceLabel: working.serviceLabel,
       returnScreen: working.returnScreen, now: NOW,
+      newId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
     })
   })
 

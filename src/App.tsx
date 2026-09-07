@@ -37,7 +37,7 @@
  *  between them yet), so both compute the same `settled`. */
 import { useReducer, useRef, useEffect, type ReactNode } from 'react'
 import { sessionReducer, initialSession, type ScreenId, type SessionAction } from './session/session'
-import { activeCase } from './session/cases'
+import { activeCase, newCaseId } from './session/cases'
 import { loadCases, saveCases } from './session/caseStore'
 import { hasAnswers } from './screens/screenProps'
 import { Topbar } from './ui/Topbar'
@@ -233,7 +233,7 @@ export default function App() {
           onSave={() =>
             dispatch({
               type: 'BEGIN_SAVE', engineKey: 'passport', serviceLabel: UI.serviceLabel.passport,
-              returnScreen: 'passport-nextmove', now,
+              returnScreen: 'passport-nextmove', now, newId: newCaseId(),
             })
           }
         />
@@ -275,7 +275,7 @@ export default function App() {
           onSave={() =>
             dispatch({
               type: 'BEGIN_SAVE', engineKey: 'passport', serviceLabel: UI.serviceLabel.passport,
-              returnScreen: 'passport-prepare', now,
+              returnScreen: 'passport-prepare', now, newId: newCaseId(),
             })
           }
           freshDegraded={freshDegraded}
@@ -353,7 +353,7 @@ export default function App() {
           onSave={() =>
             dispatch({
               type: 'BEGIN_SAVE', engineKey: 'voter', serviceLabel: UI.serviceLabel.voterServices,
-              returnScreen: 'voter-nextmove', now,
+              returnScreen: 'voter-nextmove', now, newId: newCaseId(),
             })
           }
         />
@@ -387,7 +387,7 @@ export default function App() {
           onSave={() =>
             dispatch({
               type: 'BEGIN_SAVE', engineKey: 'voter', serviceLabel: UI.serviceLabel.voterServices,
-              returnScreen: 'voter-prepare', now,
+              returnScreen: 'voter-prepare', now, newId: newCaseId(),
             })
           }
           freshDegraded={freshDegraded}
@@ -471,7 +471,7 @@ export default function App() {
           onSave={() =>
             dispatch({
               type: 'BEGIN_SAVE', engineKey: 'sir', serviceLabel: UI.serviceLabel.sir,
-              returnScreen: 'sir-nextmove', now,
+              returnScreen: 'sir-nextmove', now, newId: newCaseId(),
             })
           }
         />
@@ -505,7 +505,7 @@ export default function App() {
           onSave={() =>
             dispatch({
               type: 'BEGIN_SAVE', engineKey: 'sir', serviceLabel: UI.serviceLabel.sir,
-              returnScreen: 'sir-prepare', now,
+              returnScreen: 'sir-prepare', now, newId: newCaseId(),
             })
           }
           freshDegraded={freshDegraded}

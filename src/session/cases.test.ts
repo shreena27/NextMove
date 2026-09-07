@@ -11,7 +11,7 @@ import { SIR_STATES } from '../playbooks/sirPlaybook'
 import { checkinOptionsFor, type CheckinOption } from '../domain/checkinOptions'
 import { ladderFor } from '../templates/ladder'
 import {
-  activeCase, sameAnswers, caseIsSaved, loadCase, openCheckin, beginWorkingCheckin, completeSave,
+  activeCase, sameAnswers, caseIsSaved, loadCase, openCheckin, beginWorkingCheckin, completeSave, newCaseId,
   appendLog, ciChoose, ciConfirm, ciValence, ciClosureAnswer, ciUndo, ciCancel,
   closeUnresolved, reopenCase, removeSaved, setRemind, toggleLog, setRemoveConfirm, setReminderCopied,
 } from './cases'
@@ -55,11 +55,19 @@ const BASE = {
   prepChecks: {} as Record<number, boolean>,
 }
 
+// D4: `newId` is a fixed literal, not a real newCaseId() call — every
+// completeSave test below that creates a NEW case (existingIdx === -1)
+// inherits this same value unless it overrides `newId` itself (the two
+// "distinct ids" tests do, deliberately). beginWorkingCheckin's payload
+// type has no `newId` field; passing this object (a typed variable, not an
+// inline literal) to it is still fine under TS's excess-property rules,
+// so the same PASSPORT_PAYLOAD constant serves both call sites unchanged.
 const PASSPORT_PAYLOAD = {
   engineKey: 'passport' as const,
   serviceLabel: 'Passport',
   returnScreen: 'passport-nextmove',
   now: NOW,
+  newId: 'fixed-test-id',
 }
 
 function assertOpened(f: OpenCheckinFragment | BeginWorkingFragment): asserts f is OpenCheckinFragment {
@@ -318,15 +326,33 @@ describe('openCheckin (design note 3.1, Task 4 design note 5)', () => {
   })
 })
 
+describe('newCaseId (D4 — the one mint site for a newly created case id)', () => {
+  it('returns a v4-shaped UUID, and a different value on two consecutive calls', () => {
+    const a = newCaseId()
+    const b = newCaseId()
+    expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+    expect(a).not.toBe(b)
+  })
+})
+
 describe('completeSave (design note 4)', () => {
-  it("with no existing case, unshifts a new case with a 'c'-prefixed id and outcome still_open", () => {
+  it("with no existing case, unshifts a new case using the injected newId verbatim and outcome still_open — this is the RED that matters (D4): it fails against the old 'c' + payload.now implementation for the stated reason, a wrong id value, not an incidental one", () => {
     const fragment = completeSave({ ...BASE, answers: { ...PASSPORT_ANSWERS } }, PASSPORT_PAYLOAD)
 
     expect(fragment.savedCases).toHaveLength(1)
-    expect(fragment.savedCases[0].id).toBe('c' + NOW)
+    expect(fragment.savedCases[0].id).toBe('fixed-test-id')
     expect(fragment.savedCases[0].outcome).toBe('still_open')
-    expect(fragment.activeCaseId).toBe('c' + NOW)
+    expect(fragment.activeCaseId).toBe('fixed-test-id')
     expect(fragment.workingCase).toBeNull()
+  })
+
+  it('two completeSave calls with the same `now` but different injected newIds produce two distinct ids — the exact D4 collision (a timestamp-derived id colliding across devices/sessions sharing the casefiles table\'s (user_id, id) primary key) this design exists to close', () => {
+    const fragment1 = completeSave({ ...BASE, answers: { ...PASSPORT_ANSWERS } }, { ...PASSPORT_PAYLOAD, newId: 'id-a' })
+    const fragment2 = completeSave({ ...BASE, answers: { ...PASSPORT_ANSWERS } }, { ...PASSPORT_PAYLOAD, newId: 'id-b' })
+
+    expect(fragment1.savedCases[0].id).not.toBe(fragment2.savedCases[0].id)
+    expect(fragment1.savedCases[0].id).toBe('id-a')
+    expect(fragment2.savedCases[0].id).toBe('id-b')
   })
 
   it('with an existing still-open case of the same engine, updates in place — length unchanged, id unchanged, log = existing + working non-diagnosed + diagnosed-if-changed, in order', () => {
@@ -467,7 +493,7 @@ describe('Task 5 design note 1 — a superseded case is invisible to caseIsSaved
     expect(fragment.savedCases).toHaveLength(2)
     expect(fragment.savedCases.find(c => c.id === 'c-superseded')).toEqual(superseded) // untouched
     const created = fragment.savedCases.find(c => c.id !== 'c-superseded')!
-    expect(created.id).toBe('c' + NOW)
+    expect(created.id).toBe('fixed-test-id') // the injected newId, same D4 fix as the block above
     expect(created.outcome).toBe('still_open')
     expect(fragment.activeCaseId).toBe(created.id)
   })

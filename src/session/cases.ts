@@ -215,6 +215,33 @@ export function beginWorkingCheckin(
   }
 }
 
+/** D4: the one mint site for a newly created case's id. Injected on the
+ *  dispatching action's payload — exactly like this codebase's existing
+ *  `now` convention (D6) — and used verbatim by `completeSave` below,
+ *  never called inside this module or any reducer: the reducer stays pure
+ *  and synchronous, and the dispatching onClick handler (App.tsx's/
+ *  CasefileScreen's `onSave`) calls this once per click, so two save
+ *  buttons firing in the same pass never share one id.
+ *
+ *  A UUID rather than `'c' + now`: Task 2's `casefiles` table uses
+ *  `(user_id, id)` as its primary key, and a timestamp-derived id risks
+ *  colliding across two devices/sessions that save at the same
+ *  millisecond in a way a UUID does not.
+ *
+ *  Pre-existing cases are UNAFFECTED — `caseStore.ts`'s `migrateLegacyCase`
+ *  still mints `'c' + (old.savedAt || now)` for a case migrated from the
+ *  old single-case storage format, and that is deliberately NOT changed
+ *  here (see its own comment). That id is derived from a specific,
+ *  already-stored record and is stable across repeated migrations — a
+ *  property worth more than uniformity. So: cases that already exist keep
+ *  their `'c'`-prefixed id forever; only NEWLY created cases mint a UUID
+ *  going forward. Some ids being UUIDs and some not is not an unfinished
+ *  refactor to "complete" by converting the old ones too — it is the
+ *  intended, permanent state. */
+export function newCaseId(): string {
+  return crypto.randomUUID()
+}
+
 /** Prototype completeSave() (2072-2091) — the one-active-case-per-service
  *  rule. `Object.assign(existing, snap)` in the prototype overwrites only
  *  snap's own fields onto the existing case object; the port spreads in
@@ -236,7 +263,11 @@ export function completeSave(
     answers: AnswerRecord
     prepChecks: Record<number, boolean>
   },
-  payload: { engineKey: ServiceKey; serviceLabel: string; returnScreen: string; now: number },
+  // D4: `newId` is injected here, the same way `now` already is — never
+  // minted inside this function. See `newCaseId()`'s own doc comment
+  // above for why (UUID vs. the old `'c' + now`) and for the legacy-case
+  // exception this does NOT touch.
+  payload: { engineKey: ServiceKey; serviceLabel: string; returnScreen: string; now: number; newId: string },
 ): CompleteSaveFragment {
   const d = diagnose(ENGINES[payload.engineKey], state.answers)
   const snap = caseSnapshot(
@@ -263,7 +294,7 @@ export function completeSave(
 
   const created: Casefile = {
     ...snap,
-    id: 'c' + payload.now,
+    id: payload.newId, // D4: the injected UUID, never a minted 'c' + now
     outcome: 'still_open',
     lastCheck: working ? working.lastCheck : null,
     remindAt: working ? working.remindAt : null,
