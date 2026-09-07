@@ -157,11 +157,11 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+site_url = "http://localhost:5173"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = ["http://localhost:5173", "http://127.0.0.1:5173"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -249,6 +249,13 @@ otp_expiry = 3600
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
 
+# Repoints the magic-link email to a 6-digit code template instead of GoTrue's
+# default link. signInWithOtp({ email }) must be called with no
+# emailRedirectTo, or GoTrue prefers the link form.
+[auth.email.template.magic_link]
+subject = "Your NextMove sign-in code"
+content_path = "./supabase/templates/magic_link.html"
+
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
 # enabled = true
@@ -257,17 +264,48 @@ otp_expiry = 3600
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.
-enable_signup = false
+enable_signup = true
 # If enabled, users need to confirm their phone number before signing in.
-enable_confirmations = false
+enable_confirmations = true
 # Template for sending OTP to users
 template = "Your code is {{ .Code }}"
 # Controls the minimum amount of time that must pass before sending another sms otp.
 max_frequency = "5s"
 
 # Use pre-defined map of phone number to OTP for testing.
-# [auth.sms.test_otp]
-# 4152127777 = "123456"
+[auth.sms.test_otp]
+# Keys are E.164 WITHOUT the leading "+" — GoTrue strips it before lookup.
+919876543210 = "123456"
+919876543211 = "123456"
+
+# LOCAL-ONLY SHIM, kept adjacent to test_otp above so both get stripped as one
+# unit before production (see the STRIP note below). The Supabase CLI (>=1.x,
+# confirmed on 2.116.0) unconditionally force-sets GOTRUE_EXTERNAL_PHONE_ENABLED
+# = false in supabase/cli's own config.go (func (s *sms) validate()) UNLESS one
+# of twilio/twilio_verify/messagebird/textlocal/vonage reports enabled = true —
+# [auth.sms.test_otp] alone does NOT satisfy that switch, confirmed empirically
+# (supabase start printed "WARN: no SMS provider is enabled. Disabling phone
+# login" and POST /auth/v1/otp for a phone number returned 400
+# phone_provider_disabled, even with test_otp fully populated). This block
+# exists solely to take the Twilio branch of that switch.
+# The env(...) references below are INTENTIONALLY left unresolved — no
+# supabase/.env provides them (see supabase/.env.example). GoTrue's own OTP
+# handler (internal/api/phone.go's sendPhoneConfirmation) checks test_otp
+# BEFORE ever constructing a provider client, so the two fixture numbers above
+# never reach Twilio at all. A phone number NOT in test_otp would make one real
+# HTTP call to api.twilio.com, which Twilio rejects at authentication (401) —
+# no SMS sent, no cost incurred, verified against GoTrue's own source
+# (TwilioProviderConfiguration.Validate() only checks the three fields are
+# non-empty strings; NewTwilioProvider is constructed lazily per-request, not
+# at startup, so there is no health check that would fail differently).
+# STRIP BEFORE PRODUCTION, together with [auth.sms.test_otp] above — replace
+# both with real values (or remove entirely) in any deployed environment.
+# Never `supabase config push` this block as committed here.
+[auth.sms.twilio]
+enabled = true
+account_sid = "env(SUPABASE_AUTH_SMS_TWILIO_ACCOUNT_SID)"
+message_service_sid = "env(SUPABASE_AUTH_SMS_TWILIO_MESSAGE_SERVICE_SID)"
+auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 
 # Configure logged in session timeouts.
 # [auth.sessions]
@@ -286,13 +324,9 @@ max_frequency = "5s"
 # enabled = true
 # uri = "pg-functions://<database>/<schema>/<hook_name>"
 
-# Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
-[auth.sms.twilio]
-enabled = false
-account_sid = ""
-message_service_sid = ""
-# DO NOT commit your Twilio auth token to git. Use environment variable substitution instead:
-auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
+# (The [auth.sms.twilio] block for this project lives right after
+# [auth.sms.test_otp] above, not here — kept adjacent so both local-only
+# sections get stripped together before any production config.)
 
 # Multi-factor-authentication is available to Supabase Pro plan.
 [auth.mfa]
@@ -334,6 +368,16 @@ url = ""
 skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
+
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+# DO NOT commit your OAuth provider secret to git. Use environment variable substitution instead:
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+# Start false (the secure value). Flip to true, local config only, if and only
+# if Task 18's manual verification fails with a nonce error — record the flip
+# as a deviation at that point. Never carry true into a production config.
+skip_nonce_check = false
 
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.
 # You can configure "web3" rate limit in the [auth.rate_limit] section and set up [auth.captcha] if self-hosting.
