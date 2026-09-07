@@ -26,7 +26,7 @@ function ComingSoonRow({ name }: { name: string }) {
 export function OtherServices({ state, dispatch }: ScreenProps) {
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <Split
           left={<>

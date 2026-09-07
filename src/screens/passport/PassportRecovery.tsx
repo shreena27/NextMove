@@ -68,7 +68,7 @@ export function PassportRecovery({ state, dispatch }: ScreenProps) {
   }
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <Split
           left={<>
@@ -113,7 +113,7 @@ export function PassportRecoveryPaste({ state, dispatch }: ScreenProps) {
   }
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <Split
           left={<>
@@ -151,7 +151,7 @@ export function PassportRecoveryPaste({ state, dispatch }: ScreenProps) {
 export function PassportRecoveryShow({ state, dispatch }: ScreenProps) {
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <div className="narrow">
           <PhaseEyebrow service={UI.serviceLabel.passport} phase={UI.phase.recovery} />

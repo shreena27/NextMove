@@ -1096,4 +1096,42 @@ describe('C7 Task 8: the auth lifecycle', () => {
       expect(window.location.search).toBe('')
     })
   })
+
+  // Task 15: a spot-check, not exhaustive coverage — screenCopy.test.tsx's
+  // own UiChrome() sweep and AccountChip.test.tsx already prove the chip's
+  // OWN behaviour in full; this proves the 25-site WIRING actually reaches
+  // real, rendered screens end to end, off a real signed-in App boot, so a
+  // partially-wired rollout (a `<Topbar>` site missed, or a stray
+  // `state={initialSession}` left on a production site) is caught here even
+  // though it would compile clean everywhere else.
+  describe('Task 15: the account chip renders on every screen (a spot-check)', () => {
+    it('present on Home, on a question screen, and on the casefile screen, while signed in', async () => {
+      withSession({ user_metadata: { display_name: 'Ananya' } })
+      selectSpy.mockResolvedValueOnce({ data: [], error: null })
+
+      render(<App />)
+
+      // Home.
+      await screen.findByRole('heading', { level: 1 })
+      expect(document.querySelector('.acct-chip'), 'Home').toBeInTheDocument()
+
+      // A question screen (Passport Q1).
+      await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+      expect(document.querySelector('.acct-chip'), 'passport-guardrail').toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+      expect(document.querySelector('.acct-chip'), 'passport-q1').toBeInTheDocument()
+
+      // Save the case, go Home, then open it — the casefile screen.
+      await userEvent.click(screen.getByRole('button', { name: /looks negative or confusing/ }))
+      await userEvent.click(screen.getByRole('button', { name: /Yes, I filed a formal grievance/ }))
+      await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+      await userEvent.click(screen.getByRole('button', { name: UI.saveControl.save }))
+      await waitFor(() => expect(upsertSpy).toHaveBeenCalled())
+      await userEvent.click(screen.getByRole('button', { name: UI.saveDone.goHome }))
+      await userEvent.click(document.querySelector('.saved-card') as HTMLButtonElement)
+      // Sanity: genuinely on the casefile screen, not still on Home.
+      expect(await screen.findByText(UI.casefile.yourCasefile)).toBeInTheDocument()
+      expect(document.querySelector('.acct-chip'), 'the casefile screen').toBeInTheDocument()
+    })
+  })
 })

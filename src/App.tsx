@@ -370,6 +370,7 @@ export default function App() {
       showRestart={showRestart}
       hasAnswers={hasAnswers(state)}
       restartConfirm={state.restartConfirm}
+      state={state}
       dispatch={dispatch}
     />
   )

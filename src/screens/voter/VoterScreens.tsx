@@ -38,7 +38,7 @@ export function VoterEntry({ state, dispatch }: ScreenProps) {
   }
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <Split
           left={<>
@@ -82,7 +82,7 @@ export function VoterQ1({ state, dispatch }: ScreenProps) {
   }
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <Split
           left={<>
@@ -114,7 +114,7 @@ export function VoterQ2({ state, dispatch }: ScreenProps) {
   }
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <Split
           left={<>

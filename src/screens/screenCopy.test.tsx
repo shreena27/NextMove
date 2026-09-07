@@ -37,6 +37,7 @@ import {
 import { VoterEntry, VoterQ1, VoterQ2 } from './voter/VoterScreens'
 import { SirState, SirUnsupported, SirReverifying, SirQ1 } from './sir/SirScreens'
 import { Topbar } from '../ui/Topbar'
+import { AccountChip } from '../ui/AccountChip'
 import { Footer } from '../ui/Footer'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { DiagnosisScreen } from '../templates/DiagnosisScreen'
@@ -398,6 +399,12 @@ const closedSupersededCase: Casefile = {
   ...caseSnap, id: 'ui-case-closed-superseded', outcome: 'superseded',
   lastCheck: null, remindAt: null, closedAt: CASE_NOW, log: [],
 }
+// Task 15: the account popover's own fixture, reusing openCase/
+// closedSupersededCase above rather than minting a third set of case data —
+// one still_open case and one superseded one, so the same mount that closes
+// the ui:account.* coverage gap also stands as a live (not just AccountChip.
+// test.tsx-only) proof that a superseded case is not counted.
+const acctUnnamedUser = { method: 'phone' as const, id: '+919876543210', name: null }
 
 const journeyLogA: Casefile = {
   ...caseSnap, id: 'ui-log-a', outcome: 'still_open', lastCheck: null, remindAt: null,
@@ -567,7 +574,12 @@ function SirBucketScreens() {
  *  copy is already covered by the two direct <Topbar/> mounts above, so
  *  this is added only where design note 4 explicitly asks for it. */
 function topbar(showBack: boolean, showRestart: boolean) {
-  return <Topbar showBack={showBack} showRestart={showRestart} hasAnswers={false} restartConfirm={false} dispatch={noop} />
+  return (
+    <Topbar
+      showBack={showBack} showRestart={showRestart} hasAnswers={false} restartConfirm={false}
+      state={initialSession} dispatch={noop}
+    />
+  )
 }
 
 function UiChrome() {
@@ -582,8 +594,29 @@ function UiChrome() {
   const otpAlmostDueBy = Date.now() + 950
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={false} restartConfirm={false} dispatch={noop} />
-      <Topbar showBack showRestart hasAnswers restartConfirm dispatch={noop} />
+      <Topbar showBack showRestart hasAnswers={false} restartConfirm={false} state={initialSession} dispatch={noop} />
+      <Topbar showBack showRestart hasAnswers restartConfirm state={initialSession} dispatch={noop} />
+      {/* Task 15: closes the 'ui:account.*' coverage gap task-10-brief.md's
+          own design note 9 opened and task-12-brief.md's CAPTION_TEMPLATES
+          comment kept scoped down to exactly these entries. One mount,
+          open with a NAMELESS user and the sign-out confirm armed, covers
+          every non-templated ui:account.* string in a single pass:
+          ariaLabel (the popover's own aria-label), casefilesSub (always
+          rendered), addName/addNameSub (only without a name), and signOut/
+          signOutConfirm.prompt/yes/cancel (signOutConfirm.yes reuses the
+          same literal text as signOut, screenCopy.ts's own comment) —
+          casefilesOne/Many are CAPTION_TEMPLATES (they interpolate {n}),
+          so they are deliberately NOT asserted by this sweep; their
+          substituted forms get their own dedicated render check in
+          CAPTION_SUBSTITUTIONS' own `it` below, same as every other
+          templated entry in this file. */}
+      <AccountChip
+        state={{
+          ...initialSession, user: acctUnnamedUser, acctOpen: true, signOutConfirm: true,
+          savedCases: [openCase, closedSupersededCase],
+        }}
+        dispatch={noop}
+      />
       <Footer />
       <Home state={initialSession} dispatch={noop} />
       <OtherServices state={initialSession} dispatch={noop} />
@@ -891,11 +924,13 @@ const CAPTION_TEMPLATES = new Set([
   // now exist and are wired into UiChrome() / their own dedicated mounts
   // below — 'ui:saveOtp.lede' and 'ui:saveOtp.resendWaitMany' both now have
   // real substituted-form RENDER assertions (see CAPTION_SUBSTITUTIONS'
-  // own `it` below), not just the key-equality check. 'ui:account.
-  // casefilesOne'/'casefilesMany' are the only two of the original four
-  // still gapped — the account popover is Task 15's own build; that
-  // remaining gap is the SAME documented, expected condition (task-10-
-  // brief.md design note 9 / the GREEN note), now scoped to just those two.
+  // own `it` below), not just the key-equality check.
+  // UPDATED (Task 15): 'ui:account.casefilesOne'/'casefilesMany' — the last
+  // two of the original four — now ALSO have real substituted-form render
+  // assertions (AccountChip now exists), closing the gap task-10-brief.md
+  // design note 9 opened and task-12-brief.md's own comment here narrowed
+  // down to exactly these two. Every CAPTION_TEMPLATES entry now has a real
+  // render check; none remain gapped.
   'ui:saveOtp.lede',
   'ui:saveOtp.resendWaitMany',
   'ui:account.casefilesOne',
@@ -945,8 +980,14 @@ const CAPTION_TEMPLATES = new Set([
 //     substituted form gets its own dedicated, fake-timer-pinned render
 //     check in CAPTION_SUBSTITUTIONS' own `it` below, for the same
 //     no-interaction reason as the other four.
-// `ui:account.casefilesOne`/`casefilesMany`/the whole `account.*` subtree
-// remain ungated AND unmounted — Task 15's own job, not this task's.
+// UPDATED (Task 15): the `account.*` subtree is now built and mounted —
+// `ui:account.casefilesOne`/`casefilesMany` are covered by their own
+// CAPTION_SUBSTITUTIONS render check below (same as every other templated
+// entry); the rest of `account.*` is a plain literal-string sweep, covered
+// by the dedicated AccountChip mount in UiChrome() above. Neither needed
+// INTERACTION_GATED — the account popover is a fully controlled component
+// (`state.acctOpen`/`state.signOutConfirm` are plain props), same as
+// SaveCase/SaveOtp before it.
 
 const SCREENS: [keyof typeof SCREEN_COPY, () => ReactElement][] = [
   ['passport', PassportBucketScreens],
@@ -1056,9 +1097,9 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     'sir:reverifying.headline': SIR_COPY.reverifying.headline.replace('{state}', 'Delhi'),
     'sir:reverifying.lede': SIR_COPY.reverifying.lede.replace('{state}', 'Delhi').replace('{date}', ''),
     'sir:reverifying.verifiedNote': SIR_COPY.reverifying.verifiedNote.replace('{date}', SOURCES_VERIFIED),
-    // C7 (Task 10 registered these; Task 12 closes SaveOtp's own gap below —
-    // account.casefilesOne/Many stay deferred, Task 15's job, same reason
-    // this comment gave originally: the account popover isn't built yet).
+    // C7 (Task 10 registered these; Task 12 closed SaveOtp's own gap below;
+    // Task 15 closes the last one — account.casefilesOne/Many, off a real
+    // AccountChip render, same as every other entry in this map).
     // 'ui:saveOtp.lede': CORRECTED from Task 10's own placeholder value
     // ('+91 98765 43210', a guess at a "naturally formatted" phone number
     // made before SaveOtpScreen existed to test it against). The real,
@@ -1075,14 +1116,10 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
   }
 
   it('CAPTION_SUBSTITUTIONS covers exactly CAPTION_TEMPLATES, and each substituted form actually renders', async () => {
-    // NOTE (C7 Task 10/12): the key-equality check below covers all of
-    // CAPTION_TEMPLATES, including 'ui:saveOtp.lede'/'ui:saveOtp.
-    // resendWaitMany'/'ui:account.casefilesOne'/'ui:account.casefilesMany'
-    // — but the render assertions that follow do NOT yet cover the account
-    // pair (the account popover isn't built until Task 15; that gap is
-    // expected and documented at its own entry's comment above — do not add
-    // a fake mount here to paper over it). SaveOtp's own two ARE now
-    // covered below (Task 12), off dedicated `<SaveOtpScreen>` renders.
+    // NOTE (C7 Task 10/12/15): the key-equality check below covers all of
+    // CAPTION_TEMPLATES — every entry, including 'ui:account.casefilesOne'/
+    // 'casefilesMany', now ALSO has a real render assertion following it;
+    // none remain gapped.
     expect(Object.keys(CAPTION_SUBSTITUTIONS).sort()).toEqual([...CAPTION_TEMPLATES].sort())
 
     const { container: trustContainer } = render(
@@ -1191,6 +1228,26 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     } finally {
       vi.useRealTimers()
     }
+
+    // C7 (Task 15) — the account popover. casefilesOne's substituted form
+    // (openN===1) is reachable off the SAME uiContainer mount above — its
+    // dedicated AccountChip fixture is seeded with exactly one still_open
+    // case plus one superseded one (savedCases: [openCase,
+    // closedSupersededCase]), so this also doubles as a live proof that a
+    // superseded case is not counted. casefilesMany needs its own render,
+    // with a SECOND still_open case added alongside the same superseded
+    // one — proving the exclusion holds at n=2 too, not just n=1.
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:account.casefilesOne'])
+    const { container: acctManyContainer } = render(
+      <AccountChip
+        state={{
+          ...initialSession, user: acctUnnamedUser, acctOpen: true,
+          savedCases: [openCase, yesterdayCase, closedSupersededCase],
+        }}
+        dispatch={noop}
+      />,
+    )
+    expect(acctManyContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:account.casefilesMany'])
   })
 
   // `INTERACTION_GATED` needs no membership pin here (fix-round review

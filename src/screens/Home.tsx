@@ -39,7 +39,7 @@ export function Home({ state, dispatch, now = 0 }: HomeProps) {
   const closed = state.savedCases.filter(c => c.outcome !== 'still_open')
   return (
     <>
-      <Topbar showBack={false} showRestart={false} hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack={false} showRestart={false} hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <Split
           left={<>

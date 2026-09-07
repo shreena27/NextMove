@@ -28,7 +28,7 @@ export function PassportGuardrail({ state, dispatch }: ScreenProps) {
   }
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <Split
           left={<>
@@ -51,7 +51,7 @@ export function PassportGuardrail({ state, dispatch }: ScreenProps) {
 export function PassportOutOfScope({ state, dispatch }: ScreenProps) {
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <div className="narrow">
           <Banner>
@@ -76,7 +76,7 @@ export function PassportQ1({ state, dispatch }: ScreenProps) {
   }
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <Split
           left={<>
@@ -105,7 +105,7 @@ export function PassportQ2({ state, dispatch }: ScreenProps) {
   }
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <Split
           left={<>
