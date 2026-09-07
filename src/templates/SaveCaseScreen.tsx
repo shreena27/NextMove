@@ -42,17 +42,32 @@
  *  the BUTTONS, but Enter-to-submit fires through the `<input>`'s own
  *  `onKeyDown`, which the `disabled` attribute never touches.
  *
- *  On the SUCCESS path, `SET_AUTH_BUSY: false` is deliberately NOT
- *  dispatched alongside `AUTH_ID_SUBMITTED` — the reducer's own
- *  `AUTH_ID_SUBMITTED` arm (session.ts) does not clear `authBusy` either,
- *  and this component's brief asks only for the failure path to clear it
- *  ("a stuck busy flag is a dead screen" is explicitly about the FAILURE
- *  case). `authBusy` stays `true` across the navigation into `save-otp`;
- *  whether/how that next screen needs to reset it before its own network
- *  call is that screen's own concern, flagged forward rather than guessed
- *  at here. Google's success path is even more clearly out of scope for a
- *  local reset: a real `signInWithOAuth` redirect navigates the whole page
- *  away, so there is no "after success" render of this screen to unstick.
+ *  FIX ROUND 1, FINDING 1 (corrects the original version of this note —
+ *  left here as the record, not deleted, since the wrong reasoning is worth
+ *  keeping visible). The original text argued `SET_AUTH_BUSY: false` should
+ *  NOT be dispatched on the SUCCESS path, on the theory that
+ *  `AUTH_ID_SUBMITTED`'s own reducer arm not clearing `authBusy` was
+ *  established precedent. That reasoning does not hold: that reducer arm
+ *  (session.ts, Task 4) predates any screen actually dispatching
+ *  `SET_AUTH_BUSY` at all, so it cannot be evidence of intent either way —
+ *  and its neighbor `SIGNED_IN` DOES clear `authBusy` on its own terminal
+ *  transition, which is the real precedent. Concretely: leaving `authBusy`
+ *  `true` after a successful send means a citizen who presses Back from
+ *  `save-otp` (`BACK`, session.ts, which clears `trustOpen`/
+ *  `restartConfirm`/`authErr`/`acctOpen` but NOT `authBusy`) returns to a
+ *  `SaveCaseScreen` where both buttons render `disabled` AND the in-handler
+ *  guards below block Enter too — with `showRestart={false}` on this
+ *  screen's own topbar, there is no escape hatch. Reproduced directly in
+ *  `SaveCaseScreen.test.tsx`'s `ControlledWithBack` test (Fix Round 1,
+ *  Finding 1). Both success branches below now dispatch
+ *  `SET_AUTH_BUSY: false` immediately before `AUTH_ID_SUBMITTED` — the
+ *  request this flag names is genuinely finished by that point (this file's
+ *  own header note above defines `authBusy` as "while a request is in
+ *  flight"), so clearing it here is the flag's OWN documented meaning, not
+ *  an exception to it. Google's success path still needs no such dispatch:
+ *  the reviewer confirmed a real `signInWithOAuth` redirect navigates the
+ *  whole page away, so there is no "after success" render of this screen
+ *  left to unstick.
  *
  *  DESIGN NOTE 4 (a11y — mechanism improvement, no visual change). The
  *  prototype's own field label is a styled `<div class="auth-label">`
@@ -103,6 +118,12 @@ export function SaveCaseScreen({ authMethod, authId, authErr, authBusy, topbar, 
         dispatch?.({ type: 'SET_AUTH_BUSY', value: false })
         return
       }
+      // Fix Round 1, Finding 1: the request that started `authBusy` is done
+      // (successfully) by this point — leaving the flag `true` here
+      // produces a genuinely dead screen if the citizen presses Back from
+      // 'save-otp' (see the file header's own updated note, and the
+      // ControlledWithBack repro in SaveCaseScreen.test.tsx).
+      dispatch?.({ type: 'SET_AUTH_BUSY', value: false })
       dispatch?.({ type: 'AUTH_ID_SUBMITTED', authId: e164 })
     } else {
       if (!isValidEmail(authId)) {
@@ -116,6 +137,8 @@ export function SaveCaseScreen({ authMethod, authId, authErr, authBusy, topbar, 
         dispatch?.({ type: 'SET_AUTH_BUSY', value: false })
         return
       }
+      // Fix Round 1, Finding 1: same clear on the email success branch.
+      dispatch?.({ type: 'SET_AUTH_BUSY', value: false })
       dispatch?.({ type: 'AUTH_ID_SUBMITTED', authId })
     }
   }
