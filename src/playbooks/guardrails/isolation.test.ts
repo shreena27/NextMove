@@ -7,9 +7,15 @@
 //
 // Files inside src/playbooks/guardrails/ itself are exempt: they are the
 // harness, so they are allowed to import each other and node:fs/node:url —
-// that is their whole job. Every OTHER .ts/.tsx file under src/ (application,
-// domain and playbook-data code, excluding *.test.ts/*.test.tsx files) must
-// never:
+// that is their whole job. src/test/ is exempt for the same reason, one
+// level up: it is this project's shared TEST INFRASTRUCTURE directory
+// (vite.config.ts's own `setupFiles: ['./src/test/setup.ts']`; Task 3 adds
+// src/test/supabaseMock.ts alongside it), not application code — the same
+// carve-out the *.test.ts filter already gives individual test files,
+// applied at directory granularity because these files support tests
+// without themselves carrying a `.test.ts` suffix. Every OTHER .ts/.tsx
+// file under src/ (application, domain and playbook-data code, excluding
+// *.test.ts/*.test.tsx files) must never:
 //   1. import anything under guardrails/, or
 //   2. import node:fs, node:path, node:url or vitest directly — those are
 //      guardrail-harness-only dependencies that application/domain/
@@ -32,17 +38,18 @@ const srcRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..') // -> 
 const DISALLOWED_BARE_IMPORTS = ['node:fs', 'node:path', 'node:url', 'vitest']
 
 /** Every .ts/.tsx file under src/, excluding *.test.ts/*.test.tsx files and
- *  anything inside playbooks/guardrails/ (the harness itself, which is
- *  allowed to use these dependencies — that's its entire purpose). Used to
- *  cover `.ts` only, on the theory that App.tsx/main.tsx were the only
- *  `.tsx` files and carried no such imports — C3 added ~30 more `.tsx`
- *  screen/template files, so the extension filter now covers both. */
+ *  anything inside playbooks/guardrails/ (the harness itself) or test/
+ *  (shared test infrastructure) — both allowed to use these dependencies
+ *  because that is their entire purpose. Used to cover `.ts` only, on the
+ *  theory that App.tsx/main.tsx were the only `.tsx` files and carried no
+ *  such imports — C3 added ~30 more `.tsx` screen/template files, so the
+ *  extension filter now covers both. */
 function applicationTsFiles(dir: string): string[] {
   const out: string[] = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name)
     if (entry.isDirectory()) {
-      if (entry.name === 'guardrails') continue
+      if (entry.name === 'guardrails' || entry.name === 'test') continue
       out.push(...applicationTsFiles(full))
       continue
     }
