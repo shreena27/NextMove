@@ -834,7 +834,9 @@ export default function App() {
       break
     }
     case 'save-done':
-      body = <SaveDoneScreen pendingSave={state.pendingSave} topbar={topbar(false, false)} dispatch={dispatch} />
+      body = (
+        <SaveDoneScreen pendingSave={state.pendingSave} user={state.user} topbar={topbar(false, false)} dispatch={dispatch} />
+      )
       break
 
     default: {

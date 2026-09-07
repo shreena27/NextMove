@@ -553,8 +553,9 @@ export const UI = {
     switchStandalone: 'Never mind',
   },
   /** SaveDoneScreen (C5, Task 10; C7 Task 10 adds `ledeTailPhone`/
-   *  `ledeTailOther`) — port of `renderSaveDone` (prototype 3887-3899, tag
-   *  v1-design-lock-2): the confirmation shown right after a case is saved.
+   *  `ledeTailOther`; C7 Task 14 wires them in) — port of `renderSaveDone`
+   *  (prototype 3887-3899, tag v1-design-lock-2): the confirmation shown
+   *  right after a case is saved.
    *
    *  `lede` is ONLY the prototype's first sentence (design note 3 of C5's
    *  own task-10 brief; Open Question 1, RESOLVED, option (b)) — the
@@ -562,17 +563,19 @@ export const UI = {
    *  device-local, had no accounts at all, and keeping that sentence would
    *  have told a reader they DID have an account.
    *
-   *  C7's task-10 brief (design note 8, the OQ1 restoration) now registers
-   *  that second sentence as TWO complete entries, `ledeTailPhone`/
-   *  `ledeTailOther` — a ternary choosing between two full sentences, not
-   *  one template with a slot, exactly how the prototype writes it (3894).
-   *  Rendered starting Task 14: SaveDoneScreen.tsx is NOT touched by this
-   *  task (not in its file list), so these two entries are registered but
-   *  not yet wired in — the coverage sweep is expected to go red for
-   *  exactly these two until Task 14 joins them into the SAME `.lede` text
-   *  node as `lede` above, with a single space (`' '`), never a separate
-   *  `<span>` or `<br>` (a missing or doubled space is a real defect Task
-   *  14's own test catches). */
+   *  `ledeTailPhone`/`ledeTailOther` are TWO complete entries, a ternary
+   *  choosing between two full sentences rather than one template with a
+   *  slot, exactly how the prototype writes it (3894). Task 14 (C7)
+   *  discharges the debt C5 recorded against it: `SaveDoneScreen.tsx` joins
+   *  whichever branch applies onto `lede` with a single space, in the SAME
+   *  `.lede` text node — never a separate `<span>` or `<br>`. It renders
+   *  `ledeTailPhone` when the signed-in user's method is `'phone'`,
+   *  `ledeTailOther` for Google or email, and — deliberately diverging from
+   *  the prototype's own ternary, which falls through to 'account' with no
+   *  user — renders NEITHER sentence when there is no user at all, since
+   *  that would be exactly the misleading claim C5 subtracted the sentence
+   *  to avoid. See `SaveDoneScreen.tsx`'s own header comment for the full
+   *  restoration note. */
   saveDone: {
     crumb: 'Case saved',
     headline: 'Your casefile is saved.',

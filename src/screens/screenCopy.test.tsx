@@ -750,6 +750,14 @@ function UiChrome() {
           presence, so this duplicates coverage the mount above already
           gives; design note 8 asks for it explicitly regardless. */}
       <SaveDoneScreen pendingSave={null} dispatch={noop} />
+      {/* Task 14: SaveDoneScreen WITH a user (ledeTailPhone/ledeTailOther,
+          the OQ1 restoration) — one mount per branch of the ternary, a
+          phone user for ledeTailPhone and a Google user for ledeTailOther
+          (email hits the same else-branch string, covered by
+          SaveDoneScreen.test.tsx's own dedicated test, not duplicated
+          here). */}
+      <SaveDoneScreen pendingSave={null} user={{ method: 'phone', id: 'ui-sd-phone', name: null }} dispatch={noop} />
+      <SaveDoneScreen pendingSave={null} user={{ method: 'google', id: 'ui-sd-google', name: null }} dispatch={noop} />
       {/* Task 12: SaveCaseScreen (Task 11) and SaveOtpScreen (Task 12),
           wired in per the deferral this file's own INTERACTION_GATED
           comment and CAPTION_SUBSTITUTIONS both left for "once SaveOtp/
