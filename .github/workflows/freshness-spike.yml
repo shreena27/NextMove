@@ -7,6 +7,13 @@ name: Freshness spike (reachability check only)
 # surfaces its exit code/log. Delete once the real workflow replaces it.
 on:
   workflow_dispatch: {}
+  # push trigger is a temporary workaround: GitHub only recognizes
+  # workflow_dispatch from the copy of this file on the default branch,
+  # and this is deliberately not being merged just to run a spike. Remove
+  # once this file is deleted.
+  push:
+    branches: [c6-freshness]
+    paths: ['.github/workflows/freshness-spike.yml']
 
 jobs:
   spike:
