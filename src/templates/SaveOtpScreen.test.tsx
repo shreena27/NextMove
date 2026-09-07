@@ -253,6 +253,24 @@ describe('SaveOtpScreen (port of renderSaveOtp, prototype 3846-3865)', () => {
     expect(dispatch).toHaveBeenCalledWith({ type: 'NAVIGATE', screen: 'save-name' })
   })
 
+  it(
+    "Fix Round 1, Finding 2 — a successful verify clears pendingName (dispatches SET_PENDING_NAME with '') " +
+    "alongside SIGNED_IN/NAVIGATE, matching prototype 2126-2127's own S.pendingName=''; nav('save-name') — " +
+    'otherwise a name draft typed on save-name, abandoned via Back to save-otp, survives a re-verify',
+    async () => {
+      verifyPhoneOtp.mockResolvedValueOnce({ ok: true, user: { method: 'phone', id: '+919876543210', name: null } })
+      const dispatch = vi.fn()
+      render(
+        <SaveOtpScreen
+          authMethod="phone" authId="+919876543210" otp="123456" authErr={null} authBusy={false}
+          otpResent={false} otpCooldownUntil={null} now={NOW} dispatch={dispatch}
+        />,
+      )
+      await userEvent.click(verifyBtn())
+      expect(dispatch).toHaveBeenCalledWith({ type: 'SET_PENDING_NAME', value: '' })
+    },
+  )
+
   it('Enter in the OTP field does the same as clicking verify', async () => {
     verifyPhoneOtp.mockResolvedValueOnce({ ok: true, user: { method: 'phone', id: '+919876543210', name: null } })
     const dispatch = vi.fn()
@@ -457,28 +475,64 @@ describe('D2 cooldown — the resend control disables itself while otpCooldownUn
   })
 
   it(
-    '(b) between 0 and 1000ms remaining shows resendWaitOne (the Math.ceil boundary) — and "Send again in 0 ' +
-    'seconds" is unreachable, not merely a claim',
+    '(b) between 0 and 1000ms remaining shows resendWaitOne AT FIRST RENDER, not a post-tick state — the ' +
+    'Math.ceil boundary — and "Send again in 0 seconds" is unreachable, not merely a claim',
     () => {
+      // Fix Round 1, Finding 1 (reviewer): the countdown only re-renders on
+      // the setInterval's own 1000ms tick. The ORIGINAL version of this
+      // test mounted at an EXACT multiple of 1000ms (NOW + 1000) and then
+      // advanced by sub-tick amounts (500ms, then 499ms) — neither advance
+      // ever crosses a tick boundary, so the component never actually
+      // re-renders during either assertion; they silently re-check the
+      // SAME initial render. Worse, Math.ceil and Math.floor AGREE on every
+      // exact multiple of 1000 (ceil(1)===floor(1)===1), so even that one
+      // real render couldn't have discriminated the two. Reviewer's own
+      // repro: swapping Math.ceil for Math.floor at both occurrences in
+      // SaveOtpScreen.tsx left this test (and the whole 26/26 suite) green.
+      //
+      // The fix: mount FRESH (first render, no interval tick involved) at a
+      // deadline that is NOT a multiple of 1000ms, so the render's own
+      // computed label already discriminates ceil from floor with no
+      // advance needed. 950ms remaining: Math.ceil(950/1000) === 1 ->
+      // resendWaitOne. Math.floor(950/1000) === 0, which is NOT 1, so a
+      // floor-mutated component falls through to
+      // resendWaitMany.replace('{n}', '0') — "Send again in 0 seconds",
+      // exactly the string this design makes unreachable. Verified this
+      // genuinely fails against a local Math.ceil -> Math.floor edit and
+      // passes against the real Math.ceil (task-12-report.md, Fix Round 1).
+      const at950 = render(
+        <SaveOtpScreen
+          authMethod="phone" authId="+919876543210" otp="" authErr={null} authBusy={false}
+          otpResent={false} otpCooldownUntil={NOW + 950} now={NOW} dispatch={vi.fn()}
+        />,
+      )
+      expect(resendBtn()).toHaveTextContent(UI.saveOtp.resendWaitOne)
+      expect(resendBtn()).toBeDisabled()
+      expect(screen.queryByText(/0 seconds/)).toBeNull()
+      at950.unmount()
+
+      // The opposite end of the window (1ms remaining), same discriminating
+      // shape: Math.ceil(1/1000) === 1 -> resendWaitOne; Math.floor(1/1000)
+      // === 0 -> "Send again in 0 seconds".
+      const at1 = render(
+        <SaveOtpScreen
+          authMethod="phone" authId="+919876543210" otp="" authErr={null} authBusy={false}
+          otpResent={false} otpCooldownUntil={NOW + 1} now={NOW} dispatch={vi.fn()}
+        />,
+      )
+      expect(resendBtn()).toHaveTextContent(UI.saveOtp.resendWaitOne)
+      expect(screen.queryByText(/0 seconds/)).toBeNull()
+      at1.unmount()
+
+      // The exact 1000ms mark: Math.ceil and Math.floor AGREE here (both
+      // 1) — kept only as documentation of the window's own upper edge,
+      // NOT a discriminating assertion (see the comment above).
       render(
         <SaveOtpScreen
           authMethod="phone" authId="+919876543210" otp="" authErr={null} authBusy={false}
           otpResent={false} otpCooldownUntil={NOW + 1000} now={NOW} dispatch={vi.fn()}
         />,
       )
-      // Exactly 1000ms remaining: Math.ceil(1000/1000) === 1.
-      expect(resendBtn()).toHaveTextContent(UI.saveOtp.resendWaitOne)
-      expect(resendBtn()).toBeDisabled()
-      expect(screen.queryByText(/0 seconds/)).toBeNull()
-
-      // 500ms remaining: still exactly one second by Math.ceil.
-      act(() => { vi.advanceTimersByTime(500) })
-      expect(resendBtn()).toHaveTextContent(UI.saveOtp.resendWaitOne)
-      expect(screen.queryByText(/0 seconds/)).toBeNull()
-
-      // 1ms remaining: Math.ceil(1/1000) === 1 still — the boundary never
-      // dips below "one second" while remainingMs stays > 0.
-      act(() => { vi.advanceTimersByTime(499) })
       expect(resendBtn()).toHaveTextContent(UI.saveOtp.resendWaitOne)
       expect(screen.queryByText(/0 seconds/)).toBeNull()
     },

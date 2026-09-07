@@ -40,7 +40,11 @@
  *
  *  DESIGN NOTE 3 (verify's success path — task brief design note 3). Calls
  *  `verifyPhoneOtp`/`verifyEmailOtp` per `authMethod`, then on success:
- *  `SIGNED_IN`, then `NAVIGATE` to `'save-name'`. Deliberately does NOT call
+ *  `SIGNED_IN`, `SET_PENDING_NAME` (cleared, ''), then `NAVIGATE` to
+ *  `'save-name'` — matching the prototype's own `S.pendingName='';
+ *  nav('save-name');` (2126-2127; Fix Round 1, Finding 2: a name draft
+ *  typed on save-name, abandoned via Back to save-otp, must not survive a
+ *  re-verify). Deliberately does NOT call
  *  `runSignInMigration` (session/caseSync.ts) from this screen — Task 8's
  *  App.tsx is the single entry point for that (its `onAuthChange`
  *  subscription + migration-runner effect), and `verifyOtp` succeeding also
@@ -219,6 +223,13 @@ export function SaveOtpScreen({
     // SIGNED_IN's own reducer arm clears authBusy/otp/authErr — no extra
     // clear dispatched here (design note 3).
     dispatch?.({ type: 'SIGNED_IN', user: result.user })
+    // Fix Round 1, Finding 2: design note 3 is explicit — "navigate to
+    // 'save-name' WITH pendingName cleared", matching the prototype's own
+    // `S.pendingName=''; nav('save-name');` (2126-2127). Neither SIGNED_IN
+    // nor NAVIGATE touches `pendingName` (only SET_PENDING_NAME does, per
+    // Task 4's reducer) — without this, a name draft typed on save-name,
+    // abandoned via Back to save-otp, would survive a re-verify.
+    dispatch?.({ type: 'SET_PENDING_NAME', value: '' })
     dispatch?.({ type: 'NAVIGATE', screen: 'save-name' })
   }
 
