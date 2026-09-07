@@ -13,7 +13,6 @@ on:
   # once this file is deleted.
   push:
     branches: [c6-freshness]
-    paths: ['.github/workflows/freshness-spike.yml']
 
 jobs:
   spike:
