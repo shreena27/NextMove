@@ -385,6 +385,52 @@ describe('a11y (design note 10, spec §7)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Task 13's own composition: FactChips (src/templates/FactChips.tsx) in the
+// slot between the cards and the primary action (prototype 3099). FactChips
+// tests its own render states/edit/remove behaviour exhaustively in its own
+// file — this describe block proves only that THIS screen wires it to the
+// real `state.interp.facts`/`droppedSensitive`/`factEditIdx`/`factEditVal`,
+// not a stale or disconnected copy.
+
+describe('fact chips — this screen\'s own composition (Task 13, prototype 3099)', () => {
+  it('facts present render one chip per fact, with the registered "What we picked up" heading, between the cards and the primary action', () => {
+    const interp = makeInterp({
+      mappings: [
+        { questionId: 'q2', value: 'informal', span: 'called the office twice', optionValues: Object.keys(PASSPORT_Q2_LABELS) },
+      ],
+      facts: [{ kind: 'reference_number', refType: 'passport_file_no', label: 'File Number', value: 'BN1068334517807', fills: null }],
+    })
+    render(<InterpConfirmScreen state={{ ...initialSession, interp }} dispatch={vi.fn()} now={1000} />)
+    expect(screen.getByText(UI.facts.pickedUpKey)).toBeInTheDocument()
+    expect(document.querySelectorAll('.fchip')).toHaveLength(1)
+    expect(document.querySelector('.fchip')).toHaveTextContent('BN1068334517807')
+  })
+
+  it('removing a fact through this screen\'s own rendered chip dispatches REMOVE_FACT through the REAL reducer and the chip disappears — proving the composition reads live state.interp.facts, not a snapshot taken at mount', async () => {
+    const user = userEvent.setup()
+    const interp = makeInterp({
+      mappings: [
+        { questionId: 'q2', value: 'informal', span: 'called the office twice', optionValues: Object.keys(PASSPORT_Q2_LABELS) },
+      ],
+      facts: [{ kind: 'reference_number', refType: 'passport_file_no', label: 'File Number', value: 'BN1068334517807', fills: null }],
+    })
+    render(<Harness seed={{ interp }} />)
+    await user.click(
+      screen.getByRole('button', {
+        name: UI.facts.removeValueAria.replace('{label}', 'File Number').replace('{value}', 'BN1068334517807'),
+      }),
+    )
+    expect(document.querySelector('.fchip')).not.toBeInTheDocument()
+  })
+
+  it('no facts and droppedSensitive:false (fixtureA\'s own shape) renders no fact-chips DOM at all', () => {
+    render(<InterpConfirmScreen state={{ ...initialSession, interp: fixtureA() }} dispatch={vi.fn()} now={1000} />)
+    expect(document.querySelector('.fact-chips')).not.toBeInTheDocument()
+    expect(screen.queryByText(UI.facts.pickedUpKey)).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // The primary action and the quiet exit.
 
 describe('primary action and quiet exit', () => {

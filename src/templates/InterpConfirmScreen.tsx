@@ -19,10 +19,13 @@
  *  was fully built and tested before its six mount sites existed in the
  *  router-reachable sense.
  *
- *  FACT CHIPS (Task 13's own file, `FactChips`; prototype `factChips(it.
- *  facts)`, 3099, between the cards and the primary action) are DELIBERATELY
- *  NOT rendered here — same forward-reference reasoning as the unplaceable
- *  panel above. Task 13 composes it into this slot.
+ *  FACT CHIPS (`FactChips`, `src/templates/FactChips.tsx`; prototype
+ *  `factChips(it.facts)`, 3099, between the cards and the primary action)
+ *  ARE composed here, by Task 13 (which owns that file) — always fed
+ *  `state.interp.facts`/`droppedSensitive`/`state.factEditIdx`/
+ *  `state.factEditVal`, per `FactChips`'s own standalone-component contract
+ *  (owned by neither this screen nor `UnplaceablePanel`, Task 14, which
+ *  composes the same component into its own file).
  *
  *  DESIGN NOTE — the clock (D6). `now` is a REQUIRED prop, taken directly
  *  (not a pre-bound callback the way `PrepareScreen.onTogglePrepStep` is) —
@@ -86,6 +89,7 @@ import { Split } from '../ui/Split'
 import { Crumbs } from '../ui/Crumbs'
 import { SERVICE_SQ } from '../ui/serviceSquare'
 import { Button } from '../ui/Button'
+import { FactChips } from './FactChips'
 import { UI } from '../screens/screenCopy'
 
 /** Design note 4 of task-12-brief.md: ONE label-resolution helper, not six
@@ -356,9 +360,21 @@ export function InterpConfirmScreen({ state, dispatch, now, topbar }: InterpConf
                   </div>
                 )
               })}
-              {/* Fact chips (Task 13's own file, FactChips) compose in
-                  here, between the cards and the primary action — prototype
-                  3099. Not this task's job to build; see the file header. */}
+              {/* Fact chips (Task 13's own file, FactChips) — prototype
+                  3099, between the cards and the primary action. Standalone
+                  component, owned by neither this screen nor
+                  UnplaceablePanel (Task 14) — see FactChips.tsx's own
+                  header for why. Always fed `state.interp.facts`/
+                  `droppedSensitive` (never any other array), matching the
+                  reducer's own "operates on state.interp.facts" contract
+                  (session.ts's SET_FACT_EDIT/SAVE_FACT_EDIT/REMOVE_FACT). */}
+              <FactChips
+                facts={interp.facts}
+                droppedSensitive={interp.droppedSensitive}
+                factEditIdx={state.factEditIdx}
+                factEditVal={state.factEditVal}
+                dispatch={dispatch}
+              />
               <Button block arrow onClick={() => dispatch({ type: 'APPLY_INTERPRETATION', now })}>
                 {UI.interp.useTheseAnswers}
               </Button>

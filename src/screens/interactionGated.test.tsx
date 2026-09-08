@@ -27,31 +27,40 @@
 // `[...INTERACTION_GATED]` — the same pattern screenCopy.test.tsx's own
 // `CAPTION_SUBSTITUTIONS` uses for `CAPTION_TEMPLATES`.
 //
-// STILL RED, same as it was in PrepareScreen.test.tsx before this move
-// (Task 10's own commit message: "closed incrementally by Tasks 11-15") —
-// three entries remain uncovered: `ui:facts.editLabel`/`ui:facts.saveLabel`
-// (Task 13) and `ui:prepare.hintFilledUnreviewed` (Task 15). Task 11's own
-// obligation here is exactly two entries — `ui:describe.err`/
-// `ui:describe.reading` (pre-registered by Task 10, anticipating this
-// task) — plus giving the mechanism a better home; NOT building Tasks
-// 13/15's own components. The single strict-equality assertion at the
-// bottom of the `it` below (fix round 1, Finding I-4) is what stays
-// genuinely red for those three names — not a separate `it.each` split —
-// and the comment directly above that assertion names all three so a
-// reader (or the next task) sees at a glance which keys are still owed
-// and by whom, without re-deriving it from the failure alone.
+// AT THE TIME OF THIS MOVE, three entries remained uncovered:
+// `ui:facts.editLabel`/`ui:facts.saveLabel` (Task 13) and
+// `ui:prepare.hintFilledUnreviewed` (Task 15). Task 11's own obligation here
+// was exactly two entries — `ui:describe.err`/`ui:describe.reading`
+// (pre-registered by Task 10, anticipating this task) — plus giving the
+// mechanism a better home; NOT building Tasks 13/15's own components. The
+// single strict-equality assertion at the bottom of the `it` below (fix
+// round 1, Finding I-4) is what stayed genuinely red for those three names —
+// not a separate `it.each` split — and the comment directly above that
+// assertion named all three so a reader (or the next task) could see at a
+// glance which keys were still owed and by whom, without re-deriving it
+// from the failure alone.
+//
+// UPDATED (Task 13): `ui:facts.editLabel`/`ui:facts.saveLabel` are now
+// closed (`ControlledFactChips` below). Exactly ONE entry remains
+// genuinely red: `ui:prepare.hintFilledUnreviewed`, owed to Task 15 — see
+// the comment above the strict-equality assertion itself for the current
+// state.
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { useReducer, useState } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PrepareScreen, type PrepareScreenProps } from '../templates/PrepareScreen'
 import { DescribeBlock } from '../templates/DescribeBlock'
+import { FactChips } from '../templates/FactChips'
 import { PREP } from '../playbooks/prep'
 import { diagnose } from '../domain/engine'
 import { passportEngine } from '../playbooks/engines'
 import { UI } from './screenCopy'
 import { INTERACTION_GATED } from './interactionGated'
-import { sessionReducer, initialSession, type SessionState } from '../session/session'
+import {
+  sessionReducer, initialSession, type SessionState, type ActiveInterpretation,
+} from '../session/session'
+import type { Fact, GatedInterpretation } from '../domain/interpret'
 import * as interpretationModule from '../session/interpretation'
 
 vi.mock('../session/interpretation', () => ({ runInterpretation: vi.fn() }))
@@ -97,6 +106,42 @@ const tickAll = async (n: number) => {
 function ControlledDescribeBlock({ seed }: { seed?: Partial<SessionState> }) {
   const [state, dispatch] = useReducer(sessionReducer, { ...initialSession, ...seed })
   return <DescribeBlock screenId="passport-q1" state={state} dispatch={dispatch} />
+}
+
+/** Task 13's own fixture, re-declared here rather than imported from
+ *  FactChips.test.tsx (this file's own "own its own fixtures" convention,
+ *  header comment above). A minimal, valid `ActiveInterpretation` — the
+ *  same test-only `__gated` brand escape hatch InterpConfirmScreen.test.tsx
+ *  and FactChips.test.tsx's own `makeInterp` already establish. */
+const GATED_FACT: Fact = {
+  kind: 'reference_number', refType: 'passport_file_no', label: 'File Number', value: 'BN1068334517807', fills: null,
+}
+function makeGatedInterp(facts: Fact[]): ActiveInterpretation {
+  return {
+    __gated: 'test-only' as unknown as GatedInterpretation['__gated'],
+    mappings: [], discarded: [], facts, droppedSensitive: false, unplaceable: false,
+    provenance: 'simulated (local matcher)', ctxScreen: 'passport-q1', engine: 'passport',
+    service: UI.serviceLabel.passport, text: 'default fixture text',
+  }
+}
+
+/** A real `useReducer(sessionReducer, ...)` harness for `FactChips`, the
+ *  SAME shape `ControlledDescribeBlock` above uses — `ui:facts.editLabel`/
+ *  `ui:facts.saveLabel` are both reachable only after a real Edit click
+ *  (`SET_FACT_EDIT`), never as a static prop, matching this whole module's
+ *  own rule for what belongs in `INTERACTION_GATED` at all. */
+function ControlledFactChips({ seed }: { seed?: Partial<SessionState> }) {
+  const [state, dispatch] = useReducer(sessionReducer, { ...initialSession, ...seed })
+  if (!state.interp) return null
+  return (
+    <FactChips
+      facts={state.interp.facts}
+      droppedSensitive={state.interp.droppedSensitive}
+      factEditIdx={state.factEditIdx}
+      factEditVal={state.factEditVal}
+      dispatch={dispatch}
+    />
+  )
 }
 
 describe('INTERACTION_GATED coverage — the SCREEN_COPY strings no static mount can produce', () => {
@@ -188,11 +233,38 @@ describe('INTERACTION_GATED coverage — the SCREEN_COPY strings no static mount
         expect(await screen.findByRole('button', { name: UI.describe.reading })).toBeInTheDocument()
         unmount()
       },
+      // C8 (Task 13) — the two entries Task 10 pre-registered anticipating
+      // this task, closing 2 of the 3 remaining red entries. Both are
+      // FactChips's own edit-mode aria-labels: unreachable at a static
+      // mount because `factEditIdx` starts `null` on every fresh session —
+      // only a real `SET_FACT_EDIT` dispatch (a click on Edit) ever puts a
+      // chip into its edit-mode branch at all. One real `ControlledFactChips`
+      // round trip covers both labels, since both live on the SAME chip
+      // once edit mode is open.
+      'ui:facts.editLabel': async () => {
+        const { unmount } = render(<ControlledFactChips seed={{ interp: makeGatedInterp([GATED_FACT]) }} />)
+        await userEvent.click(
+          screen.getByRole('button', { name: `${UI.facts.editValueAria.replace('{label}', GATED_FACT.label).replace('{value}', GATED_FACT.value)}` }),
+        )
+        expect(
+          screen.getByLabelText(UI.facts.editLabel.replace('{label}', GATED_FACT.label)),
+        ).toBeInTheDocument()
+        unmount()
+      },
+      'ui:facts.saveLabel': async () => {
+        const { unmount } = render(<ControlledFactChips seed={{ interp: makeGatedInterp([GATED_FACT]) }} />)
+        await userEvent.click(
+          screen.getByRole('button', { name: `${UI.facts.editValueAria.replace('{label}', GATED_FACT.label).replace('{value}', GATED_FACT.value)}` }),
+        )
+        expect(
+          screen.getByRole('button', { name: UI.facts.saveLabel.replace('{label}', GATED_FACT.label) }),
+        ).toBeInTheDocument()
+        unmount()
+      },
     }
 
-    // `ui:facts.editLabel`/`ui:facts.saveLabel` (Task 13) and
     // `ui:prepare.hintFilledUnreviewed` (Task 15) — not this task's
-    // components to build. Named here in prose (fix round 1, Finding I-4 —
+    // component to build. Named here in prose (fix round 1, Finding I-4 —
     // NOT as a filter the assertion below consults), so a reader sees
     // exactly what remains without re-deriving it from a failing assertion.
     //
@@ -202,20 +274,20 @@ describe('INTERACTION_GATED coverage — the SCREEN_COPY strings no static mount
     // version's real problem: it could be "discharged" by doing nothing —
     // an entry silently never gets a covering function here and nothing
     // ever fails, which is exactly what would have happened to
-    // `ui:facts.editLabel`/`ui:facts.saveLabel` (both are ALSO in
-    // `screenCopy.test.tsx`'s own `CAPTION_TEMPLATES`, so they don't even
-    // re-enter that file's coverage sweep as a backstop). A bare strict-
-    // equality pin can only be discharged by actually adding covering
-    // interaction coverage — the same discipline Task 9
+    // `ui:facts.editLabel`/`ui:facts.saveLabel` had Task 13 not closed them
+    // (both are ALSO in `screenCopy.test.tsx`'s own `CAPTION_TEMPLATES`, so
+    // they don't even re-enter that file's coverage sweep as a backstop). A
+    // bare strict-equality pin can only be discharged by actually adding
+    // covering interaction coverage — the same discipline Task 9
     // (`ui/tokens.test.ts`'s own `UI.interp.spanPrefix` pin) and Task 10
     // each already established for this exact "copy registered ahead of
     // its consuming code" situation.
     //
-    // EXPECTED RED right now, for the three names above:
-    // `ui:facts.editLabel`/`ui:facts.saveLabel` close when Task 13 builds
-    // FactChips; `ui:prepare.hintFilledUnreviewed` closes when Task 15
-    // builds its covering interaction. Each goes green the moment its own
-    // task adds a covering entry to `assertions` above.
+    // UPDATED (Task 13): `ui:facts.editLabel`/`ui:facts.saveLabel` are now
+    // closed, via `ControlledFactChips` above — a real `SET_FACT_EDIT`
+    // click, then both labels read off the same now-open chip. ONE entry
+    // remains genuinely red: `ui:prepare.hintFilledUnreviewed`, owed to
+    // Task 15, closing when it builds its covering interaction.
     expect(Object.keys(assertions).sort()).toEqual([...INTERACTION_GATED].sort())
 
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
