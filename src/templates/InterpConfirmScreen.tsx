@@ -71,7 +71,7 @@
  *  semicolon clause before the final period, mirroring
  *  `UI.interp.framingParagraph`'s own D8 semicolon, this bucket's
  *  established voice. */
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AnswerRecord } from '../domain/types'
 import type { SessionAction, SessionState } from '../session/session'
 import type { DescribeEntryScreenId } from '../domain/interpret'
@@ -176,6 +176,37 @@ export function InterpConfirmScreen({ state, dispatch, now, topbar }: InterpConf
     h1Ref.current?.focus()
   }, [])
 
+  // Fix round 1, Finding F1 (task-12 fix-round-1.md). The live region below
+  // used to be inserted into the DOM ALREADY carrying its summary text, in
+  // the SAME commit as the region itself — a region that arrives
+  // pre-populated is not reliably announced by NVDA/JAWS/VoiceOver on
+  // initial mount, since screen readers announce MUTATIONS to an
+  // already-existing live region, not a node that shows up fully formed.
+  // That defeated design note 10's actual point ("a screen-reader user has
+  // no idea the screen changed"), even though it satisfied the RED item's
+  // literal wording. Fixed by rendering the region EMPTY on the first
+  // commit and populating it here, in an effect that runs AFTER mount — so
+  // the text arrives as a genuine mutation. A later repick (or any other
+  // re-render that changes `state.interp`) still recomputes and re-sets
+  // this on every change, which is also a real mutation to the same
+  // existing node — so that path needed no change at all.
+  const [summary, setSummary] = useState('')
+  useEffect(() => {
+    const currentInterp = state.interp
+    if (!currentInterp || currentInterp.unplaceable) return
+    // This IS F1's entire fix, not an anti-pattern to clean up: the lint
+    // rule's own suggestion, "derive the value during render instead", is
+    // exactly the bug being corrected here — deriving it during render is
+    // what put the text in the SAME commit as the region, which is why it
+    // wasn't reliably announced; see design note above.
+    // oxlint-disable-next-line react/set-state-in-effect -- deliberate, see comment above
+    setSummary(composeSummary(
+      currentInterp.mappings.length,
+      currentInterp.facts.length,
+      currentInterp.discarded.length > 0,
+    ))
+  }, [state.interp])
+
   // D11: focus follows a Change reveal — to the first option on open, back
   // to the Change control on collapse. Compares against a Record snapshot
   // rather than a single boolean (DescribeBlock's own `wasOpen` pattern,
@@ -217,9 +248,13 @@ export function InterpConfirmScreen({ state, dispatch, now, topbar }: InterpConf
               <h1 className="headline" ref={h1Ref} tabIndex={-1}>{UI.interp.headline}</h1>
               {/* Design note 10: a visually-hidden live region, never
                   visible prose — see UI.interp.summary's own doc comment
-                  (screenCopy.ts) and this file's header note. */}
+                  (screenCopy.ts) and this file's header note. Rendered
+                  EMPTY here on purpose (fix round 1, F1, above) — `summary`
+                  is populated by the mount/update effect, never inline,
+                  so a screen reader sees a real mutation to this node
+                  rather than a node that arrives already carrying text. */}
               <div className="vh" aria-live="polite">
-                {composeSummary(interp.mappings.length, interp.facts.length, interp.discarded.length > 0)}
+                {summary}
               </div>
               <p className="interp-frame">{UI.interp.framingParagraph}</p>
               <div className="youwrote">
@@ -245,8 +280,22 @@ export function InterpConfirmScreen({ state, dispatch, now, topbar }: InterpConf
                 // justifying span no longer justifies anything; showing it
                 // under a value the model never proposed would be a false
                 // provenance record.
+                // Fix round 1, Finding F2 (task-12 fix-round-1.md). This
+                // prefix used to be a `.vh`-hidden span DUPLICATING
+                // `index.css`'s `.span-quote::before{content:"you wrote: "}`
+                // — design note 10's belt-and-braces choice, made on the
+                // assumption that engines were inconsistent about exposing
+                // `::before` generated content to the accessibility tree.
+                // They are not: every current major engine DOES expose it,
+                // so the hidden span plus the CSS content together
+                // announced "you wrote: you wrote: '...'" — a real
+                // double-read. This is now the ONLY source of that text: a
+                // real, VISIBLE span (`.span-quote-prefix`, index.css —
+                // carrying the exact declarations the deleted `::before`
+                // rule used to) rather than a hidden duplicate. Do not
+                // reintroduce a `.vh` wrapper or a CSS `::before` here.
                 const spanQuote = !m.changed
-                  ? <div className="span-quote"><span className="vh">{UI.interp.spanPrefix}</span>&quot;{m.span}&quot;</div>
+                  ? <div className="span-quote"><span className="span-quote-prefix">{UI.interp.spanPrefix}</span>&quot;{m.span}&quot;</div>
                   : null
 
                 if (seen && !open) {

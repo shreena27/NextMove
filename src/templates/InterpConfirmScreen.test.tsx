@@ -301,7 +301,7 @@ describe('the discard note', () => {
 // and the visually-hidden span prefix.
 
 describe('a11y (design note 10, spec §7)', () => {
-  it('focus is on the <h1> after mount; a visually-hidden live region exists with aria-live="polite" and contains the composed summary; the span prefix is present as text inside the span quote', () => {
+  it('focus is on the <h1> after mount; a visually-hidden live region exists with aria-live="polite" and contains the composed summary (after RTL\'s render, which flushes mount effects); the span prefix is a REAL, VISIBLE span (F2: not .vh-hidden) inside the span quote, and it is the ONLY node producing that text', () => {
     const interp = fixtureA() // 2 mappings, 0 facts, 0 discarded
     render(<InterpConfirmScreen state={{ ...initialSession, interp }} dispatch={vi.fn()} now={1000} />)
     expect(document.querySelector('h1')).toHaveFocus()
@@ -310,9 +310,63 @@ describe('a11y (design note 10, spec §7)', () => {
     expect(live!.textContent).toContain(UI.interp.summary.matchedMany.replace('{matched}', '2'))
     expect(live!.textContent).toContain(UI.interp.summary.factsMany.replace('{facts}', '0'))
     const spanQuoteEl = document.querySelector('.span-quote')!
-    const prefixSpan = spanQuoteEl.querySelector('.vh')!
+    // F2 (fix round 1): the prefix used to be a `.vh`-hidden duplicate of a
+    // CSS ::before rule — now it is the ONE real, visible node carrying
+    // "you wrote: ", so there is no `.vh` node left inside `.span-quote` at
+    // all (the region above is the only `.vh` node on the whole screen).
+    expect(spanQuoteEl.querySelectorAll('.vh'), 'F2: no hidden duplicate left inside .span-quote').toHaveLength(0)
+    const prefixSpan = spanQuoteEl.querySelector('.span-quote-prefix')!
+    expect(prefixSpan, '.span-quote-prefix must exist').toBeInTheDocument()
     expect(prefixSpan.textContent).toBe(UI.interp.spanPrefix)
   })
+
+  it(
+    'F1 (fix round 1): the composed summary arrives as a genuine MUTATION to the ALREADY-EXISTING live region, never ' +
+    'bundled into the same commit that inserts the region itself — the distinction design note 10\'s "a screen-reader ' +
+    'user has no idea the screen changed" requirement actually turns on, since a region that shows up already carrying ' +
+    'text is not reliably announced on mount by NVDA/JAWS/VoiceOver',
+    () => {
+      // A plain synchronous render()-then-inspect can't tell these two
+      // shapes apart in this React version: RTL's `render` wraps the mount
+      // in `act()`, which (React 18+) flushes the mount effect before
+      // `render()` returns either way, so by the time any assertion runs,
+      // the region already carries its final text REGARDLESS of whether it
+      // arrived in one commit or two. What's actually observable — and what
+      // a screen reader's own accessibility-tree watcher relies on — is
+      // WHICH DOM node the text-bearing mutation targets. A `MutationObserver`
+      // attached to the render container BEFORE mounting captures the real
+      // commit sequence: if the region is inserted already carrying its
+      // text, that text is part of the SAME subtree-insertion mutation
+      // (whose target is an ANCESTOR of the region, never the region node
+      // itself); if the region is inserted empty and populated afterward,
+      // a SEPARATE, later mutation lands with its `target` being the
+      // region node ITSELF — a real mutation to a node that already
+      // existed, the exact mechanism a screen reader needs to announce it.
+      // `observer.takeRecords()` reads whatever the observer has queued so
+      // far, synchronously, with no need to await a microtask for its
+      // callback.
+      const interp = fixtureA() // 2 mappings, 0 facts, 0 discarded
+      const container = document.createElement('div')
+      document.body.appendChild(container)
+      const observer = new MutationObserver(() => {})
+      observer.observe(container, { childList: true, subtree: true, characterData: true })
+      render(<InterpConfirmScreen state={{ ...initialSession, interp }} dispatch={vi.fn()} now={1000} />, { container })
+      const records = observer.takeRecords()
+      observer.disconnect()
+      const live = container.querySelector('.vh[aria-live="polite"]')!
+      expect(live, 'the live region must exist').toBeInTheDocument()
+      // Sanity: the final, settled content is still correct (already
+      // covered by the test above too) — this test is about HOW it got
+      // there, not just that it did.
+      expect(live.textContent).toContain(UI.interp.summary.matchedMany.replace('{matched}', '2'))
+      const mutationOnRegionItself = records.some(r => r.target === live)
+      expect(
+        mutationOnRegionItself,
+        'F1: the text must land as a mutation whose target is the live-region node itself (populated by the mount ' +
+        'effect, after the node already existed) — not folded into the ancestor mutation that first inserted it',
+      ).toBe(true)
+    },
+  )
 
   it('the summary uses the digit-free "One"/"one" literals at exactly n=1, and the discarded clause only when something was set aside', () => {
     const interp = makeInterp({

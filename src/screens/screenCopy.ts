@@ -708,11 +708,19 @@ export const UI = {
    *  the same discipline `UI.facts.aadhaarRefused` below follows.
    *
    *  `spanPrefix` ('you wrote: ', with its trailing space) is Task 9's own
-   *  deferred entry (design note 6 there): `.span-quote::before{content:
-   *  "you wrote: "}` in `index.css` is real citizen-facing text living in
-   *  CSS, invisible to this file's own copy sweep, and
-   *  `src/ui/tokens.test.ts` asserts the two are byte-identical — that test
-   *  was deliberately left red at the end of Task 9 for this task to close.
+   *  deferred entry (design note 6 there): originally `.span-quote::before
+   *  {content:"you wrote: "}` in `index.css` was real citizen-facing text
+   *  living in CSS, invisible to this file's own copy sweep, and
+   *  `src/ui/tokens.test.ts` asserted the two were byte-identical — that
+   *  test was deliberately left red at the end of Task 9 for Task 12 to
+   *  close, which it did. UPDATED (Task 12 fix round 1, finding F2): that
+   *  `::before` rule is now GONE — pairing CSS generated content with a
+   *  `.vh`-hidden duplicate span (design note 10's belt-and-braces choice)
+   *  caused a real screen-reader double announcement, since engines DO
+   *  expose `::before` content to the accessibility tree. `spanPrefix` is
+   *  now rendered by `InterpConfirmScreen.tsx` as a real, visible span
+   *  (`.span-quote-prefix` in `index.css`) — the ONE remaining source of
+   *  this string, nothing left to keep byte-identical with.
    *
    *  `framingParagraph` (**3094**) is D8: the prototype's semicolon
    *  ("...next; the verified playbook does that.") is transcribed, NOT the

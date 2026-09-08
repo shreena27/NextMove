@@ -165,13 +165,19 @@ describe('contrast (PRD §16 — verified at the token level before building)', 
   // `.span-quote`'s 12.5px (no font-size of its own) and carries the
   // "you wrote: " label text in `--ink-faint`, not `--ink-soft` — a
   // different pair from its own parent rule, so it is checked separately.
+  // UPDATED (Task 12 fix round 1, finding F2): `.span-quote::before` no
+  // longer exists — that generated-content rule was deleted (real,
+  // duplicate-announcement bug, see index.css's own comment at
+  // `.span-quote-prefix`) and its declarations, `ink-faint` on `card`
+  // included, moved verbatim onto the new `.span-quote-prefix` class, which
+  // this row now names instead.
   it.each([
     ['.lang-note', '12px', 'ink-faint', 'card', 4.5],
     ['.char-count', '10.5px', 'ink-faint', 'card', 4.5],
     ['.read-q', '10.5px', 'ink-faint', 'card', 4.5],
     ['.fchip .fk', '10px', 'ink-faint', 'card', 4.5],
     ['.span-quote', '12.5px', 'ink-soft', 'card', 4.5],
-    ['.span-quote::before', '12.5px', 'ink-faint', 'card', 4.5],
+    ['.span-quote-prefix', '12.5px', 'ink-faint', 'card', 4.5],
   ])('%s (%s, %s on %s) clears %s:1', (_selector, _size, fg, bg, min) => {
     const ratio = contrastRatio(TOKENS[fg as keyof typeof TOKENS], TOKENS[bg as keyof typeof TOKENS])
     expect(ratio, `${fg} on ${bg}`).toBeGreaterThanOrEqual(min as number)
@@ -318,6 +324,14 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
   // reasoning as the auth/account block above: e.g. '.ropt-dot{' alone is a
   // substring of '.ropt.picked .ropt-dot{', so a bare class-name match
   // would pass even if only the compound variant shipped.
+  //
+  // `.span-quote::before{` DELIBERATELY DROPPED from this list (Task 12 fix
+  // round 1, finding F2): that rule is no longer a verbatim prototype lift
+  // — it was deleted outright, a confirmed screen-reader double-announcement
+  // fix, not a lift regression. Its replacement, `.span-quote-prefix{`, is
+  // Task-12-authored (not a prototype selector) and is asserted separately
+  // in the "the stylesheet is the lifted prototype and nothing else" ->
+  // F2 test below, alongside the deletion.
   it.each([
     '.describe-entry{', '.describe-row{', '.describe-row:hover{',
     '.describe-row .dr-icon{', '.describe-row .dr-label{', '.describe-row .dr-label b{',
@@ -327,7 +341,7 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
     '.describe-actions{', '.describe-err{',
     '.youwrote{', '.youwrote .nm-k{', '.youwrote-text{',
     '.read-card{', '.read-q{', '.read-pick{',
-    '.span-quote{', '.span-quote::before{',
+    '.span-quote{',
     // .read-opts (945) is the rule the old off-by-one lift range would
     // have skipped — named explicitly here (design note 2 / RED item 25),
     // with its own dedicated declarations test right below.
@@ -407,11 +421,44 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
   // runtime, not `tsc -b` — a compile error here would violate the
   // project's build-window invariant (exactly one pre-existing App.tsx
   // error), which a deliberately-red unit test must not do.
-  it('design note 6: .span-quote::before content matches UI.interp.spanPrefix (EXPECTED RED — Task 10 registers the copy)', () => {
-    const match = css.match(/\.span-quote::before\{content:"([^"]*)"/)
-    expect(match, '.span-quote::before content').not.toBeNull()
-    const registered = (UI as unknown as Record<string, Record<string, string> | undefined>).interp?.spanPrefix
-    expect(registered, 'UI.interp.spanPrefix (registered by Task 10)').toBe(match![1])
+  // This test used to assert BYTE-IDENTITY between `.span-quote::before`'s
+  // CSS `content` string and `UI.interp.spanPrefix` (design note 6 of
+  // task-9-brief.md; Task 10 turned it GREEN by registering the copy) — two
+  // independent sources of the same "you wrote: " string that had to be
+  // kept in sync by hand. Task 12 fix round 1 (finding F2) found that this
+  // pairing — the CSS generated content, PLUS a `.vh`-hidden duplicate span
+  // InterpConfirmScreen.tsx rendered alongside it (design note 10's own
+  // belt-and-braces choice) — caused a real screen-reader double
+  // announcement ("you wrote: you wrote: '...'"), since every current major
+  // engine DOES expose ::before generated content to the accessibility
+  // tree, contrary to the assumption behind that design note. Fixed by
+  // deleting the ::before rule outright, so there is now exactly ONE source
+  // of the string left (the registered copy, rendered as a real, visible
+  // span) — nothing left to keep in sync, so the old identity-check
+  // mechanism no longer applies. Replaced with: (1) proof the ::before rule
+  // is genuinely gone, not merely emptied, and (2) confirmation its
+  // declarations survive, verbatim, on the new `.span-quote-prefix` class.
+  it('F2 (Task 12 fix round 1): .span-quote::before is gone — its declarations moved to .span-quote-prefix, the one remaining source of the string', () => {
+    // Comments stripped first: index.css's own provenance comments quote
+    // the deleted rule's exact text, deliberately, so a future reader
+    // doesn't "restore" it — a bare substring/brace match against the raw
+    // file would trip on that prose. Checking real RULES only, the same
+    // "the rule, not the string" discipline every other selector-presence
+    // check in this file already applies via its brace-inclusive matching
+    // (e.g. '.copy-btn{' vs '.copy-btn.copied{').
+    const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(cssNoComments, 'the ::before rule must be deleted, not merely emptied of content').not.toContain('.span-quote::before{')
+    const rule = css.match(/\.span-quote-prefix\{([^}]*)\}/)
+    expect(rule, '.span-quote-prefix{...} declaration').not.toBeNull()
+    // Same two declarations the deleted ::before rule carried (minus
+    // `content`, which only a pseudo-element needs) — verbatim, not
+    // re-authored.
+    expect(rule![1]).toContain('font-style:normal')
+    expect(rule![1]).toContain('color:var(--ink-faint)')
+  })
+
+  it('UI.interp.spanPrefix is still \'you wrote: \', with its trailing space — now the ONLY source of the string, so nothing needs to match it', () => {
+    expect(UI.interp.spanPrefix).toBe('you wrote: ')
   })
 
   it('keeps the prototype ordering: prepare CSS precedes the settled/reduced-motion tail', () => {
