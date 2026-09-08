@@ -353,6 +353,35 @@ describe('Task 13: the four C5 router cases', () => {
       expect(document.querySelector('.lede')).toHaveTextContent(UI.saveDone.ledeTailPhone)
     },
   )
+
+  // Task 17: the three router cases this task adds — 'save-case'/'save-otp'
+  // get topbar(true,false) (Back visible, Restart absent), 'save-name' gets
+  // topbar(false,false) (both absent), matching the prototype's own
+  // renderSaveCase/renderSaveOtp/renderSaveName call sites exactly (task
+  // brief design note 2).
+  it("'save-case' routes to SaveCaseScreen with Back visible and Restart absent", () => {
+    seededState.current = { screen: 'save-case' }
+    render(<App />)
+    expect(screen.getByRole('heading', { name: UI.saveCase.headline })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: UI.topbar.back })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: UI.topbar.restart })).toBeNull()
+  })
+
+  it("'save-otp' routes to SaveOtpScreen with Back visible and Restart absent", () => {
+    seededState.current = { screen: 'save-otp' }
+    render(<App />)
+    expect(screen.getByRole('heading', { name: UI.saveOtp.headline })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: UI.topbar.back })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: UI.topbar.restart })).toBeNull()
+  })
+
+  it("'save-name' routes to SaveNameScreen with Back and Restart both absent", () => {
+    seededState.current = { screen: 'save-name' }
+    render(<App />)
+    expect(screen.getByRole('heading', { name: UI.saveName.headline })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: UI.topbar.back })).toBeNull()
+    expect(screen.queryByRole('button', { name: UI.topbar.restart })).toBeNull()
+  })
 })
 
 describe('Task 13: end to end — Add an update, confirm, and Undo', () => {
@@ -1160,5 +1189,200 @@ describe('C7 Task 8: the auth lifecycle', () => {
       expect(await screen.findByText(UI.casefile.yourCasefile)).toBeInTheDocument()
       expect(document.querySelector('.acct-chip'), 'the casefile screen').toBeInTheDocument()
     })
+  })
+
+  // ===========================================================================
+  // Task 17: router wiring finishes the ScreenId union — 'save-case'/
+  // 'save-otp'/'save-name' now route (see App.test.tsx's own "Task 13: the
+  // four C5 router cases" describe for the per-screen topbar-argument
+  // checks). What's left is the whole-flow proof: four real flows through
+  // the real router, all against the shared mock, all deterministic (task
+  // brief design note 4), plus the SIR phase-drift confirmation (design
+  // note 3) and the save detour Task 16 could only half-build (design note,
+  // RED item 2).
+  // ===========================================================================
+  describe('Task 17: whole-flow integration — the real router, start to finish', () => {
+    /** Home -> Passport -> a full guardrail/Q1/Q2 flow -> Next Move. Stops
+     *  short of Save — every test below picks its own moment to save. */
+    async function reachPassportNextMove() {
+      await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+      await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+      await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+      await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+      await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+    }
+
+    it(
+      'phone -> OTP -> name -> done: nothing is saved by the detour itself (Task 16), the case IS saved once the ' +
+      'flow completes, the user is set, nm_cases is cleared, and "Back to my case" returns to pendingSave.returnScreen',
+      async () => {
+        render(<App />)
+        await reachPassportNextMove()
+
+        await userEvent.click(screen.getByRole('button', { name: UI.saveControl.save }))
+        expect(screen.getByRole('heading', { name: UI.saveCase.headline })).toBeInTheDocument()
+        expect(
+          document.querySelector('.saved-card'),
+          'the signed-out detour must not touch savedCases — BEGIN_SAVE\'s own signed-out arm writes no case',
+        ).toBeNull()
+
+        await userEvent.type(screen.getByLabelText(UI.saveCase.fieldLabelMobile), '9876543210')
+        await userEvent.click(screen.getByRole('button', { name: UI.saveCase.send }))
+        expect(mockClient.auth.signInWithOtp).toHaveBeenCalledWith({ phone: '+919876543210' })
+        expect(await screen.findByRole('heading', { name: UI.saveOtp.headline })).toBeInTheDocument()
+
+        const supabaseUser = makeSupabaseUser({ id: 'flow-phone-1', phone: '919876543210' })
+        mockClient.auth.verifyOtp.mockResolvedValueOnce({ data: { user: supabaseUser }, error: null })
+        await userEvent.type(screen.getByLabelText(UI.saveOtp.fieldLabel), '123456')
+        await userEvent.click(screen.getByRole('button', { name: UI.saveOtp.verify }))
+        expect(await screen.findByRole('heading', { name: UI.saveName.headline })).toBeInTheDocument()
+
+        // The real supabase-js client's own onAuthStateChange notification,
+        // firing independently of SaveOtpScreen's own direct SIGNED_IN
+        // dispatch above — SaveOtpScreen.test.tsx's own established
+        // simulation for this exact reason (its design note 3). The
+        // migration runner this notification kicks off calls
+        // getSession() for real (fetchRemoteCases/pushCases), so the fake
+        // session needs to be armed too, not just the event.
+        mockClient.auth.getSession.mockResolvedValue({ data: { session: { user: supabaseUser } }, error: null })
+        mockClient.emitAuthEvent('SIGNED_IN', { user: supabaseUser })
+        await waitFor(() => expect(dispatchedActions.current.some(a => a.type === 'ADOPT_CASES')).toBe(true))
+
+        await userEvent.type(screen.getByLabelText(UI.saveName.fieldLabel), 'Ananya')
+        await userEvent.click(screen.getByRole('button', { name: UI.saveName.saveMidSave }))
+        expect(await screen.findByRole('heading', { name: UI.saveDone.headline })).toBeInTheDocument()
+
+        expect(
+          dispatchedActions.current.some(
+            a => a.type === 'SIGNED_IN' && (a as unknown as { user: { method: string } }).user.method === 'phone',
+          ),
+        ).toBe(true)
+        expect(localStorage.getItem('nm_cases')).toBeNull()
+
+        await userEvent.click(screen.getByRole('button', { name: UI.saveDone.backToCase }))
+        expect(screen.getByText(UI.saveControl.savedNote)).toBeInTheDocument()
+      },
+    )
+
+    it(
+      'email -> OTP -> skip name -> done: a case in savedCases, the user set, nm_cases cleared, and save-done rendered',
+      async () => {
+        render(<App />)
+        await reachPassportNextMove()
+
+        await userEvent.click(screen.getByRole('button', { name: UI.saveControl.save }))
+        await userEvent.click(screen.getByRole('button', { name: UI.saveCase.switchToEmail }))
+        await userEvent.type(screen.getByLabelText(UI.saveCase.fieldLabelEmail), 'citizen@example.com')
+        await userEvent.click(screen.getByRole('button', { name: UI.saveCase.send }))
+        expect(mockClient.auth.signInWithOtp).toHaveBeenCalledWith({ email: 'citizen@example.com' })
+        expect(await screen.findByRole('heading', { name: UI.saveOtp.headline })).toBeInTheDocument()
+
+        const supabaseUser = makeSupabaseUser({ id: 'flow-email-1', email: 'citizen@example.com' })
+        mockClient.auth.verifyOtp.mockResolvedValueOnce({ data: { user: supabaseUser }, error: null })
+        await userEvent.type(screen.getByLabelText(UI.saveOtp.fieldLabel), '654321')
+        await userEvent.click(screen.getByRole('button', { name: UI.saveOtp.verify }))
+        expect(await screen.findByRole('heading', { name: UI.saveName.headline })).toBeInTheDocument()
+
+        // Same reasoning as the phone flow above: the migration this
+        // notification kicks off calls getSession() for real.
+        mockClient.auth.getSession.mockResolvedValue({ data: { session: { user: supabaseUser } }, error: null })
+        mockClient.emitAuthEvent('SIGNED_IN', { user: supabaseUser })
+        await waitFor(() => expect(dispatchedActions.current.some(a => a.type === 'ADOPT_CASES')).toBe(true))
+
+        // Skip — no name typed (UI.saveName.switchMidSave).
+        await userEvent.click(screen.getByRole('button', { name: UI.saveName.switchMidSave }))
+        expect(await screen.findByRole('heading', { name: UI.saveDone.headline })).toBeInTheDocument()
+
+        await userEvent.click(screen.getByRole('button', { name: UI.saveDone.goHome }))
+        expect(document.querySelectorAll('.saved-card')).toHaveLength(1)
+        expect(localStorage.getItem('nm_cases')).toBeNull()
+        expect(document.querySelector('.acct-chip')).toBeInTheDocument()
+      },
+    )
+
+    it(
+      "Google -> straight to done: a citizen already signed in via Google (its account already has a name — " +
+      'prototype 2124-2125) never touches save-otp or save-name at all',
+      async () => {
+        withSession({ app_metadata: { provider: 'google' }, user_metadata: { full_name: 'Ananya' } })
+        selectSpy.mockResolvedValueOnce({ data: [], error: null })
+
+        render(<App />)
+        await waitFor(() => expect(dispatchedActions.current.some(a => a.type === 'ADOPT_CASES')).toBe(true))
+        await reachPassportNextMove()
+
+        await userEvent.click(screen.getByRole('button', { name: UI.saveControl.save }))
+
+        expect(await screen.findByRole('heading', { name: UI.saveDone.headline })).toBeInTheDocument()
+        // Asserted on the dispatch HISTORY, not just the endpoint screen —
+        // save-otp/save-name's own interaction-only actions were never
+        // produced at all, not merely "not currently rendered".
+        expect(dispatchedActions.current.filter(a => a.type === 'AUTH_ID_SUBMITTED')).toHaveLength(0)
+        expect(dispatchedActions.current.filter(a => a.type === 'SET_PENDING_NAME')).toHaveLength(0)
+        expect(screen.queryByRole('heading', { name: UI.saveOtp.headline })).toBeNull()
+        expect(screen.queryByRole('heading', { name: UI.saveName.headline })).toBeNull()
+
+        await userEvent.click(screen.getByRole('button', { name: UI.saveDone.goHome }))
+        expect(document.querySelectorAll('.saved-card')).toHaveLength(1)
+        expect(localStorage.getItem('nm_cases')).toBeNull()
+      },
+    )
+
+    it(
+      "sign out, then sign in as a different user: user A's case is gone and user B's own case is what savedCases now holds",
+      async () => {
+        withSession({ id: 'user-a', email: 'a@example.com' })
+        const caseA = makeCasefile({ id: 'case-a', engineKey: 'passport', stateLabel: "User A's case" })
+        selectSpy.mockResolvedValueOnce({ data: [remoteRowFor(caseA, 'user-a')], error: null })
+
+        render(<App />)
+        expect(await screen.findByText("User A's case")).toBeInTheDocument()
+
+        mockClient.emitAuthEvent('SIGNED_OUT', null)
+        await waitFor(() => expect(document.querySelector('.saved-card')).toBeNull())
+
+        const userB = makeSupabaseUser({ id: 'user-b', email: 'b@example.com' })
+        mockClient.auth.getSession.mockResolvedValue({ data: { session: { user: userB } }, error: null })
+        const caseB = makeCasefile({ id: 'case-b', engineKey: 'voter', stateLabel: "User B's case" })
+        selectSpy.mockResolvedValueOnce({ data: [remoteRowFor(caseB, 'user-b')], error: null })
+
+        mockClient.emitAuthEvent('SIGNED_IN', { user: userB })
+
+        expect(await screen.findByText("User B's case")).toBeInTheDocument()
+        expect(screen.queryByText("User A's case")).toBeNull()
+        expect(document.querySelectorAll('.saved-card')).toHaveLength(1)
+        expect(localStorage.getItem('nm_cases')).toBeNull()
+        expect(
+          // AppUser.id is u.phone||u.email (D7, auth.ts) — never the raw
+          // Supabase UUID — so this checks the SAME identifier maskId/
+          // AccountChip would render, not user_b's underlying row id.
+          dispatchedActions.current.some(
+            a => a.type === 'SIGNED_IN' && (a as unknown as { user: { id: string } }).user.id === 'b@example.com',
+          ),
+        ).toBe(true)
+      },
+    )
+
+    it(
+      'design note 3 — SIR phase-drift confirmation: adopting a server case whose sirPhaseId is stale still fires ' +
+      'the drift interstitial when opened, proving OPEN_CHECKIN -> loadCaseFragment -> phaseDriftFor never cared ' +
+      'where the case came from',
+      async () => {
+        withSession({ id: 'sir-user' })
+        const staleCase = makeCasefile({
+          id: 'sir-1', engineKey: 'sir', serviceLabel: UI.serviceLabel.sir, returnScreen: 'sir-nextmove',
+          answers: { sirState: 'delhi', sirQ1: 'roll_present' }, stateLabel: 'SIR case', sirPhaseId: 'some_other_phase',
+        })
+        selectSpy.mockResolvedValueOnce({ data: [remoteRowFor(staleCase, 'sir-user')], error: null })
+
+        render(<App />)
+        expect(await screen.findByText('SIR case')).toBeInTheDocument()
+
+        await userEvent.click(document.querySelector('.saved-card') as HTMLButtonElement)
+
+        expect(screen.getByText(UI.casefile.phaseDriftKicker)).toBeInTheDocument()
+        expect(screen.getByText(UI.casefile.phaseDriftTitle)).toBeInTheDocument()
+      },
+    )
   })
 })

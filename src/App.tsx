@@ -1,15 +1,18 @@
 /** The app router — a `useReducer` over the session plus a `switch` on
  *  `state.screen`, the direct analogue of the prototype's `render()`
  *  (design/nextmove-v1-prototype.html, 3902-3941). Screen ids are the
- *  prototype's own; C4 added the three `*-prepare` cases, and Task 13 adds
- *  the last four (`checkin`/`dead-end`/`case-closed`/`save-done`), which is
+ *  prototype's own; C4 added the three `*-prepare` cases, Task 13 added
+ *  four more (`checkin`/`dead-end`/`case-closed`/`save-done`), and C7 Task
+ *  17 adds the last three (`save-case`/`save-otp`/`save-name` — present in
+ *  the `ScreenId` union since C7 Task 4, but routerless until now), which is
  *  what finally makes every `ScreenId` member a real case below.
  *
  *  Because `state.screen` is the `ScreenId` union (session.ts), the switch
  *  is exhaustiveness-checked: the `default` arm assigns `state.screen` to a
  *  `never`-typed binding, so a screen added to the union without a case
  *  becomes a compile error rather than a silent fallthrough — this is why
- *  `npm run build` goes fully clean only once this task's four cases exist.
+ *  `npm run build` goes fully clean only once Task 17's three cases exist
+ *  (Global Constraints' named build-window exception, closed here).
  *
  *  The SIR route is gated in the SIR screens themselves (`SirState`'s
  *  `sirCoverage()` call), not here — this router never calls
@@ -58,6 +61,9 @@ import { PrepareScreen } from './templates/PrepareScreen'
 import { CasefileScreen } from './templates/CasefileScreen'
 import { DeadEndScreen } from './templates/DeadEndScreen'
 import { CaseClosedScreen } from './templates/CaseClosedScreen'
+import { SaveCaseScreen } from './templates/SaveCaseScreen'
+import { SaveOtpScreen } from './templates/SaveOtpScreen'
+import { SaveNameScreen } from './templates/SaveNameScreen'
 import { SaveDoneScreen } from './templates/SaveDoneScreen'
 import { diagnose } from './domain/engine'
 import { degradedFor, changedOnFor } from './domain/freshness'
@@ -834,6 +840,31 @@ export default function App() {
       body = <CaseClosedScreen case={c} logOpen={state.logOpen} topbar={topbar(false, false)} dispatch={dispatch} />
       break
     }
+    case 'save-case':
+      body = (
+        <SaveCaseScreen
+          authMethod={state.authMethod} authId={state.authId} authErr={state.authErr} authBusy={state.authBusy}
+          now={now} topbar={topbar(true, false)} dispatch={dispatch}
+        />
+      )
+      break
+    case 'save-otp':
+      body = (
+        <SaveOtpScreen
+          authMethod={state.authMethod} authId={state.authId} otp={state.otp} authErr={state.authErr}
+          authBusy={state.authBusy} otpResent={state.otpResent} otpCooldownUntil={state.otpCooldownUntil}
+          now={now} topbar={topbar(true, false)} dispatch={dispatch}
+        />
+      )
+      break
+    case 'save-name':
+      body = (
+        <SaveNameScreen
+          pendingSave={state.pendingSave} pendingName={state.pendingName} now={now}
+          topbar={topbar(false, false)} dispatch={dispatch}
+        />
+      )
+      break
     case 'save-done':
       body = (
         <SaveDoneScreen pendingSave={state.pendingSave} user={state.user} topbar={topbar(false, false)} dispatch={dispatch} />
