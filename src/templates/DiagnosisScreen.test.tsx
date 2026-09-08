@@ -19,10 +19,15 @@ import { UI } from '../screens/screenCopy'
 // (fix round 1, Minor #4) — the cast is safe because every engine this
 // helper is ever called with (passportEngine/voterEngine/sirEngine) really
 // does carry one of the three literal values.
+// appliedText/caseFacts default to null/[] here (Task 16) — sensible
+// defaults for every pre-existing call below, none of which is about the
+// "You wrote" row, matching the same "one place, not every call site"
+// convention Task 15 used for PrepareScreen's own renderFor-equivalent.
+// Overridable via `extra` for the tests that ARE about it, further down.
 const renderFor = (engine: ServiceEngine, answers: AnswerRecord, extra: Partial<DiagnosisScreenProps> = {}) =>
   render(<DiagnosisScreen serviceLabel="Passport" engineKey={engine.key as ServiceKey}
            d={diagnose(engine, answers)} answerLabels={{}}
-           trustOpen={false} onToggleTrust={vi.fn()} {...extra} />)
+           trustOpen={false} onToggleTrust={vi.fn()} appliedText={null} caseFacts={[]} {...extra} />)
 
 describe('the reveal headline', () => {
   it('a classified diagnosis reads "We found where this is waiting." with the marker swipe on "waiting"', () => {
@@ -300,5 +305,29 @@ describe('Task 11: <UpdateEntry> between the CTA and the trust toggle (design no
   it('omits it entirely when onUpdate is absent (pre-existing behaviour)', () => {
     renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' })
     expect(screen.queryByText(UI.updateEntry.label)).toBeNull()
+  })
+})
+
+describe('Task 16: appliedText/caseFacts forward straight through to TrustDisclosure untouched (design note 2)', () => {
+  // TrustDisclosure.test.tsx already pins the row's own rendering logic
+  // (regression pin, no-facts, both-present, edited-fact, not-in-You-told-us)
+  // — this only proves DiagnosisScreen actually WIRES the two new required
+  // props through to it, rather than dropping them.
+  it('renders the "You wrote" row when both are supplied', () => {
+    renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' }, {
+      trustOpen: true,
+      appliedText: 'Police came to my house in June, I called the office twice',
+      caseFacts: [
+        { kind: 'reference_number', refType: 'passport_file_no', label: 'File Number', value: 'BN1068334517807', fills: '[File Number / ARN]' },
+      ],
+    })
+    expect(screen.getByText(UI.interp.youWrote)).toBeInTheDocument()
+    expect(screen.getByText(/Police came to my house in June, I called the office twice/)).toBeInTheDocument()
+    expect(screen.getByText(/File Number BN1068334517807/)).toBeInTheDocument()
+  })
+
+  it('renders nothing extra when appliedText is null (renderFor\'s own default — pins every OTHER test above stays unaffected)', () => {
+    renderFor(passportEngine, { q1: 'no_contact', q2: 'no_followup' }, { trustOpen: true })
+    expect(screen.queryByText(UI.interp.youWrote)).toBeNull()
   })
 })

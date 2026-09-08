@@ -217,6 +217,17 @@ export const UI = {
      *  here would need a `sourced_dates` allowlist entry that corrodes an
      *  allowlist meant to stay unambiguously government-sourced. */
     verifiedOn: "Checked against NextMove's archived copy of this source on {date}.",
+    /** The "You wrote" row's fact-list line (C8 Task 16, FR-AI-04;
+     *  transcribed verbatim from design/nextmove-v1-prototype.html:2371 —
+     *  "Details kept from it:"). Task 10's own copy sweep never touched
+     *  `UI.trust` (it registered `UI.describe/interp/unplaceable/facts`
+     *  plus three `UI.prepare` entries only), so this is a real
+     *  prototype-sourced string simply not yet registered, not a new
+     *  citizen-facing string this task is inventing. `UI.interp.youWrote`
+     *  (already registered) supplies the row's own "You wrote" label — see
+     *  `TrustDisclosure.tsx`, which reuses it rather than duplicating it
+     *  here as `ui:trust.youWrote`. */
+    detailsKeptFrom: 'Details kept from it:',
   },
   /** "Prepare this for me" screen chrome (C4). Transcribed from the
    *  prototype's `renderPrepare` (design/nextmove-v1-prototype.html,

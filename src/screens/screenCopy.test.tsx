@@ -721,6 +721,7 @@ function PassportBucketScreens() {
       <DiagnosisScreen
         serviceLabel="Passport" engineKey="passport" d={classifiedDiagnosis}
         answerLabels={{}} trustOpen={false} onToggleTrust={noop}
+        appliedText={null} caseFacts={[]}
       />
       {/* The recovery echoes (design note 10) — composed by the router, so
           they are exercised here via DiagnosisScreen's extraToldUs prop. */}
@@ -728,11 +729,13 @@ function PassportBucketScreens() {
         serviceLabel="Passport" engineKey="passport" d={classifiedDiagnosis}
         answerLabels={{}} trustOpen onToggleTrust={noop}
         extraToldUs={`${PASSPORT_COPY.recovery.extraToldUsPasted} "example status text"`}
+        appliedText={null} caseFacts={[]}
       />
       <DiagnosisScreen
         serviceLabel="Passport" engineKey="passport" d={classifiedDiagnosis}
         answerLabels={{}} trustOpen onToggleTrust={noop}
         extraToldUs={PASSPORT_COPY.recovery.extraToldUsSafest}
+        appliedText={null} caseFacts={[]}
       />
     </>
   )
@@ -840,14 +843,28 @@ function UiChrome() {
       {/* Diagnosis: classified (headlineFound/Mark, waitingOn, howLong,
           expectNext) and UNCLASSIFIED (headlineUnclassified) — both with
           empty answerLabels so the trust panel's "not enough" fallback and
-          "Based on" caption both render. */}
+          "Based on" caption both render.
+          Task 16: the classified mount ALSO carries real appliedText +
+          a real fact (reusing the same 'BN1068334517807'/File Number
+          fixture the ui:facts.* CAPTION_SUBSTITUTIONS below already use,
+          and the passport-q1 example story ui:describe.examples already
+          registers) — reaches ui:trust.detailsKeptFrom (and confirms
+          ui:interp.youWrote, already covered via InterpConfirmScreen once
+          Task 17 mounts it, ALSO renders here) at first render, no
+          interaction needed, the same "real data, not a toy fixture"
+          convention this file's mounts already follow throughout. */}
       <DiagnosisScreen
         serviceLabel="X" engineKey="passport" d={classifiedDiagnosis}
         answerLabels={{}} trustOpen onToggleTrust={noop}
+        appliedText={UI.describe.examples['passport-q1'].one}
+        caseFacts={[
+          { kind: 'reference_number', refType: 'passport_file_no', label: 'File Number', value: 'BN1068334517807', fills: '[File Number / ARN]' },
+        ]}
       />
       <DiagnosisScreen
         serviceLabel="X" engineKey="passport" d={unclassifiedDiagnosis}
         answerLabels={{}} trustOpen onToggleTrust={noop}
+        appliedText={null} caseFacts={[]}
       />
       {/* Next Move: no-prep ("Back to Home") and with-prep ("Prepare this
           for me") branches. */}
@@ -873,6 +890,7 @@ function UiChrome() {
         answerLabels={{}} trustOpen={false} onToggleTrust={noop}
         ciJustUpdated onUndo={noop} onUpdate={noop}
         ciSnapshot={{ answers: caseSnap.answers, prepChecks: {}, casefile: openCase }}
+        appliedText={null} caseFacts={[]}
       />
       {/* Task 13: the SIR phase-drift banner (diagnosis.phaseDriftLead/
           phaseDriftBody) — its own dedicated mount, same convention as the
@@ -881,6 +899,7 @@ function UiChrome() {
         serviceLabel="X" engineKey="sir" d={noticeDiagnosis}
         answerLabels={{}} trustOpen={false} onToggleTrust={noop}
         phaseDrift
+        appliedText={null} caseFacts={[]}
       />
       {/* C6: freshBanner (freshness.reverifiedLead/reverifiedBody) — its own
           dedicated mount, same convention as ciJustUpdated/phaseDrift just
@@ -890,6 +909,7 @@ function UiChrome() {
         serviceLabel="X" engineKey="sir" d={noticeDiagnosis}
         answerLabels={{}} trustOpen={false} onToggleTrust={noop}
         freshDegraded freshChangedOn="5 Sep 2026"
+        appliedText={null} caseFacts={[]}
       />
       {/* Prepare (C4): draft-bearing (real state-5a — channelPhone,
           hintMany, stepsCount, copy and channelOpen all reach real,
@@ -1455,6 +1475,7 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
       <DiagnosisScreen
         serviceLabel="X" engineKey="passport" d={classifiedDiagnosis}
         answerLabels={{}} trustOpen onToggleTrust={noop}
+        appliedText={null} caseFacts={[]}
       />,
     )
     expect(trustContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:trust.verifiedOn'])

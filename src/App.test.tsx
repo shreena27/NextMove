@@ -1598,3 +1598,43 @@ describe('C7 Task 8: the auth lifecycle', () => {
     )
   })
 })
+
+// =============================================================================
+// C8 Task 16: the "You wrote" row (FR-AI-04)
+// =============================================================================
+describe('C8 Task 16: appliedText/caseFacts reach the real Diagnosis screen (production site: App.tsx wiring)', () => {
+  // DescribeScreen/InterpConfirmScreen aren't wired into App.tsx's router
+  // yet (that's a later task's job — see grep -rln "InterpConfirmScreen|
+  // DescribeScreen" src, which finds no App.tsx hit), so there is no
+  // click-through path to a real appliedText/caseFacts yet. Seeding
+  // straight into session state (the same seededState mechanism the
+  // no-plan-guard and TOKEN_REFRESHED tests above already use) proves the
+  // real wiring — App.tsx's three DiagnosisScreen mount sites passing
+  // state.appliedText/state.caseFacts through — without waiting on that
+  // later task.
+  it('passport-diagnosis, seeded with real appliedText + a real fact, renders the "You wrote" row', () => {
+    seededState.current = {
+      screen: 'passport-diagnosis',
+      answers: { q1: 'no_contact', q2: 'no_followup' },
+      trustOpen: true,
+      appliedText: 'Police came to my house in June, I called the office twice since',
+      caseFacts: [
+        { kind: 'reference_number', refType: 'passport_file_no', label: 'File Number', value: 'BN1068334517807', fills: '[File Number / ARN]' },
+      ],
+    }
+    render(<App />)
+    expect(screen.getByText(UI.interp.youWrote)).toBeInTheDocument()
+    expect(screen.getByText(/Police came to my house in June, I called the office twice since/)).toBeInTheDocument()
+    expect(screen.getByText(`${UI.trust.detailsKeptFrom} File Number BN1068334517807`)).toBeInTheDocument()
+  })
+
+  it('passport-diagnosis with the ordinary appliedText: null seed renders no "You wrote" row (regression: the default flow is unaffected)', () => {
+    seededState.current = {
+      screen: 'passport-diagnosis',
+      answers: { q1: 'no_contact', q2: 'no_followup' },
+      trustOpen: true,
+    }
+    render(<App />)
+    expect(screen.queryByText(UI.interp.youWrote)).toBeNull()
+  })
+})

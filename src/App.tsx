@@ -575,6 +575,8 @@ export default function App() {
           onToggleTrust={() => dispatch({ type: 'TOGGLE_TRUST' })}
           topbar={topbar(true, true)}
           extraToldUs={extraToldUs}
+          appliedText={state.appliedText}
+          caseFacts={state.caseFacts}
           onNavigate={screen => dispatch({ type: 'NAVIGATE', screen })}
           ciJustUpdated={state.ciJustUpdated}
           ciSnapshot={state.ciSnapshot}
@@ -698,6 +700,8 @@ export default function App() {
           trustOpen={state.trustOpen}
           onToggleTrust={() => dispatch({ type: 'TOGGLE_TRUST' })}
           topbar={topbar(true, true)}
+          appliedText={state.appliedText}
+          caseFacts={state.caseFacts}
           onNavigate={screen => dispatch({ type: 'NAVIGATE', screen })}
           ciJustUpdated={state.ciJustUpdated}
           ciSnapshot={state.ciSnapshot}
@@ -818,6 +822,8 @@ export default function App() {
           onToggleTrust={() => dispatch({ type: 'TOGGLE_TRUST' })}
           topbar={topbar(true, true)}
           preNote={<Banner><b>{st.name} · {st.phase!.label}:</b> {st.phase!.note}</Banner>}
+          appliedText={state.appliedText}
+          caseFacts={state.caseFacts}
           onNavigate={screen => dispatch({ type: 'NAVIGATE', screen })}
           ciJustUpdated={state.ciJustUpdated}
           ciSnapshot={state.ciSnapshot}

@@ -33,6 +33,7 @@
  */
 import type { ReactNode } from 'react'
 import type { Diagnosis } from '../domain/types'
+import type { Fact } from '../domain/interpret'
 import type { ServiceKey, ScreenId } from '../session/session'
 import type { CiSnapshot } from '../session/cases'
 import { PhaseEyebrow } from '../ui/Crumbs'
@@ -71,6 +72,14 @@ export interface DiagnosisScreenProps {
   /** The Passport recovery echoes (design note 10), forwarded to
    *  TrustDisclosure untouched. */
   extraToldUs?: string
+  /** C8 Task 16 (FR-AI-04) — TrustDisclosure's "You wrote" row content,
+   *  forwarded straight through, untouched. REQUIRED, not optional — same
+   *  fail-safe C7 used for `Topbar`'s `state` prop and Task 15's
+   *  `PrepareScreen` `caseFacts`/`fillsReviewed`: the compiler enumerates
+   *  every mount site (App.tsx's three, plus every test mount) until each
+   *  is wired, rather than a missed site silently rendering with no row. */
+  appliedText: string | null
+  caseFacts: Fact[]
   /** Called with the engineKey-derived next-move screen id
    *  (`${engineKey}-nextmove`) when the CTA is pressed. Wiring this to an
    *  actual navigation dispatch is Task 7's job. */
@@ -125,6 +134,8 @@ export function DiagnosisScreen({
   topbar,
   preNote,
   extraToldUs,
+  appliedText,
+  caseFacts,
   onNavigate,
   ciJustUpdated,
   ciSnapshot,
@@ -205,6 +216,8 @@ export function DiagnosisScreen({
                 d={d}
                 answerLabels={answerLabels}
                 extraToldUs={extraToldUs}
+                appliedText={appliedText}
+                caseFacts={caseFacts}
                 open={trustOpen}
                 onToggle={onToggleTrust}
               />
