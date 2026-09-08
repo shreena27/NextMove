@@ -20,7 +20,6 @@ import { passportEngine, sirEngine } from '../playbooks/engines'
 import { caseSnapshot } from '../domain/casefile'
 import type { Casefile } from '../domain/casefile'
 import { UI } from '../screens/screenCopy'
-import { INTERACTION_GATED } from '../screens/interactionGated'
 
 // Real engines on purpose: this is an integration point, and a toy fixture
 // would not exercise a real `where` shape.
@@ -534,108 +533,15 @@ describe('the closing control', () => {
   })
 })
 
-// screenCopy.test.tsx's coverage sweep (render(mount()), no interaction)
-// cannot produce these five SCREEN_COPY strings at all — design note 4a —
-// so it imports the shared `INTERACTION_GATED` set (src/screens/
-// interactionGated.ts) and skips them there. THIS describe block is the
-// coverage substitute that set's own header comment promises: it drives
-// the real tick/copy/edit interactions and asserts each of the five
-// actually renders.
-//
-// Fix-round review finding: a bare "assert this hand-typed list equals
-// that hand-typed list" pin (the original version of this test) does not
-// actually FORCE anything — a deleted assertion below it would leave the
-// pin still green, and a new entry added to the shared set with no
-// covering function here would go unnoticed too. So instead of a plain
-// Set, `assertions` below is a Record<at, () => Promise<void>> keyed
-// IDENTICALLY to `INTERACTION_GATED`, and `Object.keys(assertions)` is
-// asserted to equal `[...INTERACTION_GATED]` — the same pattern
-// screenCopy.test.tsx's own `CAPTION_SUBSTITUTIONS` already uses for
-// `CAPTION_TEMPLATES`. Removing a function here without removing its entry
-// from the shared set fails loudly (missing key); adding an entry to the
-// shared set with no covering function here fails loudly too (extra key).
-describe('INTERACTION_GATED coverage — the five SCREEN_COPY strings a static mount cannot produce (design note 4a)', () => {
-  it('drives the tick/copy/edit interactions that produce all five, and covers exactly INTERACTION_GATED', async () => {
-    const assertions: Record<string, () => Promise<void>> = {
-      'ui:prepare.doneNoteFallback': async () => {
-        // Tick every step on a doneNote-less plan.
-        const noNote = PREP['state-4']
-        expect(noNote.doneNote).toBeUndefined()
-        const { unmount } = render(
-          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={noNote} />,
-        )
-        await tickAll(noNote.steps.length)
-        expect(document.querySelector('.psteps-done')).toHaveTextContent(UI.prepare.doneNoteFallback)
-        unmount()
-      },
-      'ui:prepare.hintReady': async () => {
-        // A zero-bracket draft — a plain edit, not a click (design note 2b).
-        const { unmount } = render(
-          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
-        )
-        fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
-          target: { value: 'nothing left to fill' },
-        })
-        expect(document.querySelector('.prep-hint')).toHaveTextContent(UI.prepare.hintReady)
-        unmount()
-      },
-      'ui:prepare.copied': async () => {
-        // A zero-bracket draft, then a Copy click.
-        const { unmount } = render(
-          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
-        )
-        fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
-          target: { value: 'nothing left to fill' },
-        })
-        await userEvent.click(screen.getByRole('button', { name: UI.prepare.copy }))
-        expect(await screen.findByRole('button', { name: UI.prepare.copied })).toBeInTheDocument()
-        unmount()
-      },
-      'ui:prepare.copiedOne': async () => {
-        // A Copy click with exactly one blank left.
-        const { unmount } = render(
-          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
-        )
-        fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
-          target: { value: 'ready [x] set' },
-        })
-        await userEvent.click(screen.getByRole('button', { name: UI.prepare.copy }))
-        expect(
-          await screen.findByRole('button', { name: UI.prepare.copiedOne.replace('{n}', '1') }),
-        ).toBeInTheDocument()
-        unmount()
-      },
-      'ui:prepare.copiedMany': async () => {
-        // A Copy click with two blanks left.
-        const { unmount } = render(
-          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
-        )
-        fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
-          target: { value: 'a [x] b [y]' },
-        })
-        await userEvent.click(screen.getByRole('button', { name: UI.prepare.copy }))
-        expect(
-          await screen.findByRole('button', { name: UI.prepare.copiedMany.replace('{n}', '2') }),
-        ).toBeInTheDocument()
-        unmount()
-      },
-    }
-
-    // The forcing function: a key mismatch in EITHER direction fails here.
-    expect(Object.keys(assertions).sort()).toEqual([...INTERACTION_GATED].sort())
-
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true,
-    })
-    try {
-      for (const at of INTERACTION_GATED) await assertions[at]()
-    } finally {
-      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
-      else delete (navigator as { clipboard?: unknown }).clipboard
-    }
-  })
-})
+// The INTERACTION_GATED coverage sweep (the SCREEN_COPY strings no static
+// mount can produce) used to live here. Task 11's review relocated it to
+// src/screens/interactionGated.test.tsx: this file is about ONE component,
+// and the gated set already spans PrepareScreen AND DescribeBlock (Task 13/
+// 15 add a third and a fourth owner) — an awkward home for a mechanism that
+// is not about this component specifically. `ControlledPrepareScreen` and
+// `tickAll` above are still used by that relocated file's own
+// `ui:prepare.*` assertions (re-declared there, not imported — see that
+// file's own header comment for why).
 
 // Task 12 lifted `prepChecks`/`prepDraft` into the reducer; Task 13 finished
 // the job (design note 6) — PrepareScreen is now ALWAYS a controlled

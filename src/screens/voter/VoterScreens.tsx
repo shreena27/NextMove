@@ -15,12 +15,14 @@
  *  and neither of those has its own dependents, so dispatch order between
  *  the raw and normalized writes is safe either way.
  *
- *  `describeBlock` is deliberately not ported — see PassportScreens.tsx's
- *  identical note; it belongs to a later chunk. */
+ *  `describeBlock` is mounted at the tail of all three screens' own
+ *  `.answers` list, inside the same `right` slot (C8, Task 11) —
+ *  unconditionally, same convention as PassportScreens.tsx's own mounts. */
 import { Topbar } from '../../ui/Topbar'
 import { AnswerRow } from '../../ui/AnswerRow'
 import { Split } from '../../ui/Split'
 import { PhaseEyebrow } from '../../ui/Crumbs'
+import { DescribeBlock } from '../../templates/DescribeBlock'
 import type { ScreenProps } from '../screenProps'
 import { hasAnswers } from '../screenProps'
 import { VOTER_Q1_LABELS, VOTER_APPEAL_LABELS } from '../labels'
@@ -46,11 +48,14 @@ export function VoterEntry({ state, dispatch }: ScreenProps) {
             <h1 className="headline">{VOTER_COPY.entry.headline}</h1>
           </>}
           right={
-            <div className="answers">
-              <AnswerRow value="applied" label={VOTER_COPY.entry.applied} sub={VOTER_COPY.entry.appliedSub} selected={false} onSelect={onSelect} />
-              <AnswerRow value="sir" label={VOTER_COPY.entry.sir} sub={VOTER_COPY.entry.sirSub} selected={false} onSelect={onSelect} />
-              <AnswerRow value="notsure" label={VOTER_COPY.entry.notSure} selected={false} onSelect={onSelect} />
-            </div>
+            <>
+              <div className="answers">
+                <AnswerRow value="applied" label={VOTER_COPY.entry.applied} sub={VOTER_COPY.entry.appliedSub} selected={false} onSelect={onSelect} />
+                <AnswerRow value="sir" label={VOTER_COPY.entry.sir} sub={VOTER_COPY.entry.sirSub} selected={false} onSelect={onSelect} />
+                <AnswerRow value="notsure" label={VOTER_COPY.entry.notSure} selected={false} onSelect={onSelect} />
+              </div>
+              <DescribeBlock screenId="voter-entry" state={state} dispatch={dispatch} />
+            </>
           }
         />
         {state.voterEntryExplain && (
@@ -90,12 +95,15 @@ export function VoterQ1({ state, dispatch }: ScreenProps) {
             <h1 className="headline">{VOTER_COPY.q1.headline}</h1>
           </>}
           right={
-            <div className="answers">
-              {Object.entries(VOTER_Q1_LABELS).map(([v, l]) => (
-                <AnswerRow key={v} value={v} label={l} selected={state.answers.voterQ1 === v} onSelect={onSelect} />
-              ))}
-              <AnswerRow value="notsure" label={VOTER_COPY.q1.notSure} selected={state.answers.voterQ1 === 'unclassified'} onSelect={onSelect} />
-            </div>
+            <>
+              <div className="answers">
+                {Object.entries(VOTER_Q1_LABELS).map(([v, l]) => (
+                  <AnswerRow key={v} value={v} label={l} selected={state.answers.voterQ1 === v} onSelect={onSelect} />
+                ))}
+                <AnswerRow value="notsure" label={VOTER_COPY.q1.notSure} selected={state.answers.voterQ1 === 'unclassified'} onSelect={onSelect} />
+              </div>
+              <DescribeBlock screenId="voter-q1" state={state} dispatch={dispatch} />
+            </>
           }
         />
       </div>
@@ -122,11 +130,14 @@ export function VoterQ2({ state, dispatch }: ScreenProps) {
             <h1 className="headline">{VOTER_COPY.q2.headline}</h1>
           </>}
           right={
-            <div className="answers">
-              {Object.entries(VOTER_APPEAL_LABELS).map(([v, l]) => (
-                <AnswerRow key={v} value={v} label={l} selected={state.answers.voterAppealedRaw === v} onSelect={onSelect} />
-              ))}
-            </div>
+            <>
+              <div className="answers">
+                {Object.entries(VOTER_APPEAL_LABELS).map(([v, l]) => (
+                  <AnswerRow key={v} value={v} label={l} selected={state.answers.voterAppealedRaw === v} onSelect={onSelect} />
+                ))}
+              </div>
+              <DescribeBlock screenId="voter-q2" state={state} dispatch={dispatch} />
+            </>
           }
         />
       </div>

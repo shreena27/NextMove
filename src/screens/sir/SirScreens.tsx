@@ -24,13 +24,17 @@
  *  (freshness is only ever checked for an already-supported state).
  *
  *  Government-process meaning never lives here — see VoterScreens.tsx's
- *  identical note. `describeBlock` is deliberately not ported, same reason
- *  as the other C3 screens. */
+ *  identical note. `describeBlock` is mounted at the tail of `SirQ1`'s own
+ *  `.answers` list, inside the same `right` slot (C8, Task 11) —
+ *  unconditionally, same convention as the other five mount sites. There
+ *  is no `SirQ2` — SIR's chain has only one describable entry screen
+ *  (`domain/interpret.ts`'s own `DESCRIBE_CHAINS['sir-q1']`). */
 import { Topbar } from '../../ui/Topbar'
 import { AnswerRow } from '../../ui/AnswerRow'
 import { Split } from '../../ui/Split'
 import { PhaseEyebrow } from '../../ui/Crumbs'
 import { Button } from '../../ui/Button'
+import { DescribeBlock } from '../../templates/DescribeBlock'
 import type { ScreenProps } from '../screenProps'
 import { hasAnswers } from '../screenProps'
 import { SIR_STATES, SIR_Q1_OPTIONS_FOR, sirPlaybook } from '../../playbooks/sirPlaybook'
@@ -157,15 +161,18 @@ export function SirQ1({ state, dispatch }: ScreenProps) {
             <p className="lede">{st.name} {SIR_COPY.q1.ledeConnective} {st.phase!.label}. {SIR_COPY.q1.ledeTail}</p>
           </>}
           right={
-            <div className="answers">
-              {Object.entries(options).map(([v, l]) => (
-                <AnswerRow key={v} value={v} label={l} selected={state.answers.sirQ1 === v} onSelect={onSelect} />
-              ))}
-              {/* "I'm not sure" is appended OUTSIDE the phase option set, by
-                 design (sirConfig.ts's own optionsForPhase docblock) — never
-                 phase-gate the escape hatch. */}
-              <AnswerRow value="notsure" label={SIR_COPY.q1.notSure} selected={state.answers.sirQ1 === 'unclassified'} onSelect={onSelect} />
-            </div>
+            <>
+              <div className="answers">
+                {Object.entries(options).map(([v, l]) => (
+                  <AnswerRow key={v} value={v} label={l} selected={state.answers.sirQ1 === v} onSelect={onSelect} />
+                ))}
+                {/* "I'm not sure" is appended OUTSIDE the phase option set, by
+                   design (sirConfig.ts's own optionsForPhase docblock) — never
+                   phase-gate the escape hatch. */}
+                <AnswerRow value="notsure" label={SIR_COPY.q1.notSure} selected={state.answers.sirQ1 === 'unclassified'} onSelect={onSelect} />
+              </div>
+              <DescribeBlock screenId="sir-q1" state={state} dispatch={dispatch} />
+            </>
           }
         />
       </div>

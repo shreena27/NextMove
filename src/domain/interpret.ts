@@ -194,6 +194,15 @@ export function sirQ1OptionValues(state: SirStateConfig | undefined): readonly s
   }
 }
 
+/** Transcribed from the prototype's own `DESCRIBE_MAX = 600`
+ *  (design/nextmove-v1-prototype.html:2378) — the hard cap on the describe
+ *  textarea's `maxLength`, and the denominator of its live character
+ *  counter (`DescribeBlock`, Task 11). Lives here, not `screenCopy.ts`
+ *  (that file's own `describe` doc comment already anticipates this): it is
+ *  a number, not authored copy, and registering it as copy would put a
+ *  bare digit into the content-safety scan for nothing. */
+export const DESCRIBE_MAX = 600
+
 export type DescribeEntryScreenId = 'passport-q1' | 'passport-q2' | 'voter-entry' | 'voter-q1' | 'voter-q2' | 'sir-q1'
 
 export const DESCRIBE_CHAINS: Record<DescribeEntryScreenId, DescribeChain> = {

@@ -7,15 +7,18 @@
  *  picked — never what a value MEANS. That is diagnose()'s job (Task 6),
  *  not called from C3 yet.
  *
- *  `describeBlock` (prototype 3248, 3352) is deliberately not ported here —
- *  it belongs to the "describe it" feature, a later chunk (session.ts's own
- *  design note lists `describe*` among the fields ABSENT on purpose). */
+ *  `describeBlock` (prototype 3248, 3352) is mounted at the tail of both
+ *  Q1 and Q2's own `.answers` list, inside the same `right` slot (C8, Task
+ *  11) — unconditionally: every bit of gating (the flag, the chain lookup,
+ *  quota exhaustion) lives inside `DescribeBlock` itself, never as a
+ *  wrapping condition here. */
 import { Topbar } from '../../ui/Topbar'
 import { AnswerRow } from '../../ui/AnswerRow'
 import { Split } from '../../ui/Split'
 import { PhaseEyebrow } from '../../ui/Crumbs'
 import { Banner } from '../../ui/Banner'
 import { Button } from '../../ui/Button'
+import { DescribeBlock } from '../../templates/DescribeBlock'
 import { PASSPORT_Q1_LABELS, PASSPORT_Q2_LABELS } from '../labels'
 import type { ScreenProps } from '../screenProps'
 import { hasAnswers } from '../screenProps'
@@ -85,12 +88,15 @@ export function PassportQ1({ state, dispatch }: ScreenProps) {
             <p className="lede">{PASSPORT_COPY.q1.lede}</p>
           </>}
           right={
-            <div className="answers">
-              {Object.entries(PASSPORT_Q1_LABELS).map(([v, l]) => (
-                <AnswerRow key={v} value={v} label={l} selected={state.answers.q1 === v} onSelect={onSelect} />
-              ))}
-              <AnswerRow value="not_sure" label={PASSPORT_COPY.q1.notSure} sub={PASSPORT_COPY.q1.notSureSub} selected={state.answers.q1 === 'not_sure'} onSelect={onSelect} />
-            </div>
+            <>
+              <div className="answers">
+                {Object.entries(PASSPORT_Q1_LABELS).map(([v, l]) => (
+                  <AnswerRow key={v} value={v} label={l} selected={state.answers.q1 === v} onSelect={onSelect} />
+                ))}
+                <AnswerRow value="not_sure" label={PASSPORT_COPY.q1.notSure} sub={PASSPORT_COPY.q1.notSureSub} selected={state.answers.q1 === 'not_sure'} onSelect={onSelect} />
+              </div>
+              <DescribeBlock screenId="passport-q1" state={state} dispatch={dispatch} />
+            </>
           }
         />
       </div>
@@ -113,11 +119,14 @@ export function PassportQ2({ state, dispatch }: ScreenProps) {
             <h1 className="headline">{PASSPORT_COPY.q2.headline}</h1>
           </>}
           right={
-            <div className="answers">
-              <AnswerRow value="no_followup" label={PASSPORT_Q2_LABELS.no_followup} sub={PASSPORT_COPY.q2.noFollowupSub} selected={state.answers.q2 === 'no_followup'} onSelect={onSelect} />
-              <AnswerRow value="informal" label={PASSPORT_Q2_LABELS.informal} sub={PASSPORT_COPY.q2.informalSub} selected={state.answers.q2 === 'informal'} onSelect={onSelect} />
-              <AnswerRow value="formal_grievance" label={PASSPORT_Q2_LABELS.formal_grievance} selected={state.answers.q2 === 'formal_grievance'} onSelect={onSelect} />
-            </div>
+            <>
+              <div className="answers">
+                <AnswerRow value="no_followup" label={PASSPORT_Q2_LABELS.no_followup} sub={PASSPORT_COPY.q2.noFollowupSub} selected={state.answers.q2 === 'no_followup'} onSelect={onSelect} />
+                <AnswerRow value="informal" label={PASSPORT_Q2_LABELS.informal} sub={PASSPORT_COPY.q2.informalSub} selected={state.answers.q2 === 'informal'} onSelect={onSelect} />
+                <AnswerRow value="formal_grievance" label={PASSPORT_Q2_LABELS.formal_grievance} selected={state.answers.q2 === 'formal_grievance'} onSelect={onSelect} />
+              </div>
+              <DescribeBlock screenId="passport-q2" state={state} dispatch={dispatch} />
+            </>
           }
         />
       </div>
