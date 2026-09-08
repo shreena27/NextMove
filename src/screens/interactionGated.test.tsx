@@ -34,10 +34,12 @@
 // obligation here is exactly two entries — `ui:describe.err`/
 // `ui:describe.reading` (pre-registered by Task 10, anticipating this
 // task) — plus giving the mechanism a better home; NOT building Tasks
-// 13/15's own components. The `it.each` split below keeps that boundary
-// visible: PASSING vs. STILL_RED are two separate, named groups, so a
-// reader (or the next task) sees at a glance which three keys are still
-// owed and by whom, without re-deriving it from a single failing assertion.
+// 13/15's own components. The single strict-equality assertion at the
+// bottom of the `it` below (fix round 1, Finding I-4) is what stays
+// genuinely red for those three names — not a separate `it.each` split —
+// and the comment directly above that assertion names all three so a
+// reader (or the next task) sees at a glance which keys are still owed
+// and by whom, without re-deriving it from the failure alone.
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { useReducer, useState } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
@@ -190,19 +192,31 @@ describe('INTERACTION_GATED coverage — the SCREEN_COPY strings no static mount
 
     // `ui:facts.editLabel`/`ui:facts.saveLabel` (Task 13) and
     // `ui:prepare.hintFilledUnreviewed` (Task 15) — not this task's
-    // components to build. Named here, not just implied by the count
-    // below, so a reader sees exactly what remains without re-deriving it.
-    const stillOwedToFutureTasks = ['ui:facts.editLabel', 'ui:facts.saveLabel', 'ui:prepare.hintFilledUnreviewed']
-
-    // The forcing function: a key mismatch in EITHER direction fails here
-    // (missing coverage for a real entry, or a stale assertion for a
-    // removed one) — except the three names above, which are EXPECTED
-    // absent right now and will fail loudly on their own the moment a
-    // fourth, truly-unanticipated entry ever also goes missing.
-    expect(Object.keys(assertions).sort()).toEqual(
-      [...INTERACTION_GATED].filter(at => !stillOwedToFutureTasks.includes(at)).sort(),
-    )
-    for (const at of stillOwedToFutureTasks) expect(INTERACTION_GATED.has(at)).toBe(true)
+    // components to build. Named here in prose (fix round 1, Finding I-4 —
+    // NOT as a filter the assertion below consults), so a reader sees
+    // exactly what remains without re-deriving it from a failing assertion.
+    //
+    // The forcing function is STRICT equality, no exclusion filter — the
+    // reviewer's ruling after mutation-testing both an earlier exclusion-
+    // list version of this check and this strict one. The exclusion-list
+    // version's real problem: it could be "discharged" by doing nothing —
+    // an entry silently never gets a covering function here and nothing
+    // ever fails, which is exactly what would have happened to
+    // `ui:facts.editLabel`/`ui:facts.saveLabel` (both are ALSO in
+    // `screenCopy.test.tsx`'s own `CAPTION_TEMPLATES`, so they don't even
+    // re-enter that file's coverage sweep as a backstop). A bare strict-
+    // equality pin can only be discharged by actually adding covering
+    // interaction coverage — the same discipline Task 9
+    // (`ui/tokens.test.ts`'s own `UI.interp.spanPrefix` pin) and Task 10
+    // each already established for this exact "copy registered ahead of
+    // its consuming code" situation.
+    //
+    // EXPECTED RED right now, for the three names above:
+    // `ui:facts.editLabel`/`ui:facts.saveLabel` close when Task 13 builds
+    // FactChips; `ui:prepare.hintFilledUnreviewed` closes when Task 15
+    // builds its covering interaction. Each goes green the moment its own
+    // task adds a covering entry to `assertions` above.
+    expect(Object.keys(assertions).sort()).toEqual([...INTERACTION_GATED].sort())
 
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
     Object.defineProperty(navigator, 'clipboard', {

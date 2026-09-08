@@ -160,19 +160,35 @@ describe('the collapsed row (flag on, configured screen)', () => {
 })
 
 describe('opening/closing the row — focus management (design note 7, spec §7)', () => {
-  it('clicking the row opens the box, flips aria-expanded to "true", and moves focus to the textarea; clicking again closes it and returns focus to the row button', async () => {
-    expect.assertions(4)
-    vi.stubEnv('VITE_DESCRIBE_IT', 'on')
-    const user = userEvent.setup()
-    render(<Harness />)
-    const row = screen.getByRole('button', { name: new RegExp(UI.describe.rowStrong) })
-    await user.click(row)
-    expect(row).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByLabelText(UI.describe.ariaLabel)).toHaveFocus()
-    await user.click(row)
-    expect(row).toHaveAttribute('aria-expanded', 'false')
-    expect(row).toHaveFocus()
-  })
+  it(
+    'clicking the row opens the box, flips aria-expanded to "true", and moves focus to the textarea; closing ' +
+    '(after focus has genuinely moved elsewhere) flips aria-expanded back to "false" and returns focus to the row ' +
+    'button — closed via fireEvent.click, not userEvent.click, so a passing assertion can only be explained by the ' +
+    "component's own rowRef.current.focus() call (fix round 1, Finding I-1: the ORIGINAL version of this test " +
+    'closed via a second userEvent.click(row) — which, in jsdom, focuses the clicked element as a realistic ' +
+    'pointer-click side effect regardless of any app code — so `expect(row).toHaveFocus()` passed trivially even ' +
+    'with rowRef.current.focus() deleted entirely; the reviewer proved this by deleting that line and confirming ' +
+    'all 31 tests still passed. fireEvent.click carries no such side effect, so moving focus onto `row` here can ' +
+    'only come from the component itself)',
+    async () => {
+      expect.assertions(4)
+      vi.stubEnv('VITE_DESCRIBE_IT', 'on')
+      const user = userEvent.setup()
+      render(<Harness />)
+      const row = screen.getByRole('button', { name: new RegExp(UI.describe.rowStrong) })
+      await user.click(row)
+      expect(row).toHaveAttribute('aria-expanded', 'true')
+      const ta = screen.getByLabelText(UI.describe.ariaLabel)
+      expect(ta).toHaveFocus()
+      // Deliberately move focus away from `row` before closing: typing
+      // keeps focus on `ta` (it is already focused there), so at the exact
+      // moment of close, focus is genuinely NOT on `row`.
+      await user.type(ta, 'x')
+      fireEvent.click(row)
+      expect(row).toHaveAttribute('aria-expanded', 'false')
+      expect(row).toHaveFocus()
+    },
+  )
 })
 
 // ---------------------------------------------------------------------------

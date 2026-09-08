@@ -5,7 +5,7 @@
 // design note 6 of the task brief. (JSX needs a .tsx file; screenCopy.ts's
 // own data module stays plain .ts, which is what the isolation scan
 // actually walks.)
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -28,6 +28,7 @@ import { fmtDay, fmtRemind } from '../ui/dates'
 import * as LABELS from './labels'
 import { SCREEN_COPY, UI, PASSPORT_COPY, VOTER_COPY, SIR_COPY, type CopyLocation } from './screenCopy'
 import { INTERACTION_GATED } from './interactionGated'
+import type { DescribeEntryScreenId } from '../domain/interpret'
 import { Home } from './Home'
 import { OtherServices } from './OtherServices'
 import { PassportGuardrail, PassportOutOfScope, PassportQ1, PassportQ2 } from './passport/PassportScreens'
@@ -40,6 +41,7 @@ import { Topbar } from '../ui/Topbar'
 import { AccountChip } from '../ui/AccountChip'
 import { Footer } from '../ui/Footer'
 import { PhaseEyebrow } from '../ui/Crumbs'
+import { DescribeBlock } from '../templates/DescribeBlock'
 import { DiagnosisScreen } from '../templates/DiagnosisScreen'
 import { NextMoveScreen } from '../templates/NextMoveScreen'
 import { PrepareScreen } from '../templates/PrepareScreen'
@@ -59,6 +61,15 @@ import { SaveOtpScreen } from '../templates/SaveOtpScreen'
 import { SaveNameScreen } from '../templates/SaveNameScreen'
 
 const noop = () => {}
+
+// UiChrome() stubs VITE_DESCRIBE_IT 'on' (Task 11 fix round 1, Finding
+// I-2's own DescribeBlock mount, below) so its own describe-it subtree
+// renders instead of null — unstubbed here so that stub never leaks into a
+// later test in this same file (or, if suite ordering ever changes, a
+// different file).
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
 
 // C8 (Task 10, design note 11): "C8 authors NO new citizen-facing string,
 // and this task is where that is verified." Read once, at module load
@@ -758,6 +769,16 @@ function UiChrome() {
   // call producing a fixture, not an actually re-rendering component).
   // oxlint-disable-next-line react/purity -- one-off test fixture value, not a live render read; see comment above
   const otpAlmostDueBy = Date.now() + 950
+  // Task 11 fix round 1, Finding I-2: DescribeBlock was never mounted in
+  // this sweep, though screenCopy.ts's own comment on `describe` (Task 10)
+  // explicitly scoped mounting it to Task 11 ("not yet mounted anywhere...
+  // until then"). Stubbed here, at the top of this function, so it is in
+  // effect before render() ever invokes DescribeBlock's own function body
+  // (React defers a component's own execution to reconciliation, which
+  // happens inside render(), strictly after this function returns its JSX
+  // tree) — same ordering reasoning as `otpAlmostDueBy` just above.
+  // oxlint-disable-next-line react/purity -- one-off test setup, not a live render read; same as otpAlmostDueBy above
+  vi.stubEnv('VITE_DESCRIBE_IT', 'on')
   return (
     <>
       <Topbar showBack showRestart hasAnswers={false} restartConfirm={false} state={initialSession} dispatch={noop} />
@@ -1015,6 +1036,28 @@ function UiChrome() {
         pendingName="" now={CASE_NOW} dispatch={noop}
       />
       <SaveNameScreen pendingSave={null} pendingName="" now={CASE_NOW} dispatch={noop} />
+      {/* Task 11 fix round 1, Finding I-2: one DescribeBlock mount per
+          configured screen id (`UI.describe.examples`' own keys —
+          screenCopy.ts's comment: "match domain/interpret.ts's own
+          DescribeEntryScreenId union exactly"), each open (describeOpen:
+          true) so the textarea/meta/example-chips subtree renders too, not
+          just the collapsed row. rowLead/rowStrong/ariaLabel/placeholder/
+          langNote/read are identical across all six mounts (any one would
+          cover them), but each screen's own example stories are ONLY
+          reachable off ITS OWN mount (DescribeBlock renders
+          Object.values(UI.describe.examples[screenId]), design note 1 of
+          DescribeBlock.tsx) — covering all 8 ui:describe.examples.*
+          entries needs all six. `ui:describe.err`/`ui:describe.reading`
+          stay correctly INTERACTION_GATED — nothing here submits, fails,
+          or is in-flight; this is a purely static mount. */}
+      {(Object.keys(UI.describe.examples) as DescribeEntryScreenId[]).map(screenId => (
+        <DescribeBlock
+          key={screenId}
+          screenId={screenId}
+          state={{ ...initialSession, describeOpen: true }}
+          dispatch={noop}
+        />
+      ))}
     </>
   )
 }
@@ -1121,15 +1164,19 @@ const CAPTION_TEMPLATES = new Set([
 // lives in the shared `./interactionGated` module (imported above), NOT as
 // a local literal here. A fix-round review finding: two independently
 // hand-typed copies of the same five names (one here, one in
-// PrepareScreen.test.tsx) could drift — a 6th entry added to one and not
+// interactionGated.test.tsx) could drift — a 6th entry added to one and not
 // the other would silently delete coverage with nothing to catch it. A
 // single shared source makes that structurally impossible. This file uses
 // it only to skip these entries in the bucket sweep below; the coverage
-// guarantee itself — that every one of these five actually renders under a
-// real interaction — is mechanized in PrepareScreen.test.tsx via a
+// guarantee itself — that every entry actually renders under a real
+// interaction — is mechanized in `interactionGated.test.tsx` via a
 // `Record` of per-entry assertions whose keys are asserted to equal
-// `[...INTERACTION_GATED]`, the same pattern `CAPTION_SUBSTITUTIONS` below
-// already uses for `CAPTION_TEMPLATES`.
+// `[...INTERACTION_GATED]` by STRICT equality (fix round 1, Finding I-4 —
+// no exclusion filter), the same pattern `CAPTION_SUBSTITUTIONS` below
+// already uses for `CAPTION_TEMPLATES`. Three of those entries
+// (`ui:facts.editLabel`/`saveLabel`, `ui:prepare.hintFilledUnreviewed`) are
+// correctly still red there, owed to Tasks 13/15 — see that file's own
+// header comment.
 //
 // UPDATED (Task 12 — resolves Task 10's own deferred question, task-10-
 // brief.md design note 9's "likely candidates" list). Now that SaveCase/
@@ -1450,9 +1497,11 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
   // `INTERACTION_GATED` needs no membership pin here (fix-round review
   // finding): it is imported from the single shared `./interactionGated`
   // module, so there is nothing left for this file to drift out of sync
-  // with. Its coverage guarantee — that every one of its five entries
-  // actually renders under a real interaction — is mechanized in
-  // PrepareScreen.test.tsx via a `Record` of per-entry assertions keyed
-  // identically, with an assertion that those keys equal
-  // `[...INTERACTION_GATED]`.
+  // with. Its coverage guarantee — that every entry actually renders under
+  // a real interaction — is mechanized in `interactionGated.test.tsx` via a
+  // `Record` of per-entry assertions keyed identically, with a STRICT
+  // equality assertion that those keys equal `[...INTERACTION_GATED]` (fix
+  // round 1, Finding I-4). Three entries (`ui:facts.editLabel`/
+  // `saveLabel`, `ui:prepare.hintFilledUnreviewed`) are correctly still red
+  // there, owed to Tasks 13/15 — see that file's own header comment.
 })
