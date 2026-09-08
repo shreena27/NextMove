@@ -20,6 +20,7 @@ import { passportEngine, sirEngine } from '../playbooks/engines'
 import { caseSnapshot } from '../domain/casefile'
 import type { Casefile } from '../domain/casefile'
 import { fillDraft, type Fact } from '../domain/interpret'
+import { loadCase } from '../session/cases'
 import { UI } from '../screens/screenCopy'
 
 // Real engines on purpose: this is an integration point, and a toy fixture
@@ -623,18 +624,50 @@ describe('facts fill the draft, visibly, behind a review acknowledgment (Task 15
     },
   )
 
-  it('a restored saved case with fills shows the middle hint state, not "ready to copy and send" (design note 7 — Task 8 already resets fillsReviewed on load at the reducer; this asserts it end-to-end through the screen)', () => {
-    render(
-      <PrepareScreen
-        serviceLabel="Passport" engineKey="passport" d={escalate} prep={fullyFillablePrep}
-        prepChecks={{}} onTogglePrepStep={() => {}}
-        prepDraft={null} onSetPrepDraft={() => {}}
-        caseFacts={[fillingFact]} fillsReviewed={false} onToggleFillsReviewed={() => {}}
-      />,
-    )
-    expect(document.querySelector('.prep-hint')).toHaveTextContent(UI.prepare.hintFilledUnreviewed)
-    expect(document.querySelector('.prep-hint')).not.toHaveTextContent(UI.prepare.hintReady)
-  })
+  it(
+    'a restored saved case with fills shows the middle hint state, not "ready to copy and send" (design note 7 — ' +
+    'Task 8 already resets fillsReviewed on load at the reducer; this asserts it end-to-end through the screen, ' +
+    'via a REAL loadCase() restore, not hand-typed props — fix round 1, Important finding: the previous version ' +
+    'of this test hard-coded caseFacts/fillsReviewed directly as props, so it never actually exercised the ' +
+    'restore path and stayed green even when a mutation made the restore stop resetting fillsReviewed)',
+    () => {
+      // A real Casefile whose caseFacts carry fullyFillablePrep's own
+      // fillable fact — the SAME fixtures the "no blanks + unreviewed
+      // fills" test above already establishes reach the middle hint state.
+      // The diagnosis passed to caseSnapshot need not match fullyFillablePrep:
+      // PrepareScreen's `d`/`prep` props are independent of whatever plan the
+      // SAVED case's own diagnosis pointed at, and caseSnapshot only reads
+      // `d` for its own label/rec/stepsTotal bookkeeping — it never
+      // re-derives caseFacts from it.
+      const snap = caseSnapshot(
+        'passport', 'Passport', 'passport-nextmove', escalate,
+        { q1: 'adverse', q2: 'formal_grievance' }, {},
+        [fillingFact], null, null, 1_760_000_000_000,
+      )
+      const saved: Casefile = {
+        ...snap, id: 'c-restore', outcome: 'still_open', lastCheck: null, remindAt: null, log: [],
+      }
+
+      // The real restore path (cases.ts's own loadCase() — the function both
+      // the OPEN_CHECKIN and REOPEN_CASE reducer arms resolve through via
+      // loadCaseFragment) — never hand-typed caseFacts/fillsReviewed props.
+      const fragment = loadCase([saved], 'c-restore')
+      expect(fragment).not.toBeNull()
+      expect(fragment!.caseFacts).toEqual([fillingFact])  // guards the premise: the fact really did restore
+      expect(fragment!.fillsReviewed).toBe(false)          // guards the premise: the restore really did reset it
+
+      render(
+        <PrepareScreen
+          serviceLabel="Passport" engineKey="passport" d={escalate} prep={fullyFillablePrep}
+          prepChecks={fragment!.prepChecks} onTogglePrepStep={() => {}}
+          prepDraft={fragment!.prepDraft} onSetPrepDraft={() => {}}
+          caseFacts={fragment!.caseFacts} fillsReviewed={fragment!.fillsReviewed} onToggleFillsReviewed={() => {}}
+        />,
+      )
+      expect(document.querySelector('.prep-hint')).toHaveTextContent(UI.prepare.hintFilledUnreviewed)
+      expect(document.querySelector('.prep-hint')).not.toHaveTextContent(UI.prepare.hintReady)
+    },
+  )
 
   it('a case with NO facts renders no fill list and behaves exactly as it does today — full regression pin on the shipped C4/C5 prepare screen', () => {
     render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
