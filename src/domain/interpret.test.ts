@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { SERVICE_KEYS } from './casefile'
 import type { SirStateConfig } from './sirConfig'
 import { optionsForPhase } from './sirConfig'
 import { SIR_STATES, SIR_PHASES, SIR_Q1_OPTIONS_FOR } from '../playbooks/sirPlaybook'
+import type { AnswerRecord } from './types'
 import type { GatedInterpretation, Fact } from './interpret'
 import {
   DESCRIBE_CHAINS,
@@ -109,6 +110,41 @@ describe('SIR resolver is TOTAL (design note 5a, D16/I2)', () => {
   )
 })
 
+describe("SIR resolver is TOTAL through the COMPOSED chain path (review finding 1, Task 2 round 1): the direct-call it.each above pins sirQ1OptionValues itself, but nothing called DESCRIBE_CHAINS['sir-q1'].chain[0].optionValues({...}) — the actual arrow function the gate will invoke — so the SIR_STATES[a.sirState] lookup step was unpinned", () => {
+  // The chain entry's optionValues, invoked exactly the way Task 4's gate
+  // calls it: with an AnswerRecord, not a SirStateConfig directly.
+  const composedOptionValues = DESCRIBE_CHAINS['sir-q1'].chain[0].optionValues as (a: AnswerRecord) => readonly string[]
+
+  // Real SIR_STATES has no entry that is BOTH supported AND has a phase id
+  // missing from SIR_Q1_OPTIONS_FOR (only delhi is supported, and its phase
+  // is claims_notice, which IS in the map) — so the third case cannot be
+  // reached through the real SIR_STATES[a.sirState] lookup without a
+  // fixture. Register one temporarily, purely so this case is exercised
+  // through the true composed path rather than by calling sirQ1OptionValues
+  // directly (which the block above already covers). SIR_STATES is a plain
+  // mutable Record, and this file's module registry is isolated per test
+  // file, so this cannot leak into other test files.
+  const GHOST_KEY = '__test_ghost_phase_state__'
+  beforeAll(() => {
+    SIR_STATES[GHOST_KEY] = { id: GHOST_KEY, name: 'Ghost', supported: true, phase: { id: 'ghost_phase', label: '', note: '' } }
+  })
+  afterAll(() => {
+    delete SIR_STATES[GHOST_KEY]
+  })
+
+  it.each([
+    ['answers: {} (no sirState at all) -- SIR_STATES[a.sirState] produces undefined, the case the brief named verbatim', {} as AnswerRecord],
+    ['an unsupported sirState (bihar)', { sirState: 'bihar' } as AnswerRecord],
+    ['a supported sirState whose phase id is absent from SIR_Q1_OPTIONS_FOR', { sirState: GHOST_KEY } as AnswerRecord],
+  ])(
+    "%s -- DESCRIBE_CHAINS['sir-q1'].chain[0].optionValues(a) returns [] and does not throw",
+    (_label, answers) => {
+      expect(() => composedOptionValues(answers)).not.toThrow()
+      expect(composedOptionValues(answers)).toEqual([])
+    },
+  )
+})
+
 describe('the nominal brand (design note 1a)', () => {
   it('a plain structural interface would NOT refuse this — excess-property checks do not fire across a function boundary — so the brand is what makes the guarantee real', () => {
     // @ts-expect-error — __gated cannot be produced outside interpretGates.ts
@@ -140,8 +176,8 @@ describe('repick (D4, prototype 2437-2446)', () => {
     return {
       __gated: 'test-only' as unknown as GatedInterpretation['__gated'],
       mappings: [
-        { questionId: 'voterQ1', value: 'decision', span: 'a decision', entry: entryQ1 },
-        { questionId: 'voterAppealedRaw', value: 'pending', span: 'appeal pending', entry: entryAppeal },
+        { questionId: 'voterQ1', value: 'decision', span: 'a decision', optionValues: entryQ1.optionValues },
+        { questionId: 'voterAppealedRaw', value: 'pending', span: 'appeal pending', optionValues: entryAppeal.optionValues },
       ],
       discarded: [],
       facts: [],
@@ -154,15 +190,19 @@ describe('repick (D4, prototype 2437-2446)', () => {
   it('returns a new object and mutates neither the input interpretation nor its arrays', () => {
     expect.assertions(4)
     const interp = makeInterp()
-    // A shallow snapshot of the pre-call values (not structuredClone: the
-    // chain entries embed live reachableIf functions, which structuredClone
-    // cannot clone — comparing the primitive fields is sufficient to prove
-    // the input was not mutated).
-    const before = interp.mappings.map(m => ({ questionId: m.questionId, value: m.value, span: m.span }))
+    // Real deep-equality against a pre-call structuredClone — the brief's
+    // originally specified assertion, restored now that GatedMapping.entry
+    // (a live ChainEntry embedding reachableIf/optionValues closures) is
+    // gone, replaced by a plain `optionValues: readonly string[]` snapshot
+    // (review finding 2, Task 2 round 1). structuredClone throws
+    // DataCloneError on a function, so this genuinely could not have been
+    // written this way against the old shape — see interpret.ts's
+    // GatedMapping doc comment.
+    const before = structuredClone(interp)
     const result = repick(interp, 'voterQ1', 'no_word', chain)
     expect(result).not.toBe(interp)
     expect(result.mappings).not.toBe(interp.mappings)
-    expect(interp.mappings.map(m => ({ questionId: m.questionId, value: m.value, span: m.span }))).toEqual(before) // input untouched
+    expect(interp).toEqual(before) // input untouched, real deep-equality
     expect(result.mappings.map(m => m.value)).not.toEqual(interp.mappings.map(m => m.value)) // genuinely different result
   })
 

@@ -36,15 +36,28 @@ export interface RawInterpretation {
   facts: { value: string }[]
 }
 
-/** One resolved mapping inside a `GatedInterpretation`: the chain entry it
- *  matched, carried alongside the picked value and its provenance span so a
- *  later screen never has to re-derive the chain lookup to render it. */
+/** One resolved mapping inside a `GatedInterpretation`, carried alongside
+ *  the picked value and its provenance span so a later screen never has to
+ *  re-derive the chain lookup to render it.
+ *
+ *  `optionValues` is a plain-data SNAPSHOT of the matched `ChainEntry`'s
+ *  option values, resolved at gate time — never the live `ChainEntry`
+ *  itself. The original shape (`entry: ChainEntry`) embedded live closures
+ *  (every entry's `reachableIf`, and SIR's `optionValues` function), which
+ *  made `GatedMapping` — and therefore the whole `GatedInterpretation` —
+ *  non-cloneable and non-serializable (`structuredClone` throws
+ *  `DataCloneError` on a function) and forced `repick`'s no-mutation test
+ *  into a three-field projection instead of real deep-equality (Important
+ *  review finding, Task 2 round 1). Reachability is not this field's job:
+ *  callers that need `reachableIf` (e.g. `repick`) already take the whole
+ *  `chain` as a separate argument. This snapshot exists purely so a confirm
+ *  screen can render "what were the choices" without re-deriving the chain
+ *  lookup or re-resolving SIR's phase-dependent function itself. */
 export interface GatedMapping {
   questionId: string
   value: string
   span: string
-  /** The chain entry this mapping resolved against. */
-  entry: ChainEntry
+  optionValues: readonly string[]
 }
 
 /** What `gateInterpretation` returns, and the ONLY shape the app renders.
