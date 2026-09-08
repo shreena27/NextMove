@@ -548,6 +548,7 @@ describe('Task 13: the localStorage persistence effect (design note 6)', () => {
       stateLabel: 'Followed up informally, unresolved', rec: 'FOLLOW_UP',
       whatShort: 'Move to a formal Grievance / CPGRAMS filing',
       stepsTotal: 5, stepsDone: 1, sirPhaseId: null,
+      caseFacts: [], appliedText: null, interpProvenance: null,
       id: 'c1700000000000', outcome: 'still_open', lastCheck: null, remindAt: null,
       log: [{ t: 1_700_000_000_000, kind: 'diagnosed', text: 'Followed up informally, unresolved' }],
     }
@@ -649,6 +650,9 @@ describe('C7 Task 8: the auth lifecycle', () => {
       stepsTotal: 5,
       stepsDone: 1,
       sirPhaseId: null,
+      caseFacts: [],
+      appliedText: null,
+      interpProvenance: null,
       id: 'c1700000000000',
       outcome: 'still_open',
       lastCheck: null,

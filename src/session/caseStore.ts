@@ -100,6 +100,15 @@ function migrateLegacyCase(): void {
     // already do for a case with no meaningful answers.
     answers: old.answers || {},
     prepChecks: old.prepChecks || {},
+    // Task 8: the legacy `nm_case` shape predates `caseFacts`/`appliedText`/
+    // `interpProvenance` entirely — there is no old value to fall back to,
+    // unlike `answers`/`prepChecks` above. Set explicitly rather than left
+    // to fall out of `...old` as `undefined`: a `Casefile` with `undefined`
+    // where `caseFacts` is typed as an array crashes the first `.map` a
+    // prepare-screen render does over it.
+    caseFacts: [],
+    appliedText: null,
+    interpProvenance: null,
     log: [
       { t: old.savedAt || now, kind: 'diagnosed', text: old.stateLabel || LOG_COPY.caseSaved },
     ],

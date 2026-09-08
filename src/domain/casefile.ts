@@ -12,6 +12,7 @@
 // same §7 content-safety guardrail suite rule copy is (via
 // casefileCopyExtras(), shaped exactly like prep.ts's prepCopyExtras()).
 import type { AnswerRecord, Classification, Diagnosis } from './types'
+import type { Fact } from './interpret'
 import { prepPlanFor } from '../playbooks/prep'
 import { SIR_STATES } from '../playbooks/sirPlaybook'
 import { sirCoverage } from './sirConfig'
@@ -117,7 +118,13 @@ export const LOG_COPY = {
 
 /** Exactly what `caseSnapshot` produces (prototype 2053-2067) — the fields a
  *  fresh diagnosis contributes to a case. `caseFacts` / `appliedText` /
- *  `interpProvenance` are OMITTED on purpose (scope exclusion 3, C8's). */
+ *  `interpProvenance` (Task 8; scope exclusion 3 discharged) are
+ *  transcribed from the prototype's own `caseSnapshot` (2063-2064), but
+ *  COPIED here, never derived — see `caseSnapshot`'s own comment below for
+ *  why `interpProvenance` cannot be derived in this build the way the
+ *  prototype derives it. A timestamp is deliberately NOT a fourth field
+ *  here: `savedAt` already carries it, and the two can never disagree —
+ *  adding an `interpretedAt` would be a second clock to keep in step. */
 export interface CaseSnapshot {
   engineKey: ServiceKey
   serviceLabel: string
@@ -131,6 +138,21 @@ export interface CaseSnapshot {
   stepsTotal: number
   stepsDone: number
   sirPhaseId: string | null
+  /** The CONFIRMED facts at the moment of this snapshot (prototype
+   *  `S.caseFacts`, transcribed via `caseSnapshot`'s `caseFacts` argument).
+   *  Copied by value (never the same array reference as the argument) —
+   *  see `caseSnapshot`'s own comment. */
+  caseFacts: Fact[]
+  /** The text that produced the answers this snapshot carries (prototype
+   *  `S.appliedText`). */
+  appliedText: string | null
+  /** D17 — non-null iff `appliedText` is non-null. COPIED from the
+   *  `interpProvenance` argument, never derived here: see `caseSnapshot`'s
+   *  own comment for why deriving it from the CURRENT interpreter setting
+   *  (the way the prototype derives it at save time) would be a false
+   *  record the moment this build's env var differs from whichever
+   *  provider actually produced the text. */
+  interpProvenance: string | null
 }
 
 /** The full casefile shape: a CaseSnapshot plus what `completeSave` /
@@ -163,7 +185,25 @@ export function sirPhaseId(engineKey: ServiceKey, answers: AnswerRecord): string
 /** Pure (D6): every value it needs — including the clock — comes in as an
  *  argument. Never imports session state, never calls `Date.now()` itself;
  *  the dispatching component supplies `now`. `stepsTotal`/`stepsDone` come
- *  from the same `prepPlanFor` C4 built. */
+ *  from the same `prepPlanFor` C4 built.
+ *
+ *  Task 8, design note 2 / RED items 24-25: `caseFacts` / `appliedText` /
+ *  `interpProvenance` are COPIED from their arguments — never derived, and
+ *  never conditioned on one another. An earlier draft of this plan had this
+ *  function derive `interpProvenance` from `appliedText` the way the
+ *  prototype's own `caseSnapshot` does (`S.appliedText ? 'simulated
+ *  (design prototype)' : null`, 2064) — safe there only because the
+ *  prototype has one hardcoded interpreter. This build has two, selected by
+ *  an env var, and this function has no way to learn which one produced the
+ *  text: reading `import.meta.env` or calling `interpreterId()` here would
+ *  let a snapshot taken while the env var says `gemini` claim Gemini read
+ *  text the simulator actually read. So this function copies the pair
+ *  verbatim, whatever they are; the D17 invariant ("non-null iff
+ *  `appliedText` is non-null") is maintained by the reducer arms that write
+ *  the two together (Task 7's `APPLY_INTERPRETATION`/`UNPLACEABLE_PICK`),
+ *  never by a conditional in here. `caseFacts` is copied BY VALUE
+ *  (`.slice()`) — a shared reference would mean a later `removeFact` on
+ *  session state silently mutates a saved casefile. */
 export function caseSnapshot(
   engineKey: ServiceKey,
   serviceLabel: string,
@@ -171,6 +211,9 @@ export function caseSnapshot(
   d: Diagnosis,
   answers: AnswerRecord,
   prepChecks: Record<number, boolean>,
+  caseFacts: Fact[],
+  appliedText: string | null,
+  interpProvenance: string | null,
   now: number,
 ): CaseSnapshot {
   const prep = prepPlanFor(d)
@@ -187,6 +230,9 @@ export function caseSnapshot(
     stepsTotal: prep ? prep.steps.length : 0,
     stepsDone: prep ? prep.steps.filter((_, i) => prepChecks[i]).length : 0,
     sirPhaseId: sirPhaseId(engineKey, answers),
+    caseFacts: caseFacts.slice(),
+    appliedText,
+    interpProvenance,
   }
 }
 

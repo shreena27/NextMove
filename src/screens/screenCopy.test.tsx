@@ -378,7 +378,7 @@ const noticeDiagnosis = diagnose(sirEngine, { sirState: 'delhi', sirQ1: 'notice'
 const CASE_NOW = 1_760_000_000_000
 const CASE_DAY = 86400000
 const caseSnap = caseSnapshot(
-  'passport', UI.serviceLabel.passport, 'passport-nextmove', helplineDiagnosis, { q1: 'adverse', q2: 'informal' }, {}, CASE_NOW,
+  'passport', UI.serviceLabel.passport, 'passport-nextmove', helplineDiagnosis, { q1: 'adverse', q2: 'informal' }, {}, [], null, null, CASE_NOW,
 )
 const openCase: Casefile = {
   ...caseSnap, id: 'ui-case-open', outcome: 'still_open',
@@ -437,7 +437,7 @@ const voterOptions = checkinOptionsFor(voterDecisionDiagnosis, {}, 'voter')
 const voterValenceOpt = voterOptions.find(o => o.k === 'valence')!
 
 const voterCaseSnap = caseSnapshot(
-  'voter', UI.serviceLabel.voterServices, 'voter-nextmove', voterDecisionDiagnosis, { voterQ1: 'no_word' }, {}, CASE_NOW,
+  'voter', UI.serviceLabel.voterServices, 'voter-nextmove', voterDecisionDiagnosis, { voterQ1: 'no_word' }, {}, [], null, null, CASE_NOW,
 )
 
 const cfWorking: Casefile = {

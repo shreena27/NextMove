@@ -17,7 +17,7 @@ const DAY = 86400000
 function makeCase(log: JourneyEntry[], id = 'c1'): Casefile {
   const answers = { q1: 'adverse', q2: 'informal' }
   const snap = caseSnapshot(
-    'passport', 'Passport', 'passport-nextmove', diagnose(passportEngine, answers), answers, {}, NOW,
+    'passport', 'Passport', 'passport-nextmove', diagnose(passportEngine, answers), answers, {}, [], null, null, NOW,
   )
   return { ...snap, id, outcome: 'still_open', lastCheck: null, remindAt: null, log }
 }

@@ -857,7 +857,10 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
     // navigation applies (prototype nav(), line 2029; NAVIGATE arm above).
     case 'BEGIN_WORKING_CHECKIN': {
       const fragment = beginWorkingCheckin(
-        { savedCases: s.savedCases, workingCase: s.workingCase, answers: s.answers, prepChecks: s.prepChecks },
+        {
+          savedCases: s.savedCases, workingCase: s.workingCase, answers: s.answers, prepChecks: s.prepChecks,
+          caseFacts: s.caseFacts, appliedText: s.appliedText, interpProvenance: s.interpProvenance,
+        },
         { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen, now: a.now },
       )
       return {
@@ -902,7 +905,10 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         }
       }
       const fragment = completeSave(
-        { savedCases: s.savedCases, workingCase: s.workingCase, answers: s.answers, prepChecks: s.prepChecks },
+        {
+          savedCases: s.savedCases, workingCase: s.workingCase, answers: s.answers, prepChecks: s.prepChecks,
+          caseFacts: s.caseFacts, appliedText: s.appliedText, interpProvenance: s.interpProvenance,
+        },
         { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen, now: a.now, newId: a.newId },
       )
       return {
@@ -932,7 +938,10 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       // directly rather than merely assumed.
       const pendingSave = { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen }
       const fragment = completeSave(
-        { savedCases: s.savedCases, workingCase: null, answers: a.answers, prepChecks: a.prepChecks },
+        {
+          savedCases: s.savedCases, workingCase: null, answers: a.answers, prepChecks: a.prepChecks,
+          caseFacts: s.caseFacts, appliedText: s.appliedText, interpProvenance: s.interpProvenance,
+        },
         { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen, now: a.now, newId: a.newId },
       )
       return {
@@ -955,7 +964,10 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
     }
     case 'CI_CHOOSE': {
       const fragment = ciChoose(
-        { answers: s.answers, prepChecks: s.prepChecks, activeCaseId: s.activeCaseId, workingCase: s.workingCase, savedCases: s.savedCases },
+        {
+          answers: s.answers, prepChecks: s.prepChecks, activeCaseId: s.activeCaseId, workingCase: s.workingCase, savedCases: s.savedCases,
+          caseFacts: s.caseFacts, appliedText: s.appliedText, interpProvenance: s.interpProvenance,
+        },
         { index: a.index, now: a.now },
       )
       return fragment ? applyCiFragment(s, fragment) : s
@@ -965,6 +977,7 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         {
           answers: s.answers, prepChecks: s.prepChecks, activeCaseId: s.activeCaseId,
           workingCase: s.workingCase, savedCases: s.savedCases, ciPending: s.ciPending,
+          caseFacts: s.caseFacts, appliedText: s.appliedText, interpProvenance: s.interpProvenance,
         },
         a.now,
       )
@@ -975,6 +988,7 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         {
           answers: s.answers, prepChecks: s.prepChecks, activeCaseId: s.activeCaseId,
           workingCase: s.workingCase, savedCases: s.savedCases, ciPending: s.ciPending,
+          caseFacts: s.caseFacts, appliedText: s.appliedText, interpProvenance: s.interpProvenance,
         },
         a.accepted, a.now,
       )
@@ -985,6 +999,7 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         {
           answers: s.answers, prepChecks: s.prepChecks, activeCaseId: s.activeCaseId,
           workingCase: s.workingCase, savedCases: s.savedCases, ciPending: s.ciPending, ciAccepted: s.ciAccepted,
+          caseFacts: s.caseFacts, appliedText: s.appliedText, interpProvenance: s.interpProvenance,
         },
         a.gotIt, a.now,
       )
@@ -1094,7 +1109,11 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         return { ...s, prepChecks }
       }
       const d = diagnose(ENGINES[c.engineKey], s.answers)
-      const snap = caseSnapshot(c.engineKey, c.serviceLabel, s.screen, d, s.answers, prepChecks, a.now)
+      const snap = caseSnapshot(
+        c.engineKey, c.serviceLabel, s.screen, d, s.answers, prepChecks,
+        s.caseFacts, s.appliedText, s.interpProvenance,
+        a.now,
+      )
       // DEVIATION D7 (second site — the first was Task 6's check-in state
       // machine, cases.ts's applyCheckinPatch): a faithful
       // `Object.assign(c, caseSnapshot(...))` (3691) resets `savedAt` to
@@ -1449,7 +1468,24 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       let savedCases = s.savedCases
       if (c && c.outcome === 'still_open' && c.engineKey === interp.engine) {
         const d = diagnose(ENGINES[c.engineKey], answers)
-        const snap = caseSnapshot(c.engineKey, c.serviceLabel, c.returnScreen, d, answers, {}, a.now)
+        // Task 8: `interp.facts`/`interp.text`/`interp.provenance`, NOT
+        // `s.caseFacts`/`s.appliedText`/`s.interpProvenance` — at this
+        // point in the transition, `s.*` still holds the STALE values
+        // belonging to the interpretation being discarded, while
+        // `interp.*` are the NEW ones this SAME transition writes onto
+        // session state a few lines below (`caseFacts: interp.facts,
+        // appliedText: interp.text, interpProvenance: interp.provenance`).
+        // The re-snapshotted case must carry the SAME new values the
+        // session state is about to hold — exactly the way this call
+        // already snapshots against the post-write `answers` local, not
+        // `s.answers`. Passing `s.*` here would silently persist a stale
+        // fact/text/provenance record onto a case whose diagnosis just
+        // changed.
+        const snap = caseSnapshot(
+          c.engineKey, c.serviceLabel, c.returnScreen, d, answers, {},
+          interp.facts, interp.text, interp.provenance,
+          a.now,
+        )
         const updated: Casefile = { ...c, ...snap, savedAt: c.savedAt }
         if (s.activeCaseId === 'working') {
           workingCase = updated

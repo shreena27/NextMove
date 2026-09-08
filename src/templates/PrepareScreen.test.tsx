@@ -806,7 +806,7 @@ describe('the saveControl tail (Task 12, design note 6 / design note 3)', () => 
 
   it('shows the saved-note (no button) when a matching still-open saved case already exists', () => {
     const answers = { q1: 'adverse', q2: 'formal_grievance' }
-    const snap = caseSnapshot('passport', 'Passport', 'passport-prepare', escalate, answers, {}, 1_760_000_000_000)
+    const snap = caseSnapshot('passport', 'Passport', 'passport-prepare', escalate, answers, {}, [], null, null, 1_760_000_000_000)
     const saved: Casefile = { ...snap, id: 'c1', outcome: 'still_open', lastCheck: null, remindAt: null, log: [] }
     render(
       <ControlledPrepareScreen

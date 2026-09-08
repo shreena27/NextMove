@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Casefile } from '../domain/casefile'
 import { LOG_COPY } from '../domain/casefile'
+import type { Fact } from '../domain/interpret'
 import { createSupabaseMock } from '../test/supabaseMock'
 import { saveCases } from './caseStore'
 
@@ -67,6 +68,9 @@ function makeCasefile(overrides: Partial<Casefile> = {}): Casefile {
     stepsTotal: 5,
     stepsDone: 1,
     sirPhaseId: null,
+    caseFacts: [],
+    appliedText: null,
+    interpProvenance: null,
     id: 'c1700000000000',
     outcome: 'still_open',
     lastCheck: null,
@@ -79,7 +83,13 @@ function makeCasefile(overrides: Partial<Casefile> = {}): Casefile {
 /** Every field a Casefile can carry, all non-default/non-null, per the
  *  brief's own maximal-fixture spec (design note 1): closedAt, a
  *  non-empty log (more than the one diagnosed seed entry), a non-null
- *  remindAt, a sparse prepChecks, and a non-null sirPhaseId. */
+ *  remindAt, a sparse prepChecks, and a non-null sirPhaseId.
+ *
+ *  Task 8, RED item 30: caseFacts carries TWO facts — one `edited: true`
+ *  (a citizen-corrected fact) and one `fills: null` (a fact that confirmed
+ *  something but filled no draft bracket) — plus a non-null appliedText/
+ *  interpProvenance, so the round-trip test below exercises every shape
+ *  `Fact` can take, not just the common case. */
 function makeMaximalCasefile(): Casefile {
   return makeCasefile({
     engineKey: 'sir',
@@ -93,6 +103,18 @@ function makeMaximalCasefile(): Casefile {
     stepsTotal: 4,
     stepsDone: 2,
     sirPhaseId: 'phase-2',
+    caseFacts: [
+      {
+        kind: 'reference_number', refType: 'grievance_no', label: 'Grievance Number',
+        value: 'GR1234567890', fills: '[Grievance Number]', edited: true,
+      },
+      {
+        kind: 'note', refType: 'unknown', label: 'A note you mentioned',
+        value: 'my elderly mother cannot travel to the office', fills: null,
+      },
+    ] as Fact[],
+    appliedText: 'my elderly mother cannot travel; the grievance number is GR1234567890',
+    interpProvenance: 'simulated (local matcher)',
     id: 'a1b2c3d4-1111-2222-3333-444455556666',
     outcome: 'deliverable_received',
     lastCheck: 1_700_000_050_000,
@@ -114,6 +136,21 @@ describe('caseToRow / rowToCase', () => {
     const c = makeMaximalCasefile()
     const row = caseToRow(SESSION_USER_ID, c)
     expect(rowToCase(row)).toEqual(c)
+  })
+
+  // Task 8, RED item 30: C7 scope exclusion 5 promised no migration; this
+  // is the test that collects on it — caseFacts (including the edited:true
+  // and fills:null shapes)/appliedText/interpProvenance ride through the
+  // opaque `data` JSONB column for free, with no schema change.
+  it('round-trips caseFacts (including an edited fact and a fills:null fact) / appliedText / interpProvenance losslessly', () => {
+    const c = makeMaximalCasefile()
+    const row = caseToRow(SESSION_USER_ID, c)
+    const back = rowToCase(row)
+    expect(back.caseFacts).toEqual(c.caseFacts)
+    expect(back.caseFacts.some(f => f.edited === true)).toBe(true)
+    expect(back.caseFacts.some(f => f.fills === null)).toBe(true)
+    expect(back.appliedText).toBe(c.appliedText)
+    expect(back.interpProvenance).toBe(c.interpProvenance)
   })
 
   it('strips unsaved: a row whose data carries unsaved still round-trips without it', () => {

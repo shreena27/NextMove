@@ -238,7 +238,7 @@ describe('Task 11: <UpdateEntry> then <SaveControl>, after the CTA (design note 
   it('SaveControl shows the saved-note (no button) when a matching still-open saved case already exists', () => {
     const answers = { q1: 'no_contact', q2: 'no_followup' }
     const d = diagnose(passportEngine, answers)
-    const snap = caseSnapshot('passport', 'Passport', 'passport-nextmove', d, answers, {}, 1_760_000_000_000)
+    const snap = caseSnapshot('passport', 'Passport', 'passport-nextmove', d, answers, {}, [], null, null, 1_760_000_000_000)
     const saved: Casefile = { ...snap, id: 'c1', outcome: 'still_open', lastCheck: null, remindAt: null, log: [] }
     render(
       <NextMoveScreen

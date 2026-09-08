@@ -17,7 +17,7 @@ const DAY = 86400000
 function baseCase(overrides: Partial<Casefile> = {}): Casefile {
   const answers = { q1: 'adverse', q2: 'informal' }
   const snap = caseSnapshot(
-    'passport', 'Passport', 'passport-nextmove', diagnose(passportEngine, answers), answers, {}, NOW,
+    'passport', 'Passport', 'passport-nextmove', diagnose(passportEngine, answers), answers, {}, [], null, null, NOW,
   )
   return { ...snap, id: 'c1', outcome: 'still_open', lastCheck: null, remindAt: null, log: [], ...overrides }
 }

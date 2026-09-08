@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { diagnose } from './engine'
 import { passportEngine, sirEngine } from '../playbooks/engines'
 import { PREP } from '../playbooks/prep'
@@ -7,18 +7,42 @@ import { voterPlaybook } from '../playbooks/voterPlaybook'
 import { sirPlaybook, SIR_STATES, SIR_PHASES } from '../playbooks/sirPlaybook'
 import { guardrailFindings } from '../playbooks/guardrails/suite'
 import { retiredActionFindings } from '../playbooks/guardrails/contentSafety'
+import type { Fact } from './interpret'
 import {
   caseSnapshot, sirPhaseId, casefileCopyExtras, LOG_COPY, CASE_OUTCOMES, SERVICE_KEYS,
 } from './casefile'
+// Task 8, RED item 25: `caseSnapshot` must never read `import.meta.env` or
+// call the interpreter-selection helper — a snapshot taken while the env
+// var says `gemini` must not claim Gemini read text the simulator read.
+// This test-only import (a test file may import from `session/`; only
+// `domain/` PRODUCTION code may not — see casefile.ts's own layering
+// comment) mocks the helper so the assertion below is a real spy check,
+// not a "the import doesn't exist" tautology.
+import { interpreterId } from '../session/featureFlags'
+
+vi.mock('../session/featureFlags', async importOriginal => {
+  const actual = await importOriginal<typeof import('../session/featureFlags')>()
+  return { ...actual, interpreterId: vi.fn(actual.interpreterId) }
+})
 
 const NOW = 1_725_000_000_000
+
+const FIXTURE_FACT: Fact = {
+  kind: 'reference_number', refType: 'passport_file_no', label: 'File Number',
+  value: 'AB1234567890123', fills: '[File Number / ARN]',
+}
 
 describe('caseSnapshot', () => {
   it('produces every field, from a real diagnosis — never a hand-built Diagnosis', () => {
     const answers = { q1: 'adverse', q2: 'informal' }
     const d = diagnose(passportEngine, answers)
     const prepChecks = { 0: true, 2: true }
-    const snap = caseSnapshot('passport', 'Passport', 'passport-nextmove', d, answers, prepChecks, NOW)
+    const caseFacts = [FIXTURE_FACT]
+    const snap = caseSnapshot(
+      'passport', 'Passport', 'passport-nextmove', d, answers, prepChecks,
+      caseFacts, 'they rejected my application', 'simulated (local matcher)',
+      NOW,
+    )
 
     expect(snap.engineKey).toBe('passport')
     expect(snap.serviceLabel).toBe('Passport')
@@ -34,12 +58,18 @@ describe('caseSnapshot', () => {
     expect(snap.stepsTotal).toBe(PREP['state-5a'].steps.length)
     expect(snap.stepsDone).toBe(2)
     expect(snap.sirPhaseId).toBeNull()
+    // Task 8 (design note 1/2): caseFacts/appliedText/interpProvenance are
+    // COPIED verbatim from the arguments.
+    expect(snap.caseFacts).toEqual(caseFacts)
+    expect(snap.caseFacts).not.toBe(caseFacts) // copied, not aliased
+    expect(snap.appliedText).toBe('they rejected my application')
+    expect(snap.interpProvenance).toBe('simulated (local matcher)')
   })
 
   it('falls back to null whatShort when the diagnosis carries none (defensive `|| null`, mirrors the prototype)', () => {
     const answers = { q1: 'adverse', q2: 'informal' }
     const d = diagnose(passportEngine, answers)
-    const snap = caseSnapshot('passport', 'Passport', 'passport-nextmove', { ...d, whatShort: '' }, answers, {}, NOW)
+    const snap = caseSnapshot('passport', 'Passport', 'passport-nextmove', { ...d, whatShort: '' }, answers, {}, [], null, null, NOW)
     expect(snap.whatShort).toBeNull()
   })
 
@@ -47,25 +77,75 @@ describe('caseSnapshot', () => {
     const answers = { q1: 'no_contact', q2: 'no_followup' }
     const d = diagnose(passportEngine, answers)
     expect(d.ruleId).toBe('state-1')
-    const snap = caseSnapshot('passport', 'Passport', 'passport-nextmove', d, answers, { 0: true }, NOW)
+    const snap = caseSnapshot('passport', 'Passport', 'passport-nextmove', d, answers, { 0: true }, [], null, null, NOW)
     expect(snap.stepsTotal).toBe(0)
     expect(snap.stepsDone).toBe(0)
-  })
-
-  it('never returns caseFacts / appliedText / interpProvenance (scope exclusion 3, mechanised)', () => {
-    const answers = { q1: 'adverse', q2: 'informal' }
-    const d = diagnose(passportEngine, answers)
-    const snap = caseSnapshot('passport', 'Passport', 'passport-nextmove', d, answers, {}, NOW)
-    expect('caseFacts' in snap).toBe(false)
-    expect('appliedText' in snap).toBe(false)
-    expect('interpProvenance' in snap).toBe(false)
   })
 
   it('wires a real SIR diagnosis through to sirPhaseId end to end', () => {
     const answers = { sirState: 'delhi', sirQ1: 'notice' }
     const d = diagnose(sirEngine, answers)
-    const snap = caseSnapshot('sir', 'Voter roll (SIR)', 'sir-nextmove', d, answers, {}, NOW)
+    const snap = caseSnapshot('sir', 'Voter roll (SIR)', 'sir-nextmove', d, answers, {}, [], null, null, NOW)
     expect(snap.sirPhaseId).toBe(SIR_PHASES.claims_notice.id)
+  })
+
+  // Task 8, RED items 24-28: caseFacts/appliedText/interpProvenance are
+  // COPIED, never derived — this is the sharpest correctness requirement
+  // this function carries (D17/C3).
+  describe('caseFacts / appliedText / interpProvenance (Task 8, design note 2)', () => {
+    const answers = { q1: 'adverse', q2: 'informal' }
+    const d = diagnose(passportEngine, answers)
+
+    it(
+      'does NOT derive interpProvenance from appliedText — called with appliedText: null and a non-null ' +
+      'interpProvenance, it returns that provenance UNCHANGED rather than nulling it (D17/C3: the derivation ' +
+      'lived here in the prototype and cannot live here now; the invariant is maintained by the reducer arms ' +
+      'that write the two together, and this function\'s job is to copy)',
+      () => {
+        const snap = caseSnapshot('passport', 'Passport', 'passport-nextmove', d, answers, {}, [], null, 'simulated (local matcher)', NOW)
+        expect(snap.appliedText).toBeNull()
+        expect(snap.interpProvenance).toBe('simulated (local matcher)')
+      },
+    )
+
+    it(
+      'does NOT derive interpProvenance from appliedText — called with a non-null appliedText and ' +
+      'interpProvenance: null, it returns null UNCHANGED rather than deriving a string (same reasoning as above, ' +
+      'the other direction)',
+      () => {
+        const snap = caseSnapshot('passport', 'Passport', 'passport-nextmove', d, answers, {}, [], 'they rejected my application', null, NOW)
+        expect(snap.appliedText).toBe('they rejected my application')
+        expect(snap.interpProvenance).toBeNull()
+      },
+    )
+
+    it(
+      'reads no import.meta.env and calls no interpreter-selection helper — a snapshot taken while the env var ' +
+      'says `gemini` must not claim Gemini read text the simulator read',
+      () => {
+        caseSnapshot('passport', 'Passport', 'passport-nextmove', d, answers, {}, [FIXTURE_FACT], 'text', 'simulated (local matcher)', NOW)
+        expect(interpreterId).not.toHaveBeenCalled()
+      },
+    )
+
+    it(
+      'copies caseFacts — mutating the source array after the call does not change the snapshot (a shared ' +
+      'reference means removing a fact on the confirm screen mutates a saved casefile)',
+      () => {
+        expect.assertions(2)
+        const source = [FIXTURE_FACT]
+        const snap = caseSnapshot('passport', 'Passport', 'passport-nextmove', d, answers, {}, source, 'text', 'prov', NOW)
+        source.push({ kind: 'note', refType: 'unknown', label: 'x', value: 'y', fills: null })
+        expect(snap.caseFacts).toEqual([FIXTURE_FACT])
+        expect(snap.caseFacts).toHaveLength(1)
+      },
+    )
+
+    it('an empty caseFacts array produces [], not undefined', () => {
+      const snap = caseSnapshot('passport', 'Passport', 'passport-nextmove', d, answers, {}, [], null, null, NOW)
+      expect(snap.caseFacts).toEqual([])
+      expect(snap.caseFacts).not.toBeUndefined()
+    })
   })
 })
 

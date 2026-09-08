@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { AnswerRecord, Diagnosis } from '../domain/types'
 import type { Casefile, ServiceKey } from '../domain/casefile'
 import { caseSnapshot, LOG_COPY } from '../domain/casefile'
+import type { Fact } from '../domain/interpret'
 import { diagnose } from '../domain/engine'
 import type { ServiceEngine } from '../domain/engine'
 import { applyCorrection, applyEvent } from '../domain/answers'
@@ -28,8 +29,28 @@ const NOW = 1_725_000_000_000
 const PASSPORT_ANSWERS: AnswerRecord = { q1: 'adverse', q2: 'informal' }
 const PASSPORT_ANSWERS_2: AnswerRecord = { q1: 'adverse', q2: 'no_followup' }
 
-function passportSnap(answers: AnswerRecord, prepChecks: Record<number, boolean> = {}, now = NOW) {
-  return caseSnapshot('passport', 'Passport', 'passport-nextmove', diagnose(passportEngine, answers), answers, prepChecks, now)
+// Task 8 fixture: a real Fact shape, for the tests that specifically exercise
+// caseFacts/appliedText/interpProvenance threading. Most fixtures below don't
+// care about these three and pass the (also real, just empty/null) defaults
+// baked into passportSnap/caseFor/BASE.
+const FIXTURE_FACT: Fact = {
+  kind: 'reference_number', refType: 'passport_file_no', label: 'File Number',
+  value: 'AB1234567890123', fills: '[File Number / ARN]',
+}
+
+function passportSnap(
+  answers: AnswerRecord,
+  prepChecks: Record<number, boolean> = {},
+  now = NOW,
+  caseFacts: Fact[] = [],
+  appliedText: string | null = null,
+  interpProvenance: string | null = null,
+) {
+  return caseSnapshot(
+    'passport', 'Passport', 'passport-nextmove', diagnose(passportEngine, answers), answers, prepChecks,
+    caseFacts, appliedText, interpProvenance,
+    now,
+  )
 }
 
 function savedCase(answers: AnswerRecord, overrides: Partial<Casefile> = {}): Casefile {
@@ -54,6 +75,9 @@ const BASE = {
   workingCase: null as Casefile | null,
   answers: {} as AnswerRecord,
   prepChecks: {} as Record<number, boolean>,
+  caseFacts: [] as Fact[],
+  appliedText: null as string | null,
+  interpProvenance: null as string | null,
 }
 
 // D4: `newId` is a fixed literal, not a real newCaseId() call — every
@@ -103,7 +127,7 @@ function caseFor(
   now = NOW,
 ): Casefile {
   const d = diagnose(engine, answers)
-  const snap = caseSnapshot(engineKey, serviceLabel, returnScreen, d, answers, prepChecks, now)
+  const snap = caseSnapshot(engineKey, serviceLabel, returnScreen, d, answers, prepChecks, [], null, null, now)
   return {
     ...snap,
     id: 'c1',
@@ -126,6 +150,9 @@ interface CiTestState {
   activeCaseId: string | null
   workingCase: Casefile | null
   savedCases: Casefile[]
+  caseFacts: Fact[]
+  appliedText: string | null
+  interpProvenance: string | null
   ciPending: CheckinOption | null
   ciPendingIdx: number | null
   ciStage: 'confirm' | 'valence' | 'closureq' | null
@@ -140,6 +167,9 @@ function sessionFor(c: Casefile, working = false): CiTestState {
   return {
     answers: { ...c.answers },
     prepChecks: { ...c.prepChecks },
+    caseFacts: c.caseFacts.slice(),
+    appliedText: c.appliedText,
+    interpProvenance: c.interpProvenance,
     activeCaseId: working ? 'working' : c.id,
     workingCase: working ? c : null,
     savedCases: working ? [] : [c],
@@ -253,6 +283,77 @@ describe('loadCase (design note 6)', () => {
 
   it('returns null for an unknown id', () => {
     expect(loadCase([], 'nope')).toBeNull()
+  })
+
+  // Task 8, RED item 29: restoring a saved case restores its facts and its
+  // text but NOT the acknowledgment that the citizen already reviewed the
+  // auto-filled values — FR-AI-04's "the draft never reads 'ready' with
+  // unreviewed fills" must hold again after a restore, even though this
+  // very case had fillsReviewed=true the moment it was saved.
+  it(
+    'restores caseFacts (copied, not aliased) / appliedText / interpProvenance from the case, and resets ' +
+    'fillsReviewed to false (FR-AI-04) regardless of what the case itself carries',
+    () => {
+      const c = savedCase(PASSPORT_ANSWERS, {
+        id: 'c1', caseFacts: [FIXTURE_FACT], appliedText: 'they rejected my application',
+        interpProvenance: 'simulated (local matcher)',
+      })
+
+      const fragment = loadCase([c], 'c1')
+
+      expect(fragment!.caseFacts).toEqual([FIXTURE_FACT])
+      expect(fragment!.caseFacts).not.toBe(c.caseFacts) // copied, not aliased
+      expect(fragment!.appliedText).toBe('they rejected my application')
+      expect(fragment!.interpProvenance).toBe('simulated (local matcher)')
+      expect(fragment!.fillsReviewed).toBe(false)
+    },
+  )
+
+  it('restores an empty caseFacts / null appliedText / null interpProvenance for a case that never had an interpretation applied', () => {
+    const c = savedCase(PASSPORT_ANSWERS, { id: 'c1' })
+    expect(c.caseFacts).toEqual([]) // guards the fixture
+    expect(c.appliedText).toBeNull()
+    expect(c.interpProvenance).toBeNull()
+
+    const fragment = loadCase([c], 'c1')
+
+    expect(fragment!.caseFacts).toEqual([])
+    expect(fragment!.appliedText).toBeNull()
+    expect(fragment!.interpProvenance).toBeNull()
+  })
+
+  // Task 8, design note 3: the full round trip. A restored case with
+  // appliedText set and interpProvenance restored alongside it must NOT
+  // have that provenance silently erased by the next re-snapshot (D17's
+  // invariant) — proven here end to end through the real
+  // beginWorkingCheckin -> completeSave -> loadCase -> TOGGLE_PREP_STEP
+  // (via applyCheckinPatch's own sibling logic) pipeline, at the
+  // cases.ts function level (session.test.ts pins the same claim at the
+  // reducer level, RED item 26).
+  it('save -> restore -> tick a prepare step: appliedText/interpProvenance survive the restore AND the subsequent re-snapshot unchanged', () => {
+    const saved = savedCase(PASSPORT_ANSWERS, {
+      id: 'c1', caseFacts: [FIXTURE_FACT], appliedText: 'they rejected my application',
+      interpProvenance: 'simulated (local matcher)',
+    })
+
+    const restored = loadCase([saved], 'c1')!
+    expect(restored.appliedText).toBe('they rejected my application')
+    expect(restored.interpProvenance).toBe('simulated (local matcher)')
+
+    // Mirrors TOGGLE_PREP_STEP's own re-snapshot (session.ts): re-snapshot
+    // the case with the RESTORED caseFacts/appliedText/interpProvenance,
+    // exactly as the reducer arm passes s.caseFacts/s.appliedText/
+    // s.interpProvenance straight through, unchanged.
+    const d = diagnose(passportEngine, restored.answers)
+    const reSnap = caseSnapshot(
+      'passport', 'Passport', 'passport-nextmove', d, restored.answers, { 0: true },
+      restored.caseFacts, restored.appliedText, restored.interpProvenance,
+      NOW + 1000,
+    )
+    const updated: Casefile = { ...saved, ...reSnap, savedAt: saved.savedAt }
+
+    expect(updated.appliedText).toBe('they rejected my application')
+    expect(updated.interpProvenance).toBe('simulated (local matcher)')
   })
 })
 
@@ -374,7 +475,7 @@ describe('completeSave (design note 4)', () => {
     expect(workingSnap.stateLabel).not.toBe(existing.stateLabel) // premise: the label really did change
 
     const fragment = completeSave(
-      { savedCases: [existing], workingCase: working, answers: PASSPORT_ANSWERS_2, prepChecks: {} },
+      { savedCases: [existing], workingCase: working, answers: PASSPORT_ANSWERS_2, prepChecks: {}, caseFacts: [], appliedText: null, interpProvenance: null },
       PASSPORT_PAYLOAD,
     )
 
@@ -393,7 +494,7 @@ describe('completeSave (design note 4)', () => {
     const existing = savedCase(PASSPORT_ANSWERS, { id: 'c-existing' })
 
     const fragment = completeSave(
-      { savedCases: [existing], workingCase: null, answers: PASSPORT_ANSWERS, prepChecks: {} },
+      { savedCases: [existing], workingCase: null, answers: PASSPORT_ANSWERS, prepChecks: {}, caseFacts: [], appliedText: null, interpProvenance: null },
       { ...PASSPORT_PAYLOAD, now: NOW + 1000 },
     )
 
@@ -412,7 +513,7 @@ describe('completeSave (design note 4)', () => {
     }
 
     const fragment = completeSave(
-      { savedCases: [], workingCase: working, answers: PASSPORT_ANSWERS, prepChecks: {} },
+      { savedCases: [], workingCase: working, answers: PASSPORT_ANSWERS, prepChecks: {}, caseFacts: [], appliedText: null, interpProvenance: null },
       PASSPORT_PAYLOAD,
     )
 
@@ -427,7 +528,7 @@ describe('completeSave (design note 4)', () => {
     const clone = structuredClone(savedCases)
 
     completeSave(
-      { savedCases, workingCase: null, answers: PASSPORT_ANSWERS_2, prepChecks: {} },
+      { savedCases, workingCase: null, answers: PASSPORT_ANSWERS_2, prepChecks: {}, caseFacts: [], appliedText: null, interpProvenance: null },
       PASSPORT_PAYLOAD,
     )
 
@@ -439,7 +540,7 @@ describe('completeSave (design note 4)', () => {
   it('two still-open cases for different engines both survive a save on one (SIR-alongside-passport)', () => {
     const sirAnswers: AnswerRecord = { sirState: 'delhi', sirQ1: 'notice' }
     const sirD = diagnose(sirEngine, sirAnswers)
-    const sirSnap = caseSnapshot('sir', 'Voter roll (SIR)', 'sir-nextmove', sirD, sirAnswers, {}, NOW - 1000)
+    const sirSnap = caseSnapshot('sir', 'Voter roll (SIR)', 'sir-nextmove', sirD, sirAnswers, {}, [], null, null, NOW - 1000)
     const sirCase: Casefile = {
       ...sirSnap, id: 'c-sir', outcome: 'still_open', lastCheck: null, remindAt: null,
       log: [{ t: NOW - 1000, kind: 'diagnosed', text: sirSnap.stateLabel }],
@@ -447,7 +548,7 @@ describe('completeSave (design note 4)', () => {
     const passportExisting = savedCase(PASSPORT_ANSWERS, { id: 'c-passport' })
 
     const fragment = completeSave(
-      { savedCases: [sirCase, passportExisting], workingCase: null, answers: PASSPORT_ANSWERS_2, prepChecks: {} },
+      { savedCases: [sirCase, passportExisting], workingCase: null, answers: PASSPORT_ANSWERS_2, prepChecks: {}, caseFacts: [], appliedText: null, interpProvenance: null },
       PASSPORT_PAYLOAD,
     )
 
@@ -487,7 +588,7 @@ describe('Task 5 design note 1 — a superseded case is invisible to caseIsSaved
     const superseded = savedCase(PASSPORT_ANSWERS, { id: 'c-superseded', outcome: 'superseded' })
 
     const fragment = completeSave(
-      { savedCases: [superseded], workingCase: null, answers: PASSPORT_ANSWERS_2, prepChecks: {} },
+      { savedCases: [superseded], workingCase: null, answers: PASSPORT_ANSWERS_2, prepChecks: {}, caseFacts: [], appliedText: null, interpProvenance: null },
       PASSPORT_PAYLOAD,
     )
 
@@ -1087,7 +1188,7 @@ describe("The re-snapshot's actual purpose (design note 3) + D7 RED — savedAt 
     const updated = f2.savedCases!.find(x => x.id === 'c1')!
 
     const after = diagnose(passportEngine, f2.answers!)
-    const freshSnap = caseSnapshot('passport', 'Passport', 'passport-nextmove', after, f2.answers!, f2.prepChecks!, FAR_FUTURE)
+    const freshSnap = caseSnapshot('passport', 'Passport', 'passport-nextmove', after, f2.answers!, f2.prepChecks!, [], null, null, FAR_FUTURE)
     expect(updated.stateLabel).toBe(freshSnap.stateLabel)
     expect(updated.rec).toBe(freshSnap.rec)
     expect(updated.whatShort).toBe(freshSnap.whatShort)
@@ -1132,7 +1233,7 @@ describe('ciSnapshot does not leak across cases (Task 4 design note 5\'s third s
     expect(s1.ciSnapshot).not.toBeNull()
 
     const fragment = beginWorkingCheckin(
-      { savedCases: s1.savedCases, workingCase: null, answers: { q1: 'different', q2: 'different' }, prepChecks: {} },
+      { savedCases: s1.savedCases, workingCase: null, answers: { q1: 'different', q2: 'different' }, prepChecks: {}, caseFacts: [], appliedText: null, interpProvenance: null },
       PASSPORT_PAYLOAD,
     )
     assertBeginWorking(fragment)

@@ -1,10 +1,20 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { initialSession, sessionReducer as r, parsePendingGoogleSaveSnapshot, SCREEN_IDS } from './session'
 import type { SessionState, ActiveInterpretation } from './session'
 import type { Casefile } from '../domain/casefile'
 import type { CheckinOption } from '../domain/checkinOptions'
 import type { AppUser } from './auth'
 import type { GatedInterpretation, Fact } from '../domain/interpret'
+import { saveCases } from './caseStore'
+// Task 8, RED item 26 — the C3 regression, at the reducer level: stubbing
+// the CURRENT interpreter setting must have zero effect on a case's
+// already-recorded provenance.
+import { interpreterId } from './featureFlags'
+
+vi.mock('./featureFlags', async importOriginal => {
+  const actual = await importOriginal<typeof import('./featureFlags')>()
+  return { ...actual, interpreterId: vi.fn(actual.interpreterId) }
+})
 
 const seq = (...actions: Parameters<typeof r>[1][]) =>
   actions.reduce((s, a) => r(s, a), initialSession)
@@ -17,6 +27,7 @@ const FIXTURE_CASE: Casefile = {
   answers: { q1: 'adverse' }, prepChecks: {}, savedAt: 1_725_000_000_000,
   stateLabel: 'Escalate', rec: 'WAIT', whatShort: null,
   stepsTotal: 0, stepsDone: 0, sirPhaseId: null,
+  caseFacts: [], appliedText: null, interpProvenance: null,
   id: 'c1', outcome: 'still_open', lastCheck: null, remindAt: null, log: [],
 }
 const FIXTURE_OPTION: CheckinOption = { k: 'event', label: 'A BLO visited or contacted me' }
@@ -877,6 +888,39 @@ describe('CLOSE_UNRESOLVED / REOPEN_CASE / REMOVE_SAVED / SET_REMIND / TOGGLE_LO
     expect(s.removeConfirm).toBeNull()
   })
 
+  it(
+    'Task 8, design note 6: REMOVE_SAVED is real deletion — the trust paragraph C7 transcribed says "Remove ' +
+    'deletes a case for good"; free text and extracted facts are the most sensitive thing the case holds, so ' +
+    'this is where that sentence is checked. After removal, neither the resulting savedCases nor the localStorage ' +
+    'value a save effect would write from it contains the removed case\'s appliedText.',
+    () => {
+      localStorage.clear()
+      const sensitive: Casefile = {
+        ...CLOSABLE_CASE, id: 'c1',
+        appliedText: 'my Aadhaar number is 1234 5678 9012, please help',
+        interpProvenance: 'simulated (local matcher)',
+      }
+      const other: Casefile = { ...FIXTURE_CASE, id: 'other', appliedText: 'a different, unrelated case' }
+      const dirty: SessionState = {
+        ...initialSession, savedCases: [sensitive, other], activeCaseId: 'c1',
+        screen: 'checkin', history: ['home'], removeConfirm: 'c1',
+      }
+
+      const s = r(dirty, { type: 'REMOVE_SAVED', id: 'c1' })
+
+      expect(s.savedCases.some(c => c.appliedText === sensitive.appliedText)).toBe(false)
+
+      // The same write App.tsx's own persistence effect performs whenever
+      // savedCases changes (App.tsx:154, `saveCases(state.savedCases)`).
+      saveCases(s.savedCases)
+      const stored = localStorage.getItem('nm_cases')
+      expect(stored).not.toBeNull()
+      expect(stored).not.toContain(sensitive.appliedText)
+
+      localStorage.clear()
+    },
+  )
+
   it('SET_REMIND writes onto the WORKING case (D5) — a search-by-id over savedCases would have silently missed it', () => {
     const dirty: SessionState = {
       ...initialSession,
@@ -969,6 +1013,28 @@ describe('TOGGLE_PREP_STEP / SET_PREP_DRAFT — PrepareScreen\'s tick/draft stat
     expect(s.savedCases[0].stepsTotal).toBe(4)
     expect(s.savedCases[0].stepsDone).toBe(1)
   })
+
+  it(
+    'Task 8, RED item 26 — the C3 regression at the reducer level: applying a simulator interpretation, then ' +
+    'ticking a prepare step while interpreterId() is stubbed to say \'gemini\', leaves the saved case\'s ' +
+    'interpProvenance as the SIMULATOR\'S string — this is the exact false record the earlier design produced, ' +
+    'where ticking a checkbox re-stamped provenance from the current setting',
+    () => {
+      expect.assertions(1)
+      vi.mocked(interpreterId).mockReturnValueOnce('gemini')
+      const active: Casefile = {
+        ...FIXTURE_CASE, id: 'c1', engineKey: 'passport', outcome: 'still_open',
+        answers: { q1: 'no_contact' }, returnScreen: 'passport-nextmove', savedAt: NOW - 10_000,
+      }
+      const dirtyState: SessionState = {
+        ...initialSession, interp: FIXTURE_INTERP, savedCases: [active], activeCaseId: 'c1',
+        answers: { q1: 'no_contact' }, screen: 'passport-q1', history: ['home'],
+      }
+      const s1 = r(dirtyState, { type: 'APPLY_INTERPRETATION', now: NOW })
+      const s2 = r(s1, { type: 'TOGGLE_PREP_STEP', index: 0, now: NOW })
+      expect(s2.savedCases[0].interpProvenance).toBe(FIXTURE_INTERP.provenance)
+    },
+  )
 
   it('a MISMATCHED engine leaves the active case untouched — ticking a passport step must never overwrite a voter case', () => {
     const voterCase: Casefile = {
@@ -1893,10 +1959,18 @@ describe('APPLY_INTERPRETATION — Task 7: the one path from a proposal to an an
     'preserving the case\'s OWN returnScreen (the second precedent, applyCheckinPatch\'s, NOT TOGGLE_PREP_STEP\'s ' +
     's.screen-based one), pinning savedAt (D7), and re-snapshotting with prepChecks:{} per design note 2\'s own clear',
     () => {
+      // Task 8 (task brief, "the fifth site"): the active case starts with
+      // STALE facts/text/provenance — belonging to a PRIOR interpretation,
+      // never PASSPORT_INTERP's. The re-snapshot below must carry the NEW
+      // interpretation's values, not these.
+      const staleFact: Fact = {
+        kind: 'reference_number', refType: 'arn', label: 'ARN', value: 'ARN000STALE00000', fills: null,
+      }
       const active: Casefile = {
         ...FIXTURE_CASE, id: 'c1', engineKey: 'passport', outcome: 'still_open',
         answers: { q1: 'no_contact' }, returnScreen: 'passport-nextmove',
         prepChecks: { 0: true }, savedAt: NOW - 10_000,
+        caseFacts: [staleFact], appliedText: 'a stale, previously-applied text', interpProvenance: 'stale provenance',
       }
       const dirtyState: SessionState = {
         ...dirty(), savedCases: [active], activeCaseId: 'c1', answers: { q1: 'no_contact' },
@@ -1907,6 +1981,11 @@ describe('APPLY_INTERPRETATION — Task 7: the one path from a proposal to an an
       expect(s.savedCases[0].savedAt).toBe(NOW - 10_000) // D7: original savedAt survives
       expect(s.savedCases[0].prepChecks).toEqual({}) // re-snapshotted with {} per design note 2's clear
       expect(s.screen).toBe('passport-diagnosis') // the CITIZEN still navigates to the real destination
+      // The RESULTING case carries the NEW interpretation's facts/text/
+      // provenance — never the stale ones `active` started with.
+      expect(s.savedCases[0].caseFacts).toEqual(PASSPORT_INTERP.facts)
+      expect(s.savedCases[0].appliedText).toBe(PASSPORT_INTERP.text)
+      expect(s.savedCases[0].interpProvenance).toBe(PASSPORT_INTERP.provenance)
     },
   )
 

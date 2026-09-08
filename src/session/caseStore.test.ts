@@ -3,6 +3,14 @@ import type { Casefile } from '../domain/casefile'
 import { loadCases, saveCases, clearLocalCases } from './caseStore'
 import { diagnose } from '../domain/engine'
 import { voterEngine } from '../playbooks/engines'
+import type { Fact } from '../domain/interpret'
+
+// Task 8: a real Fact, so the round-trip test below exercises caseFacts as a
+// real payload, not an empty placeholder.
+const FIXTURE_FACT: Fact = {
+  kind: 'reference_number', refType: 'passport_file_no', label: 'File Number',
+  value: 'AB1234567890123', fills: '[File Number / ARN]',
+}
 
 function makeCasefile(overrides: Partial<Casefile> = {}): Casefile {
   return {
@@ -18,6 +26,12 @@ function makeCasefile(overrides: Partial<Casefile> = {}): Casefile {
     stepsTotal: 5,
     stepsDone: 1,
     sirPhaseId: null,
+    // Task 8: real, non-empty defaults, so a caller that never overrides
+    // them still exercises the localStorage round trip for real (RED item
+    // 31) rather than round-tripping an empty/null placeholder every time.
+    caseFacts: [FIXTURE_FACT],
+    appliedText: 'they rejected my application',
+    interpProvenance: 'simulated (local matcher)',
     id: 'c1700000000000',
     outcome: 'still_open',
     lastCheck: null,
@@ -38,6 +52,19 @@ describe('loadCases / saveCases', () => {
     const cases = [makeCasefile({ id: 'c1' }), makeCasefile({ id: 'c2', engineKey: 'voter' })]
     saveCases(cases)
     expect(loadCases()).toEqual(cases)
+  })
+
+  // Task 8, RED item 31: C7 scope exclusion 5 promised no migration for the
+  // localStorage path — the schema-free serialise/parse round trip carries
+  // caseFacts/appliedText/interpProvenance losslessly, same as C7's own
+  // maximal-fixture proof for the server row (caseSync.test.ts).
+  it('round-trips caseFacts / appliedText / interpProvenance losslessly', () => {
+    const c = makeCasefile({ id: 'c1' })
+    saveCases([c])
+    const loaded = loadCases()
+    expect(loaded[0].caseFacts).toEqual([FIXTURE_FACT])
+    expect(loaded[0].appliedText).toBe('they rejected my application')
+    expect(loaded[0].interpProvenance).toBe('simulated (local matcher)')
   })
 
   it('returns [] on empty storage', () => {
@@ -116,6 +143,14 @@ describe('nm_case -> nm_cases migration', () => {
     // value has neither. Normalized to `{}`, not left `undefined`.
     expect(cases[0].answers).toEqual({})
     expect(cases[0].prepChecks).toEqual({})
+    // Task 8, RED item 31 / design note 5: the legacy `nm_case` shape
+    // predates caseFacts/appliedText/interpProvenance entirely — migration
+    // must produce [] / null / null, never `undefined` (a Casefile with
+    // `undefined` where caseFacts is typed as an array crashes the first
+    // `.map` a prepare-screen render does over it).
+    expect(cases[0].caseFacts).toEqual([])
+    expect(cases[0].appliedText).toBeNull()
+    expect(cases[0].interpProvenance).toBeNull()
 
     nowSpy.mockRestore()
   })
