@@ -1221,10 +1221,20 @@ describe('C7 Task 8: the auth lifecycle', () => {
 
         await userEvent.click(screen.getByRole('button', { name: UI.saveControl.save }))
         expect(screen.getByRole('heading', { name: UI.saveCase.headline })).toBeInTheDocument()
+        // Fix round 1, Finding 1: a `.saved-card` DOM query here is vacuous
+        // — `.saved-card` is only ever emitted by CaseCard, which only
+        // Home mounts, and Home isn't mounted while `save-case` is (it's
+        // reached via `history`, not a nested render) — so the query
+        // returns null unconditionally, even against a mutant where
+        // BEGIN_SAVE's signed-out arm calls completeSave and writes the
+        // case. The real, discriminating check: while signed out, effect 1
+        // (App.tsx:146-149) mirrors `state.savedCases` into `nm_cases` on
+        // every render, so read THAT back instead of a DOM node the
+        // current screen can't produce either way.
         expect(
-          document.querySelector('.saved-card'),
+          JSON.parse(localStorage.getItem('nm_cases') ?? '[]'),
           'the signed-out detour must not touch savedCases — BEGIN_SAVE\'s own signed-out arm writes no case',
-        ).toBeNull()
+        ).toHaveLength(0)
 
         await userEvent.type(screen.getByLabelText(UI.saveCase.fieldLabelMobile), '9876543210')
         await userEvent.click(screen.getByRole('button', { name: UI.saveCase.send }))
@@ -1321,6 +1331,18 @@ describe('C7 Task 8: the auth lifecycle', () => {
         expect(dispatchedActions.current.filter(a => a.type === 'SET_PENDING_NAME')).toHaveLength(0)
         expect(screen.queryByRole('heading', { name: UI.saveOtp.headline })).toBeNull()
         expect(screen.queryByRole('heading', { name: UI.saveName.headline })).toBeNull()
+        // Fix round 1, Finding 2: `withSession({ app_metadata: { provider:
+        // 'google' } })` above was set up but never checked — without this,
+        // the test cannot tell "signed in via Google" apart from "any
+        // already-signed-in citizen taps Save" (a different flow per the
+        // brief). toAppUser (auth.ts:36-37) resolves `method` from
+        // `app_metadata.provider`; pin it here the same way the phone/user-B
+        // flows above already pin their own `method`/`id`.
+        expect(
+          dispatchedActions.current.some(
+            a => a.type === 'SIGNED_IN' && (a as unknown as { user: { method: string } }).user.method === 'google',
+          ),
+        ).toBe(true)
 
         await userEvent.click(screen.getByRole('button', { name: UI.saveDone.goHome }))
         expect(document.querySelectorAll('.saved-card')).toHaveLength(1)
