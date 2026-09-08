@@ -30,3 +30,210 @@
  *      pinning the gate's single call site), a wholly different mechanism. */
 declare const GATED: unique symbol
 export type GatedBrand = typeof GATED
+
+// ---------------------------------------------------------------------------
+// gateInterpretation — the MAPPING gate (branch, enum, span), plus the
+// unconditional call into Task 3's gateFacts (the verbatim-fact gate, the
+// numeric-cue gate, the Aadhaar refusal, the ambiguous-date rule). FR-AI-02
+// names six gates; all six are enforced from this module, three implemented
+// here and three implemented by gateFacts and called from here — never the
+// simulator's job, never optional (C1, D18).
+//
+// Honest framing, transcribed from the prototype's own comment
+// (2026-09-05, grill A2 — chunk 5): the CONFIRM SCREEN is the sole safety
+// gate. Every gate below is a real, cheap, in-code filter on any provider's
+// output — none of them a safety guarantee on its own.
+import type { AnswerRecord } from './types'
+import type { ServiceKey } from './casefile'
+import type { ChainEntry, GatedInterpretation, GatedMapping, RawInterpretation } from './interpret'
+import { gateFacts } from './interpretFacts'
+
+/** Transcribed verbatim, entry for entry, from
+ *  design/nextmove-v1-prototype.html:1903. Pinned at exactly 38 entries in
+ *  interpretGates.test.ts — a silently-shortened stopword list weakens the
+ *  span gate invisibly. */
+export const SPAN_STOPWORDS: ReadonlySet<string> = new Set([
+  'a', 'an', 'the', 'my', 'i', 'me', 'it', 'its', 'is', 'was', 'are', 'were',
+  'to', 'of', 'in', 'on', 'for', 'and', 'or', 'has', 'have', 'had', 'been',
+  'be', 'with', 'at', 'so', 'but', 'this', 'that', 'there', 'here', 'not',
+  'no', 'yes', 'do', 'did', 'does',
+])
+
+/** Transcribed from design/nextmove-v1-prototype.html 1904-1907, plus D3's
+ *  `minSpanTokens` parameter (the prototype hardcodes MIN_SPAN_TOKENS=1,
+ *  the simulator's own floor; production passes 3 here instead). An
+ *  all-stopword span proves nothing — the citizen's own words have to carry
+ *  some content beyond "it was the". Language-agnostic BY CONSTRUCTION:
+ *  SPAN_STOPWORDS is an English word list used only to REJECT an
+ *  all-stopword span, so non-English tokens are never penalised as
+ *  stopwords — the safe direction (scope exclusion 7). A token that strips
+ *  to nothing (e.g. punctuation, or a non-ASCII script with no digits)
+ *  simply doesn't count towards the length floor. */
+export function spanMeaningful(span: string, minSpanTokens: number): boolean {
+  const t = (span || '')
+    .toLowerCase()
+    .split(/\s+/)
+    .map(w => w.replace(/[^a-z0-9]/g, ''))
+    .filter(Boolean)
+  if (t.length < minSpanTokens) return false
+  return t.some(w => !SPAN_STOPWORDS.has(w))
+}
+
+/** Prototype's own `norm` (1910): whitespace-normalised AND lowercased —
+ *  the span gate is provenance display, not a value that gets pasted into a
+ *  letter, so case does not matter here. Contrast interpretFacts.ts's own
+ *  `normalizeWs`, which never lowercases, because a fact's `value` IS
+ *  pasted into a letter verbatim (see the fact-gate comment in
+ *  gateInterpretation below). */
+function normSpan(s: string): string {
+  return s.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+/** Resolves one chain entry's option-value set against the KNOWN
+ *  (confirmed) answers only — never the in-progress `mapped` set this gate
+ *  accumulates. This mirrors the prototype's own `opts()` closures
+ *  (1751-1774): every entry's `opts()` reads plain constants, and SIR's
+ *  reads `S.answers.sirState` straight off the global — which, at the
+ *  moment the gate loop runs (before any of THIS interpretation's own picks
+ *  are ever written back to state), is identical to `knownAnswers`.
+ *  `reachableIf` is different ON PURPOSE (prototype 1916): it explicitly
+ *  composes `{...known, ...mapped}` so a branch gate CAN see an earlier
+ *  pick from this same interpretation; `opts()` never does that in the
+ *  prototype, so this port doesn't either. */
+function resolveOptionValues(entry: ChainEntry, knownAnswers: AnswerRecord): readonly string[] {
+  return typeof entry.optionValues === 'function' ? entry.optionValues(knownAnswers) : entry.optionValues
+}
+
+/** Produces the only runtime values of type `GatedBrand` this codebase ever
+ *  makes. `GATED` (above) is declared, never defined — no JS is emitted for
+ *  it — so there is no way, even in this module, to hold a genuine value of
+ *  `typeof GATED`. This uses the exact `as unknown as GatedBrand` escape
+ *  hatch the brand's own doc comment names as the only way anyone could
+ *  ever produce one.
+ *
+ *  Deliberately NOT hoisted into a module-level `const` cast once and
+ *  reused: TypeScript's `unique symbol` types do not survive being routed
+ *  through an intermediate variable this way — `const X = Symbol() as
+ *  unknown as GatedBrand` type-checks at its OWN declaration, but widens
+ *  back to plain `symbol` the moment `X` is read anywhere else, and fails
+ *  `tsc -b` with "Type 'symbol' is not assignable to type 'unique symbol'"
+ *  at the READ site, not the declaration (verified directly against `tsc
+ *  --strict` in isolation before landing this). The cast has to be inline,
+ *  at the exact point of construction, every time — which is what this
+ *  function is for. Called exactly once per `gateInterpretation` call, so
+ *  every real `GatedInterpretation` this app ever returns is freshly
+ *  stamped, not shared from one constant. */
+function stampGated(): GatedBrand {
+  return Symbol('interpretGates.GATED') as unknown as GatedBrand
+}
+
+/** Ports gateInterpretation (design/nextmove-v1-prototype.html 1909-1928)
+ *  exactly, with three argument changes this codebase forces: the prototype
+ *  reads `S.answers` off the global (1912) and closes over `ctx.chain`;
+ *  this port is pure, so `knownAnswers` is injected (the same discipline
+ *  `caseSnapshot` and `migrateLocalCases` already follow) and `chain` is a
+ *  parameter. `engine` is new — `gateFacts` needs it (D18). `minSpanTokens`
+ *  is D3's per-provider floor (simulator 1, production 3). `provenance` is
+ *  D17's capture-time string, carried through rather than derived later.
+ *
+ *  This module owns the `__gated` brand (design note 1a, above) and is the
+ *  ONLY place a `GatedInterpretation` can be constructed.
+ *
+ *  THE GATE ORDER IS LOAD-BEARING AND IS THE PROTOTYPE'S OWN (1915-1925).
+ *  Per chain entry, in chain order: reach -> mapping lookup -> branch gate
+ *  -> enum gate -> span gate -> accept. Do not reorder this for
+ *  readability. The one named exception is D16 (see the comment at the
+ *  enum-gate step below) — a deliberate, already-decided timing deviation
+ *  that changes WHEN the (possibly-throwing) option-set lookup happens,
+ *  never the four gates' relative order and never any mapping's fate. */
+export function gateInterpretation(
+  chain: ChainEntry[],
+  engine: ServiceKey,
+  knownAnswers: AnswerRecord,
+  text: string,
+  raw: RawInterpretation,
+  minSpanTokens: number,
+  provenance: string,
+): GatedInterpretation {
+  const hay = normSpan(text)
+  const known = { ...knownAnswers }
+  const mapped: AnswerRecord = {}
+  const mappings: GatedMapping[] = []
+  const discarded: { questionId: string; reason: 'unreachable' }[] = []
+
+  for (const q of chain) {
+    // 1. reach — `mapped` accumulates as the loop runs (prototype 1916), so
+    //    a later branch gate in THIS SAME chain can see an earlier pick
+    //    from this same interpretation.
+    const reach = !q.reachableIf || q.reachableIf({ ...known, ...mapped })
+    // 2. mapping lookup — no mapping is not a discard: nothing was
+    //    proposed for this question at all (prototype 1917-1918).
+    const m = raw.mappings.find(x => x.questionId === q.questionId)
+    if (!m) continue
+    // 3. branch gate (prototype 1920) — checked BEFORE the enum and span
+    //    checks, so an unreachable mapping that is ALSO malformed still
+    //    records as discarded, matching the prototype and giving the
+    //    citizen the honest "we also read something about X but set it
+    //    aside" note (AC-AI-3).
+    if (!reach) {
+      discarded.push({ questionId: q.questionId, reason: 'unreachable' })
+      continue
+    }
+    // 4. enum gate (prototype 1921).
+    //
+    // D16 — one deliberate, already-decided micro-deviation from the
+    // prototype's own line order, recorded here because the Global
+    // Constraints say elsewhere that gate order matches the prototype
+    // exactly and this is the named exception. The prototype resolves
+    // `const opts = q.opts()` UNCONDITIONALLY, on the line above its
+    // reachability branch (1919, just above 1920) — for every chain entry
+    // that has a raw mapping, whether or not that mapping is about to be
+    // discarded. This port resolves the option set HERE instead: only for
+    // a mapping that has already survived the branch gate above. The
+    // reason is that this lookup CAN throw — SIR's option set resolves
+    // through `optionsForPhase` (sirConfig.ts:24-36), which genuinely
+    // throws for an unsupported state or a phase missing from its options
+    // map. Eagerly resolving it (matching the prototype's literal line
+    // order) for a question the branch gate is about to discard would
+    // convert a discarded mapping into a crashed interpretation and a
+    // permanently stuck `reading` flag (I2) — the flow never even reaches
+    // the confirm/unplaceable screen. Task 2's TOTAL `sirQ1OptionValues`
+    // (design note 5a) and Task 5's whole-body try/catch are the other two
+    // halves of this same fix; all three ship, and this is Task 4's part.
+    // The four gates' RELATIVE order is unchanged by this — no mapping's
+    // fate changes, only WHEN the (possibly-throwing) lookup happens.
+    const opts = resolveOptionValues(q, known)
+    if (!opts.includes(m.value)) continue // silent drop, NOT a discard — design note 2 step 4: telling the citizen the model proposed a value that doesn't exist would report a model defect as if it were about their text
+    // 5. span gate (prototype 1922) — provenance display plus a cheap
+    //    anti-fabrication tripwire: it proves the model quoted the user,
+    //    not that the quote supports the mapping (FR-AI-02). Silent drop.
+    if (!m.span || !hay.includes(normSpan(m.span)) || !spanMeaningful(m.span, minSpanTokens)) continue
+    // 6. accept.
+    mapped[q.questionId] = m.value
+    mappings.push({ questionId: q.questionId, value: m.value, span: m.span, optionValues: opts })
+  }
+
+  // The fact gate (Task 3's gateFacts) — called UNCONDITIONALLY, exactly
+  // once, for every provider (C1, D18); not the simulator's job to call and
+  // not optional. Note the asymmetry with the span gate above: the fact
+  // gate is CASE-SENSITIVE (interpretFacts.ts's own `normalizeWs` never
+  // lowercases) while the span gate above IS case-insensitive (`normSpan`
+  // lowercases). This is deliberate, not a bug: a span is prose matched
+  // only for PROVENANCE display, so 'Rejected' and 'rejected' are equally
+  // good evidence; a fact's `value` gets pasted VERBATIM into a government
+  // letter, where 'AB1234567' and 'ab1234567' are not interchangeable — a
+  // citizen's real file number has one specific case, and silently
+  // re-casing it (or accepting a differently-cased "match") would hand a
+  // wrong reference number to a government office.
+  const { facts, droppedSensitive } = gateFacts(engine, text, raw.facts)
+
+  return {
+    __gated: stampGated(),
+    mappings,
+    discarded,
+    facts,
+    droppedSensitive,
+    unplaceable: mappings.length === 0,
+    provenance,
+  }
+}
