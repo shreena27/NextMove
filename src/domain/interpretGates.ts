@@ -68,7 +68,24 @@ export const SPAN_STOPWORDS: ReadonlySet<string> = new Set([
  *  all-stopword span, so non-English tokens are never penalised as
  *  stopwords — the safe direction (scope exclusion 7). A token that strips
  *  to nothing (e.g. punctuation, or a non-ASCII script with no digits)
- *  simply doesn't count towards the length floor. */
+ *  simply doesn't count towards the length floor.
+ *
+ *  KNOWN LIMITATION, recorded here durably (Task 4 round-1 review, Important
+ *  finding 4) rather than left only in a review artifact: the `[^a-z0-9]`
+ *  strip above counts ONLY ASCII alphanumerics towards `minSpanTokens` — a
+ *  span made up entirely of non-Latin-script characters (pure Devanagari,
+ *  Tamil, Bengali, etc., as opposed to romanized Hinglish) strips to zero
+ *  surviving tokens and therefore fails the length floor regardless of
+ *  content, before the stopword check ever runs. At production's real
+ *  `minSpanTokens: 3`, natural non-Latin-script prose essentially never
+ *  contains three bare ASCII-alphanumeric tokens (a citizen would have to
+ *  quote three digits/Latin words in a row), so non-Latin-script input may
+ *  not be able to produce ANY confirmed mapping in production today. This
+ *  fails CLOSED — safe, not a fabrication risk — but it is a real,
+ *  currently-accepted product-level limitation, transcribed from the locked
+ *  prototype and not something this task is authorized to redesign. See
+ *  interpretGates.test.ts's Devanagari fixture for the pinned test evidence
+ *  behind this claim. */
 export function spanMeaningful(span: string, minSpanTokens: number): boolean {
   const t = (span || '')
     .toLowerCase()
@@ -111,20 +128,36 @@ function resolveOptionValues(entry: ChainEntry, knownAnswers: AnswerRecord): rea
  *  hatch the brand's own doc comment names as the only way anyone could
  *  ever produce one.
  *
- *  Deliberately NOT hoisted into a module-level `const` cast once and
- *  reused: TypeScript's `unique symbol` types do not survive being routed
- *  through an intermediate variable this way — `const X = Symbol() as
- *  unknown as GatedBrand` type-checks at its OWN declaration, but widens
- *  back to plain `symbol` the moment `X` is read anywhere else, and fails
- *  `tsc -b` with "Type 'symbol' is not assignable to type 'unique symbol'"
- *  at the READ site, not the declaration (verified directly against `tsc
- *  --strict` in isolation before landing this). The cast has to be inline,
- *  at the exact point of construction, every time — which is what this
- *  function is for. Called exactly once per `gateInterpretation` call, so
- *  every real `GatedInterpretation` this app ever returns is freshly
- *  stamped, not shared from one constant. */
+ *  The runtime value is a plain string literal cast — `'gated' as unknown
+ *  as GatedBrand` — deliberately NOT a fresh `Symbol()` (Task 4 round-1
+ *  review, Important finding 3). A `Symbol` was tried first: it type-checks
+ *  fine, but `structuredClone` throws `DataCloneError` on a `Symbol`
+ *  property value, and `JSON.stringify` silently drops it — which makes the
+ *  whole `GatedInterpretation` this function stamps non-cloneable and
+ *  non-serializable again, regressing the EXACT property Task 2's own
+ *  round-1 review fix deliberately established (see interpret.ts's
+ *  `GatedMapping` doc comment, and this module's own re-export note above:
+ *  "so `GatedInterpretation` is cloneable and serializable"). That
+ *  regression would surface later, far from its cause — on a session
+ *  snapshot or case-persistence path, not here.
+ *
+ *  The Symbol bought nothing at runtime: nothing in this codebase reads
+ *  `__gated` (it exists purely as a compile-time brand — see the module
+ *  header's guarantee #2), and a FRESH symbol per call could never support
+ *  a runtime identity check anyway. Unforgeability comes entirely from the
+ *  TYPE SYSTEM here — the `unique symbol` brand on `GatedBrand` itself,
+ *  nameable only inside this module's scope — never from the runtime value
+ *  being unguessable. A string literal is exactly as unforgeable as a
+ *  `Symbol()` for that purpose: producing a `GatedBrand` outside this
+ *  module still requires the identical `as unknown as GatedBrand` escape
+ *  hatch either way, loud and reviewable. `structuredClone(result)` not
+ *  throwing is pinned directly in interpretGates.test.ts, so the property
+ *  is verified, not merely assumed. Kept as a function (not hoisted to a
+ *  module-level constant) purely so every real `GatedInterpretation` is
+ *  produced through one call site, matching the brand's "only this module
+ *  constructs one" framing above. */
 function stampGated(): GatedBrand {
-  return Symbol('interpretGates.GATED') as unknown as GatedBrand
+  return 'gated' as unknown as GatedBrand
 }
 
 /** Ports gateInterpretation (design/nextmove-v1-prototype.html 1909-1928)
