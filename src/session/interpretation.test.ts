@@ -268,6 +268,28 @@ describe('runInterpretation — unknown entry screen', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Finding 3 (Task 5 review round 1): unreachable questions now produce
+// `discarded` entries the locked prototype never produced — a real,
+// user-visible, now-documented consequence of enforcing reachability at the
+// gate rather than in the simulator's own (request-boundary-crossing)
+// reachability skip. See the comment above `req.questions` in
+// `runInterpretation`, and the matching comment on `simulateInterpretation`
+// in `simInterpreter.ts`, for the full trace.
+
+describe("runInterpretation — Finding 3 pin: an unreachable follow-up question can surface as a 'discarded' entry", () => {
+  it("entry question q1 matches none of its own rules, but the text incidentally matches q2's formal_grievance rule; q2 is not yet reachable (q1 unanswered), so the simulator proposes it anyway (its own reachability skip is inert across the request boundary) and gateInterpretation's branch gate discards it after the fact — discarded: [{questionId:'q2', reason:'unreachable'}], where the locked prototype (which gated itself over the real chain, before the gate ever ran) produced discarded: []", async () => {
+    vi.stubEnv('VITE_DESCRIBE_IT', 'on')
+    const result = await runInterpretation('passport-q1', {}, 'I already filed a formal grievance about this matter.')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.interp.mappings).toEqual([])
+      expect(result.interp.discarded).toEqual([{ questionId: 'q2', reason: 'unreachable' }])
+      expect(result.interp.unplaceable).toBe(true)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
 // The request contract: scope exclusion 4
 
 describe('runInterpretation — the request handed to the provider (scope exclusion 4)', () => {

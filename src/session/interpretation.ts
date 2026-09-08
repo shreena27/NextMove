@@ -150,6 +150,39 @@ export async function runInterpretation(
     // Pre-filtering by reachability here would silently break smart skip
     // for every provider. `gateInterpretation` (called below) is the sole,
     // correct place reachability is enforced, for every provider alike.
+    //
+    // Side effect, real and user-visible, not a bug (Task 5 review round 1,
+    // Important finding 3): because a live `reachableIf` closure cannot
+    // cross this request boundary (scope exclusion 4), the simulator's OWN
+    // reachability skip (`simInterpreter.ts`'s `simulateInterpretation`)
+    // goes inert in the WIRED path below — `simProvider.interpret`
+    // reconstructs its working chain from `req.questions` alone, which never
+    // carries a `reachableIf` function, so nothing stops the simulator from
+    // proposing a mapping for a question that is not reachable yet.
+    // `gateInterpretation`'s branch gate (below) still correctly rejects
+    // that mapping — but rejecting a proposed mapping is not the same as
+    // never proposing it: the locked prototype's simulator gated ITSELF over
+    // the real chain (live `reachableIf` closures included), so an
+    // unreachable question's rules never even ran there, and its
+    // `discarded` list stayed empty for this exact shape of input.
+    // Concretely: `runInterpretation('passport-q1', {}, 'I already filed a
+    // formal grievance about this matter.')` now yields `discarded:
+    // [{ questionId: 'q2', reason: 'unreachable' }]`, where the prototype
+    // yielded `[]` — q1 matches none of its own rules, q2 is unreachable
+    // (q1 unanswered), but the text still incidentally matches q2's
+    // formal_grievance rule, so the simulator proposes it and the gate
+    // discards it after the fact. Nothing unsafe passes through either way
+    // (the mapping is rejected, `unplaceable` is still true) but Task 14
+    // renders `discarded` to the citizen, so the list itself is not
+    // cosmetic. DECIDED, not a defect to fix away: pinned by
+    // interpretation.test.ts's "Finding 3" test. Do not "fix" this by
+    // trying to smuggle `reachableIf` across the request boundary — the
+    // whole point of this comment's opening paragraph is that reachability
+    // is enforced structurally, in one place, for every provider; this is
+    // simply what enforcing it AFTER proposal (rather than before) looks
+    // like from the citizen's side. See `simInterpreter.ts`'s matching
+    // comment on `simulateInterpretation` for the provider-side half of
+    // this trace.
     const questions = describeChain.chain
       .filter(q => !knownAnswers[q.questionId])
       .map(q => ({

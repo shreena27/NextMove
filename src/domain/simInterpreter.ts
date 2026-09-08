@@ -100,7 +100,27 @@ const SIM_RULES: Record<string, SimRule[]> = {
  *  needs its own reachability skip to implement smart-skip correctly: q2
  *  only becomes reachable once q1 is resolved WITHIN this same call (the
  *  `mapped` accumulator below, escalating in chain order), which nothing
- *  outside this loop can know ahead of time. Both layers, both tested. */
+ *  outside this loop can know ahead of time. Both layers, both tested.
+ *
+ *  Production nuance (Task 5 review round 1, Important finding 3): "genuinely
+ *  redundant" two sentences up is only true when this function runs with a
+ *  REAL chain carrying live `reachableIf` closures — exactly how this file's
+ *  own unit tests call it. In the WIRED production path (`simProvider`,
+ *  below), the chain this function actually receives is reconstructed from
+ *  `InterpretationRequest.questions` — question id and resolved option
+ *  values only, no `reachableIf`, because a live function cannot cross that
+ *  request boundary (scope exclusion 4). So THIS function's own
+ *  reachability skip goes inert there: an unreachable question's rules
+ *  still run, and a wrong-timing mapping can still get proposed.
+ *  `gateInterpretation`'s branch gate is what actually stops it in
+ *  production — but stopping an already-proposed mapping is observably
+ *  different from never proposing it: the mapping now surfaces as a
+ *  `discarded` entry the locked prototype's own self-gating simulator never
+ *  produced for this shape of input, because there the reachability skip ran
+ *  over the real chain before the gate ever saw anything. This is a decided
+ *  consequence of the split, not a defect — see `session/interpretation.ts`'s
+ *  matching comment for the full trace, the worked example, and the pinning
+ *  test in `interpretation.test.ts`. */
 export function simulateInterpretation(
   chain: readonly ChainEntry[],
   knownAnswers: AnswerRecord,

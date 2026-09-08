@@ -81,9 +81,9 @@ describe('simulateInterpretation — SIM_RULES rule-table fidelity (prototype 17
 })
 
 describe('simulateInterpretation — rule ORDER is load-bearing (prototype comment: "rules are ordered so more specific readings beat generic ones")', () => {
-  it("'I filed a formal grievance after calling them' maps q2 to 'formal_grievance', not 'informal' — first-match-wins with the more specific rule first. If a future edit reorders SIM_RULES.q2 (or widens the informal rule to also catch grievance-shaped text), this is the test that catches it", () => {
+  it("'I filed a formal grievance after I called them' maps q2 to 'formal_grievance', not 'informal' — BOTH rules genuinely match this text (formal_grievance on 'grievance', informal on 'called', independently verified: /\\b(called|phoned|rang|visited|emailed|wrote to)\\b/i.test('I filed a formal grievance after I called them') is true), so first-match-wins with the more specific rule first is what decides the outcome. If a future edit reorders SIM_RULES.q2 (or widens the informal rule to also catch grievance-shaped text), this is the test that catches it — unlike the earlier fixture 'I filed a formal grievance after calling them', where 'calling' never matches \\binformal\\b at all (word-boundary blocks the 'call-' prefix), so that fixture passed regardless of rule order and proved nothing", () => {
     const chain: ChainEntry[] = [{ questionId: 'q2', optionValues: ['formal_grievance', 'informal', 'no_followup'] }]
-    const result = simulateInterpretation(chain, {}, 'I filed a formal grievance after calling them')
+    const result = simulateInterpretation(chain, {}, 'I filed a formal grievance after I called them')
     expect(result.mappings).toEqual([{ questionId: 'q2', value: 'formal_grievance', span: 'grievance' }])
   })
 })
@@ -165,13 +165,35 @@ describe('simulateInterpretation — returns facts: [] always (design note 2a, D
 })
 
 // ---------------------------------------------------------------------------
-// Fact parity (design note 2a): the strongest available proof of C1's fix —
-// a full runInterpretation() run's gated facts must deep-equal
-// extractFacts() called directly on the same story. If the simulator ever
-// secretly extracted its own facts, this is the test that would catch it:
-// gateFacts's baseline (seeded from extractFactsInternal) would then be
-// double-counting or diverging from a provider-supplied fact stream, and the
-// deep-equal below would fail.
+// Fact parity (design note 2a): what this test actually proves is citizen-
+// visible fact IDENTITY across providers — a full runInterpretation() run's
+// gated facts deep-equal extractFacts() called directly on the same story,
+// so the citizen sees the same facts no matter which interpreter ran (the
+// rules are provider-agnostic, not simulator-specific).
+//
+// What it does NOT prove, verified empirically (Task 5 report, "Extra
+// empirical verification" section) rather than assumed: that the simulator
+// ships zero fact logic of its own. gateFacts's exact-duplicate check
+// (interpretFacts.ts, `facts.some(f => f.value === value)`) silently absorbs
+// a provider fact that redundantly re-derives a value the gate's own
+// baseline (extractFactsInternal) already finds on its own — so a simulator
+// that "cheats" by calling extractFacts and reporting the SAME values the
+// gate would have found anyway produces an end-to-end result
+// indistinguishable from an honest facts: [] simulator. This parity test
+// would NOT catch that regression; it was run for real (simProvider.interpret
+// temporarily wired to call extractFacts and pass its facts through) and the
+// parity assertion below still passed.
+//
+// The "ships zero fact logic" discipline is enforced elsewhere, by tests
+// dedup cannot mask: the direct `facts: []` assertions in THIS file
+// ("returns facts: [] always" above, and "simProvider.interpret() itself...
+// still returns facts: []" in this same describe block, below) and the C1
+// orchestrator-level pin in interpretation.test.ts (a fake, non-simulator
+// provider reports a raw fact and it is asserted to survive gating
+// identically). Do not delete those as "duplicative" of this parity test —
+// dedup is exactly why they are not duplicative: under the cheating
+// mutation above, this parity test stayed green while those direct tests
+// failed immediately.
 
 describe('simulateInterpretation / runInterpretation — fact parity: the citizen sees identical facts whichever interpreter ran (design note 2a, C1 proof)', () => {
   const STORY =
