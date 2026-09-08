@@ -153,6 +153,40 @@ describe('caseToRow / rowToCase', () => {
     expect(back.interpProvenance).toBe(c.interpProvenance)
   })
 
+  // Fix round 1, Finding 4: C7 (auth + this table) is already deployed to
+  // production, so a real server row's `data` column can genuinely predate
+  // Task 8's three new fields. Before this fix, `rowToCase` did a blind
+  // `return row.data` with no per-record normalization, so a row like this
+  // reached `loadCaseFragment`'s own `c.caseFacts.slice()`
+  // (session/cases.ts) as `undefined` and crashed the first time the case
+  // was opened — the same crash mechanism `caseStore.ts`'s own
+  // `migrateLegacyCase` fix documents for the OLDER single-case localStorage
+  // format.
+  it(
+    'a server row from before Task 8 shipped, missing caseFacts/appliedText/interpProvenance entirely, ' +
+    'loads without crashing and normalizes to []/null/null',
+    () => {
+      const full = makeCasefile({ id: 'c1' })
+      const { caseFacts: _caseFacts, appliedText: _appliedText, interpProvenance: _interpProvenance, ...legacyShaped } = full
+      const row: CasefileRow = {
+        user_id: SESSION_USER_ID, id: full.id, engine_key: full.engineKey, outcome: full.outcome,
+        data: legacyShaped as unknown as Casefile, // deliberately missing the three fields — see comment above
+        updated_at: new Date().toISOString(),
+      }
+      expect('caseFacts' in row.data).toBe(false) // guards the premise
+
+      let loaded: Casefile | undefined
+      expect(() => { loaded = rowToCase(row) }).not.toThrow()
+
+      expect(loaded!.caseFacts).toEqual([])
+      expect(loaded!.appliedText).toBeNull()
+      expect(loaded!.interpProvenance).toBeNull()
+      // everything else on the legacy row survives untouched
+      expect(loaded!.id).toBe('c1')
+      expect(loaded!.answers).toEqual(full.answers)
+    },
+  )
+
   it('strips unsaved: a row whose data carries unsaved still round-trips without it', () => {
     const c = makeCasefile({ id: 'working-turned-saved', unsaved: true })
     const row = caseToRow(SESSION_USER_ID, c)

@@ -1021,7 +1021,15 @@ describe('TOGGLE_PREP_STEP / SET_PREP_DRAFT — PrepareScreen\'s tick/draft stat
     'where ticking a checkbox re-stamped provenance from the current setting',
     () => {
       expect.assertions(1)
-      vi.mocked(interpreterId).mockReturnValueOnce('gemini')
+      // Fix round 1, Finding 1: `mockReturnValueOnce` is consumed by the
+      // FIRST `caseSnapshot`-adjacent call this test triggers — the
+      // `APPLY_INTERPRETATION` dispatch below re-snapshots the case too (the
+      // fifth call site, session.ts), so by the time `TOGGLE_PREP_STEP` runs
+      // `interpreterId()` has already fallen back to its real
+      // implementation and the stub is disarmed. `mockReturnValue` (no
+      // `Once`) keeps it armed for both calls, so this test actually
+      // exercises the `TOGGLE_PREP_STEP` call site it claims to.
+      vi.mocked(interpreterId).mockReturnValue('gemini')
       const active: Casefile = {
         ...FIXTURE_CASE, id: 'c1', engineKey: 'passport', outcome: 'still_open',
         answers: { q1: 'no_contact' }, returnScreen: 'passport-nextmove', savedAt: NOW - 10_000,

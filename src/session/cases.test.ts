@@ -18,6 +18,14 @@ import {
   routeAfterApply,
 } from './cases'
 import type { OpenCheckinFragment, BeginWorkingFragment, CiSnapshot } from './cases'
+// Fix round 1, Finding 3: the design-note-3 round trip below needs the REAL
+// reducer, not a hand-called caseSnapshot standing in for TOGGLE_PREP_STEP —
+// same directory, same module session.ts already imports THIS file from, so
+// no layering concern (unlike a `domain/` file reaching into `session/`,
+// which casefile.test.ts's own comment flags as a deliberate exception).
+import { sessionReducer, initialSession } from './session'
+import type { SessionState } from './session'
+import type { AppUser } from './auth'
 
 const NOW = 1_725_000_000_000
 
@@ -37,6 +45,11 @@ const FIXTURE_FACT: Fact = {
   kind: 'reference_number', refType: 'passport_file_no', label: 'File Number',
   value: 'AB1234567890123', fills: '[File Number / ARN]',
 }
+
+// Fix round 1, Finding 3 fixture: every field AppUser declares (session/
+// auth.ts), nothing invented beyond it — same values as session.test.ts's
+// own FIXTURE_USER (not imported: that one is module-private there).
+const FIXTURE_USER: AppUser = { method: 'phone', id: '+919876543210', name: 'Ananya' }
 
 function passportSnap(
   answers: AnswerRecord,
@@ -262,6 +275,33 @@ describe('beginWorkingCheckin (design note 3)', () => {
     expect(fragment.ciJustUpdated).toBe(false)
     expect(fragment.ciSnapshot).toBeNull()
   })
+
+  // Fix round 1, Finding 2: same gap as completeSave's own new test above,
+  // at this call site — a mutation swapping the three real arguments here
+  // for `[], null, null` left the full suite green. Exercises the
+  // create/replace branch (the only one that calls caseSnapshot; the
+  // "reuse an existing saved case" branch above resolves through
+  // openCheckinFragment instead and never calls it).
+  it(
+    'threads the session\'s real caseFacts/appliedText/interpProvenance through to a freshly created working case, ' +
+    'copied by value (not aliased)',
+    () => {
+      const caseFacts = [FIXTURE_FACT]
+      const fragment = beginWorkingCheckin(
+        {
+          ...BASE, answers: { ...PASSPORT_ANSWERS },
+          caseFacts, appliedText: 'they rejected my application', interpProvenance: 'simulated (local matcher)',
+        },
+        PASSPORT_PAYLOAD,
+      )
+      assertBeginWorking(fragment)
+
+      expect(fragment.workingCase.caseFacts).toEqual(caseFacts)
+      expect(fragment.workingCase.caseFacts).not.toBe(caseFacts) // copied, not aliased
+      expect(fragment.workingCase.appliedText).toBe('they rejected my application')
+      expect(fragment.workingCase.interpProvenance).toBe('simulated (local matcher)')
+    },
+  )
 })
 
 describe('loadCase (design note 6)', () => {
@@ -322,39 +362,66 @@ describe('loadCase (design note 6)', () => {
     expect(fragment!.interpProvenance).toBeNull()
   })
 
-  // Task 8, design note 3: the full round trip. A restored case with
-  // appliedText set and interpProvenance restored alongside it must NOT
-  // have that provenance silently erased by the next re-snapshot (D17's
-  // invariant) — proven here end to end through the real
-  // beginWorkingCheckin -> completeSave -> loadCase -> TOGGLE_PREP_STEP
-  // (via applyCheckinPatch's own sibling logic) pipeline, at the
-  // cases.ts function level (session.test.ts pins the same claim at the
-  // reducer level, RED item 26).
-  it('save -> restore -> tick a prepare step: appliedText/interpProvenance survive the restore AND the subsequent re-snapshot unchanged', () => {
-    const saved = savedCase(PASSPORT_ANSWERS, {
-      id: 'c1', caseFacts: [FIXTURE_FACT], appliedText: 'they rejected my application',
-      interpProvenance: 'simulated (local matcher)',
-    })
+  // Task 8, design note 3 / Fix round 1, Finding 3: the full round trip. A
+  // restored case with appliedText set and interpProvenance restored
+  // alongside it must NOT have that provenance silently erased by the next
+  // re-snapshot (D17's invariant) — proven here end to end through the REAL
+  // reducer: BEGIN_SAVE (-> completeSave) -> OPEN_CHECKIN (-> loadCase) ->
+  // NAVIGATE -> TOGGLE_PREP_STEP.
+  //
+  // The previous version of this test hand-called caseSnapshot() directly
+  // with the restored values, spreading its own output back onto itself —
+  // its "and the subsequent re-snapshot unchanged" half was a tautology (it
+  // asserted caseSnapshot returns what the test itself just passed in), and
+  // it never started from a real save either. This version dispatches every
+  // step for real, so it exercises the SAME reducer arms a citizen's actual
+  // save -> reopen -> tick click sequence does — including OPEN_CHECKIN's
+  // own loadCaseFragment restore, which the old version bypassed entirely.
+  // (session.test.ts's RED item 26 pins a DIFFERENT reducer-level claim:
+  // TOGGLE_PREP_STEP re-snapshotting an already-active case correctly,
+  // never touching save or restore at all.)
+  it(
+    'BEGIN_SAVE -> OPEN_CHECKIN -> NAVIGATE -> TOGGLE_PREP_STEP, dispatched through the real reducer: ' +
+    'caseFacts/appliedText/interpProvenance survive the restore AND the subsequent re-snapshot unchanged',
+    () => {
+      const dirty: SessionState = {
+        ...initialSession,
+        user: FIXTURE_USER,
+        answers: { ...PASSPORT_ANSWERS }, // state-5a — a real prep plan (casefile.test.ts's own guarded premise)
+        caseFacts: [FIXTURE_FACT],
+        appliedText: 'they rejected my application',
+        interpProvenance: 'simulated (local matcher)',
+      }
 
-    const restored = loadCase([saved], 'c1')!
-    expect(restored.appliedText).toBe('they rejected my application')
-    expect(restored.interpProvenance).toBe('simulated (local matcher)')
+      const afterSave = sessionReducer(dirty, {
+        type: 'BEGIN_SAVE',
+        engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+        now: NOW, newId: 'c1',
+      })
+      expect(afterSave.screen).toBe('save-done') // guards the premise: this really did save, not detour to sign-in
+      expect(afterSave.savedCases).toHaveLength(1)
+      expect(afterSave.savedCases[0].appliedText).toBe('they rejected my application')
+      expect(afterSave.savedCases[0].interpProvenance).toBe('simulated (local matcher)')
 
-    // Mirrors TOGGLE_PREP_STEP's own re-snapshot (session.ts): re-snapshot
-    // the case with the RESTORED caseFacts/appliedText/interpProvenance,
-    // exactly as the reducer arm passes s.caseFacts/s.appliedText/
-    // s.interpProvenance straight through, unchanged.
-    const d = diagnose(passportEngine, restored.answers)
-    const reSnap = caseSnapshot(
-      'passport', 'Passport', 'passport-nextmove', d, restored.answers, { 0: true },
-      restored.caseFacts, restored.appliedText, restored.interpProvenance,
-      NOW + 1000,
-    )
-    const updated: Casefile = { ...saved, ...reSnap, savedAt: saved.savedAt }
+      const afterRestore = sessionReducer(afterSave, { type: 'OPEN_CHECKIN', id: 'c1' })
+      expect(afterRestore.screen).toBe('checkin') // guards the premise: this really did restore
+      expect(afterRestore.caseFacts).toEqual([FIXTURE_FACT])
+      expect(afterRestore.appliedText).toBe('they rejected my application')
+      expect(afterRestore.interpProvenance).toBe('simulated (local matcher)')
 
-    expect(updated.appliedText).toBe('they rejected my application')
-    expect(updated.interpProvenance).toBe('simulated (local matcher)')
-  })
+      // A real citizen lands on 'checkin', then taps through to the
+      // prepare screen — TOGGLE_PREP_STEP's own engine guard
+      // (`s.screen.split('-')[0]`) requires an engine-prefixed screen id,
+      // not 'checkin' itself (session.ts's own TOGGLE_PREP_STEP comment).
+      const onPrepare = sessionReducer(afterRestore, { type: 'NAVIGATE', screen: 'passport-prepare' })
+      const afterTick = sessionReducer(onPrepare, { type: 'TOGGLE_PREP_STEP', index: 0, now: NOW + 60_000 })
+
+      expect(afterTick.savedCases[0].stepsDone).toBe(1) // guards the premise: the tick really landed
+      expect(afterTick.savedCases[0].caseFacts).toEqual([FIXTURE_FACT])
+      expect(afterTick.savedCases[0].appliedText).toBe('they rejected my application')
+      expect(afterTick.savedCases[0].interpProvenance).toBe('simulated (local matcher)')
+    },
+  )
 })
 
 describe('loadCase — SIR phase drift (Task 13, design note 1; deviation D4)', () => {
@@ -456,6 +523,34 @@ describe('completeSave (design note 4)', () => {
     expect(fragment1.savedCases[0].id).toBe('id-a')
     expect(fragment2.savedCases[0].id).toBe('id-b')
   })
+
+  // Fix round 1, Finding 2: the compiler enforces that SOME value reaches
+  // caseSnapshot for caseFacts/appliedText/interpProvenance at this call
+  // site, but nothing previously pinned that the RIGHT value does — a
+  // reviewer's mutation swapping the three real arguments here for
+  // `[], null, null` left the full suite green. This is the first-save
+  // path (a citizen saving a case for the first time), the most
+  // consequential of the three untested sites per the reviewer's own
+  // triage.
+  it(
+    'threads the session\'s real caseFacts/appliedText/interpProvenance through to a newly created case, copied ' +
+    'by value (not aliased) — the first-save path',
+    () => {
+      const caseFacts = [FIXTURE_FACT]
+      const fragment = completeSave(
+        {
+          ...BASE, answers: { ...PASSPORT_ANSWERS },
+          caseFacts, appliedText: 'they rejected my application', interpProvenance: 'simulated (local matcher)',
+        },
+        PASSPORT_PAYLOAD,
+      )
+
+      expect(fragment.savedCases[0].caseFacts).toEqual(caseFacts)
+      expect(fragment.savedCases[0].caseFacts).not.toBe(caseFacts) // copied, not aliased
+      expect(fragment.savedCases[0].appliedText).toBe('they rejected my application')
+      expect(fragment.savedCases[0].interpProvenance).toBe('simulated (local matcher)')
+    },
+  )
 
   it('with an existing still-open case of the same engine, updates in place — length unchanged, id unchanged, log = existing + working non-diagnosed + diagnosed-if-changed, in order', () => {
     const existing = savedCase(PASSPORT_ANSWERS, { id: 'c-existing' })
@@ -715,6 +810,38 @@ describe('passport walk: state-1 -> state-2 (design notes 3-5)', () => {
       { t: NOW + 2000, kind: 'diagnosed', text: after.label },
     ])
   })
+
+  // Fix round 1, Finding 2: the third of three caseSnapshot call sites with
+  // no value-level test — same gap, same mutation-tested claim (swapping
+  // the real arguments for [], null, null at applyCheckinPatch's own
+  // caseSnapshot call left the full suite green). Reuses this describe
+  // block's own real state-1 -> state-2 walk (same event, same options)
+  // so the only thing under test is whether caseFacts/appliedText/
+  // interpProvenance survive applyCheckinPatch's re-snapshot — everything
+  // else about this walk is already pinned by the test above.
+  it(
+    'applyCheckinPatch threads the case\'s real caseFacts/appliedText/interpProvenance through its own ' +
+    're-snapshot, copied by value (not aliased)',
+    () => {
+      const answers: AnswerRecord = { q1: 'no_contact', q2: 'no_followup' }
+      const d0 = diagnose(passportEngine, answers)
+      const caseFacts = [FIXTURE_FACT]
+      const c = caseFor('passport', passportEngine, 'Passport', 'passport-nextmove', answers, {
+        caseFacts, appliedText: 'they rejected my application', interpProvenance: 'simulated (local matcher)',
+      })
+
+      const s0 = sessionFor(c)
+      const idx = optIndex(d0, {}, 'passport', 'Police contacted or visited me')
+      const s1 = { ...s0, ...ciChoose(s0, { index: idx, now: NOW + 1000 })! }
+      const f2 = ciConfirm(s1, NOW + 2000)!
+
+      const updatedCase = f2.savedCases![0]
+      expect(updatedCase.caseFacts).toEqual(caseFacts)
+      expect(updatedCase.caseFacts).not.toBe(c.caseFacts) // copied, not aliased
+      expect(updatedCase.appliedText).toBe('they rejected my application')
+      expect(updatedCase.interpProvenance).toBe('simulated (local matcher)')
+    },
+  )
 })
 
 describe('passport action attestation + ladder: state-5a -> state-5b-p -> state-5b -> state-dpg-p -> dead-end', () => {

@@ -10,7 +10,7 @@ import type { Casefile } from '../domain/casefile'
 import { LOG_COPY } from '../domain/casefile'
 import { appendLog } from './cases'
 import { getClient } from './supabase'
-import { loadCases, clearLocalCases } from './caseStore'
+import { loadCases, clearLocalCases, normalizeCaseRecord } from './caseStore'
 
 // =============================================================================
 // The row shape <-> Casefile adapter pair (design note 1)
@@ -48,10 +48,23 @@ export function caseToRow(userId: string, c: Casefile): CasefileRow {
   }
 }
 
-/** The inverse of `caseToRow`. `data` is already the full, lossless
- *  client record — nothing is reassembled from the promoted columns. */
+/** The inverse of `caseToRow`. `data` is already the full, lossless client
+ *  record — nothing is reassembled from the promoted columns.
+ *
+ *  FIX WAVE (2026-09-08, Task 8 fix round 1, Finding 4): normalizes
+ *  `caseFacts`/`appliedText`/`interpProvenance` via `caseStore.ts`'s own
+ *  `normalizeCaseRecord` — the SAME fallback function `loadCases()` uses for
+ *  its localStorage records, reused here rather than a second, driftable
+ *  copy of the same three defaults. `row.data`'s type claims a full
+ *  `Casefile`, but that is the CLIENT's own promise, not a server-enforced
+ *  one: `data` is an opaque JSONB column (see `CasefileRow`'s own comment),
+ *  and a server row written before Task 8 shipped can genuinely lack these
+ *  three fields — a `Casefile` with `undefined` where `caseFacts` is typed
+ *  as an array crashes the first `.slice()`/`.map()` a restore does over it,
+ *  the same crash mechanism `caseStore.ts`'s own `migrateLegacyCase` fix
+ *  documents for the OLDER single-case localStorage format. */
 export function rowToCase(row: CasefileRow): Casefile {
-  return row.data
+  return normalizeCaseRecord(row.data)
 }
 
 // =============================================================================

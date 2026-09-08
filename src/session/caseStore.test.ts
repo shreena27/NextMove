@@ -67,6 +67,39 @@ describe('loadCases / saveCases', () => {
     expect(loaded[0].interpProvenance).toBe('simulated (local matcher)')
   })
 
+  // Fix round 1, Finding 4: C7 (auth) is already deployed to production, so
+  // a real citizen's `nm_cases` entry can genuinely predate Task 8's three
+  // new fields — this is not a hypothetical shape. Before this fix,
+  // `loadCases()` did a blind `raw as Casefile[]` cast with no per-record
+  // normalization, so a record like this reached `loadCaseFragment`'s own
+  // `c.caseFacts.slice()` (session/cases.ts) as `undefined` and crashed the
+  // first time the case was opened — the same crash mechanism this file's
+  // own `migrateLegacyCase` fix (above) already closed for `answers`/
+  // `prepChecks` on the OLDER single-case format.
+  it(
+    'a legacy nm_cases entry from before Task 8 shipped, missing caseFacts/appliedText/interpProvenance ' +
+    'entirely, loads without crashing and normalizes to []/null/null',
+    () => {
+      const full = makeCasefile({ id: 'c1' })
+      const { caseFacts: _caseFacts, appliedText: _appliedText, interpProvenance: _interpProvenance, ...legacyShaped } = full
+      localStorage.setItem('nm_cases', JSON.stringify([legacyShaped]))
+      // guards the premise: the stored value really is missing the keys,
+      // not merely holding them as null
+      expect('caseFacts' in JSON.parse(localStorage.getItem('nm_cases')!)[0]).toBe(false)
+
+      let loaded: Casefile[] | undefined
+      expect(() => { loaded = loadCases() }).not.toThrow()
+
+      expect(loaded).toHaveLength(1)
+      expect(loaded![0].caseFacts).toEqual([])
+      expect(loaded![0].appliedText).toBeNull()
+      expect(loaded![0].interpProvenance).toBeNull()
+      // everything else on the legacy record survives untouched
+      expect(loaded![0].id).toBe('c1')
+      expect(loaded![0].answers).toEqual(full.answers)
+    },
+  )
+
   it('returns [] on empty storage', () => {
     expect(loadCases()).toEqual([])
   })
