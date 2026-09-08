@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { TOKENS, STATUS_FILLS, NON_STATUS_TOKENS } from './tokens'
 import { deltaE2000, contrastRatio } from './color'
+import { UI } from '../screens/screenCopy'
 
 // Derive the path via node:path, NOT `new URL('../index.css', import.meta.url)`.
 // Vite statically rewrites that literal form into an asset-import URL, which
@@ -152,6 +153,29 @@ describe('contrast (PRD §16 — verified at the token level before building)', 
     const ratio = contrastRatio(TOKENS[fg as keyof typeof TOKENS], TOKENS[bg as keyof typeof TOKENS])
     expect(ratio, `${fg} on ${bg}`).toBeGreaterThanOrEqual(min as number)
   })
+
+  // Task 9 (C8) design note 5: five more rendered text/background pairs in
+  // the newly lifted describe-it CSS get the same genuine CHECK, not an
+  // assumption — even though every one of them reduces to a token pair
+  // already pinned above (ink-faint/card at 4.5:1, ink-soft/card at 7:1,
+  // both well clear of the 4.5:1 floor small text needs). "Should be fine
+  // because the token-level test already covers it" is exactly the
+  // reasoning design note 5 says not to trust silently, so each selector
+  // gets its own named assertion. `.span-quote::before` inherits its parent
+  // `.span-quote`'s 12.5px (no font-size of its own) and carries the
+  // "you wrote: " label text in `--ink-faint`, not `--ink-soft` — a
+  // different pair from its own parent rule, so it is checked separately.
+  it.each([
+    ['.lang-note', '12px', 'ink-faint', 'card', 4.5],
+    ['.char-count', '10.5px', 'ink-faint', 'card', 4.5],
+    ['.read-q', '10.5px', 'ink-faint', 'card', 4.5],
+    ['.fchip .fk', '10px', 'ink-faint', 'card', 4.5],
+    ['.span-quote', '12.5px', 'ink-soft', 'card', 4.5],
+    ['.span-quote::before', '12.5px', 'ink-faint', 'card', 4.5],
+  ])('%s (%s, %s on %s) clears %s:1', (_selector, _size, fg, bg, min) => {
+    const ratio = contrastRatio(TOKENS[fg as keyof typeof TOKENS], TOKENS[bg as keyof typeof TOKENS])
+    expect(ratio, `${fg} on ${bg}`).toBeGreaterThanOrEqual(min as number)
+  })
 })
 
 describe('the stylesheet is the lifted prototype and nothing else', () => {
@@ -233,20 +257,26 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
     }
   })
 
-  it("does NOT ship C8's describe-it CSS", () => {
+  it("lifts C8's describe-it CSS (prototype 884-994, minus 939-944 already lifted as .read-change)", () => {
     // 662-743 (.auth-*, .btn-google, .otp-input, .acct-*, .demo-hint) used
     // to sit physically BETWEEN this task's 651-661 and 744-878 ranges and
     // was skipped rather than swallowed into one contiguous append (the
-    // same kind of interleaved-range hazard C4 had to handle) — Task 9
-    // lifts it, so it is now asserted PRESENT below ('lifts the
-    // auth/account CSS' block), not absent here. 881-995 (C8's describe-it
-    // / fills-review CSS) still isn't built, so that half of this test
-    // stays.
+    // same kind of interleaved-range hazard C4 had to handle) — C7 Task 9
+    // lifted it, asserted PRESENT below ('lifts the auth/account CSS'
+    // block). This test used to be its inverse ("does NOT ship C8's
+    // describe-it CSS", checking `.fill-list`/`.fill-review`/`.describe-ta`/
+    // `.fchip` absence) — C8 Task 9 now lifts that range too, so the
+    // premise flipped the same way 662-743's did one task earlier; asserted
+    // PRESENT here instead of absent. Per-selector RED coverage (so a
+    // PARTIAL lift fails loudly) lives in the it.each block below the
+    // auth/account one.
     // Scoped to the body — see the test above for why.
     const body = css.slice(css.indexOf(':root{'))
     for (const cls of [
       '.fill-list', '.fill-review', '.describe-ta', '.fchip',
-    ]) expect(body, cls).not.toContain(cls)
+      '.describe-entry', '.youwrote', '.read-q', '.span-quote', '.ropt',
+      '.fact-chips', '.interp-frame', '.unplace-panel', '.read-opts',
+    ]) expect(body, cls).toContain(cls)
   })
 
   it('lifts the auth/account CSS (prototype 662-743)', () => {
@@ -278,6 +308,110 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
   ])('body contains %s (prototype 662-743)', selector => {
     const body = css.slice(css.indexOf(':root{'))
     expect(body).toContain(selector)
+  })
+
+  // Task 9 (C8): describe-it's free-text entry, the "how we read it" /
+  // "you wrote" confirm cards, and the fills-from-your-text review
+  // (prototype 884-938, 945-994 — 939-944 is `.read-change` and
+  // `.read-change:hover`, already lifted next to the Task 1 casefile block;
+  // RED item 27 pins that it isn't duplicated here). Same brace-inclusive
+  // reasoning as the auth/account block above: e.g. '.ropt-dot{' alone is a
+  // substring of '.ropt.picked .ropt-dot{', so a bare class-name match
+  // would pass even if only the compound variant shipped.
+  it.each([
+    '.describe-entry{', '.describe-row{', '.describe-row:hover{',
+    '.describe-row .dr-icon{', '.describe-row .dr-label{', '.describe-row .dr-label b{',
+    '.describe-box{', '.describe-ta{', '.describe-ta:focus-visible{',
+    '.describe-meta{', '.char-count{', '.lang-note{',
+    '.ex-chips{', '.ex-chip{', '.ex-chip:hover{',
+    '.describe-actions{', '.describe-err{',
+    '.youwrote{', '.youwrote .nm-k{', '.youwrote-text{',
+    '.read-card{', '.read-q{', '.read-pick{',
+    '.span-quote{', '.span-quote::before{',
+    // .read-opts (945) is the rule the old off-by-one lift range would
+    // have skipped — named explicitly here (design note 2 / RED item 25),
+    // with its own dedicated declarations test right below.
+    '.read-opts{',
+    '.ropt{', '.ropt:hover{', '.ropt-dot{',
+    '.ropt.picked .ropt-dot{', '.ropt.picked .ropt-dot::after{', '.ropt.picked{',
+    '.fact-chips{', '.fchip{', '.fchip .fk{', '.fchip .fv{',
+    '.fchip button{', '.fchip button:hover{',
+    '.fchip-edit{', '.fchip-edit input{',
+    '.interp-frame{', '.unplace-panel{',
+    '.fill-list{', '.fill-list .fk{', '.fill-review{', '.fill-review .pstep-box{',
+  ])('body contains %s (prototype 884-994, Task 9)', selector => {
+    const body = css.slice(css.indexOf(':root{'))
+    expect(body).toContain(selector)
+  })
+
+  it('.read-opts carries its transcribed declarations, not merely its selector (RED item 26)', () => {
+    // An earlier draft's lift range skipped this rule; a selector-presence
+    // check alone would not have noticed a stub — this asserts the actual
+    // declarations, not just that the selector text appears somewhere.
+    const body = css.slice(css.indexOf(':root{'))
+    const idx = body.indexOf('.read-opts{')
+    expect(idx, '.read-opts{').toBeGreaterThan(-1)
+    const rule = body.slice(idx, body.indexOf('}', idx) + 1)
+    expect(rule).toContain('margin-top:10px')
+    expect(rule).toContain('border-top:1px solid var(--line)')
+  })
+
+  it('.read-change{ appears exactly once in the file (RED item 27)', () => {
+    // A second copy later in the cascade would win silently and restyle
+    // JourneyLog's "Show all N entries", CasefileScreen's "Copy reminder"
+    // and its "Undo this check-in" control (design note 2) — Task 9
+    // appends the rest of C8's describe-it range at the end of the file,
+    // shortly after (past the #app.settled block) `.read-change`'s own
+    // already-lifted rule, so this pin catches an accidental re-lift of the
+    // prototype's 939-944 alongside 884-938/945-994.
+    const matches = css.match(/\.read-change\{/g) ?? []
+    expect(matches.length).toBe(1)
+  })
+
+  it('pins the cascade order: .acct-chip precedes .describe-entry, which precedes the reduced-motion tail (RED item 28)', () => {
+    // Task 9 appends 884-994 at the END of the lifted-CSS region — after
+    // #app.settled, before the reduced-motion media query — rather than
+    // threading it back into prototype position (design note 3). This pin
+    // enforces that placement instead of leaving it incidental.
+    const body = css.slice(css.indexOf(':root{'))
+    const acctChip = body.indexOf('.acct-chip')
+    const describeEntry = body.indexOf('.describe-entry')
+    const reducedMotion = body.indexOf('@media (prefers-reduced-motion:reduce)')
+    expect(acctChip, '.acct-chip').toBeGreaterThan(-1)
+    expect(describeEntry, '.describe-entry').toBeGreaterThan(-1)
+    expect(reducedMotion, '@media (prefers-reduced-motion:reduce)').toBeGreaterThan(-1)
+    expect(acctChip).toBeLessThan(describeEntry)
+    expect(describeEntry).toBeLessThan(reducedMotion)
+  })
+
+  // Design note 6 / RED item 31: `.span-quote::before{content:"you wrote:
+  // "}` is real citizen-facing text living in CSS, invisible to
+  // screenCopy.ts's copy sweep. task-9-brief.md offered two options —
+  // (A) write this identity assertion now and let it stay RED until Task
+  // 10 registers `UI.interp.spanPrefix`, or (B) land that single copy
+  // entry ahead of schedule so this goes GREEN in Task 9. Chose (A):
+  // landing the entry now (Option B) would add an `interp.*` leaf to `UI`
+  // with no component rendering it yet, which would fail
+  // screenCopy.test.tsx's "every ui entry appears in its screen's rendered
+  // output" coverage-by-construction sweep (it has no INTERACTION_GATED-
+  // style carve-out for "not built until a later task" — that sweep's own
+  // rule is "gate ONLY what a static mount genuinely cannot produce", and
+  // an unbuilt screen isn't that). Option A keeps Task 9 scoped to CSS only
+  // and pushes the copy registration to Task 10, which owns the markup
+  // this string renders inside of anyway (a visually-hidden span, per
+  // design note 6) — cleaner boundary, one task's blast radius each.
+  // THIS TEST IS EXPECTED TO STAY RED AT THE END OF TASK 9 — Task 10 turns
+  // it green by registering `UI.interp.spanPrefix = 'you wrote: '`. `UI` is
+  // cast through `unknown` rather than accessed as `UI.interp.spanPrefix`
+  // directly so a not-yet-existing property fails this assertion at
+  // runtime, not `tsc -b` — a compile error here would violate the
+  // project's build-window invariant (exactly one pre-existing App.tsx
+  // error), which a deliberately-red unit test must not do.
+  it('design note 6: .span-quote::before content matches UI.interp.spanPrefix (EXPECTED RED — Task 10 registers the copy)', () => {
+    const match = css.match(/\.span-quote::before\{content:"([^"]*)"/)
+    expect(match, '.span-quote::before content').not.toBeNull()
+    const registered = (UI as unknown as Record<string, Record<string, string> | undefined>).interp?.spanPrefix
+    expect(registered, 'UI.interp.spanPrefix (registered by Task 10)').toBe(match![1])
   })
 
   it('keeps the prototype ordering: prepare CSS precedes the settled/reduced-motion tail', () => {
@@ -346,8 +480,10 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
     expect(header).toContain('562-568')
     expect(header).toContain('651-661')
     expect(header).toContain('744-878')
-    // C8's range is still not built, still disclaimed
-    expect(header).toContain('881-995')
+    // C8's range (previously cited 881-995, off by one at both ends — D10)
+    // is now lifted too, correctly cited as 884-994; see the dedicated
+    // "Task 9 (C8)" header test below for the full rewrite assertions.
+    expect(header).toContain('884-994')
     // the cascade-order reasoning is on the record, not just followed
     expect(header.toLowerCase()).toContain('cascade')
     // the three dead-but-lifted rules are named, not silently absorbed
@@ -356,19 +492,22 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
     expect(header).toContain('.saved-remove')
   })
 
-  it("Task 9: the header now lifts 662-743 instead of disclaiming it", () => {
+  it("Task 9 (C7): the header lifts 662-743, and (as of C8 Task 9) no longer disclaims anything at all", () => {
     // Companion to the test above — 662-743 flips from "Deliberately NOT
-    // lifted" to lifted-and-documented, so the "662-743" string must now
-    // appear OUTSIDE the "Deliberately NOT lifted" paragraph, and the
-    // paragraph that remains there must only disclaim 881-995 (C8's).
+    // lifted" to lifted-and-documented. Originally (C7 Task 9) the
+    // paragraph that remained after that flip still disclaimed 881-995
+    // (C8's, not yet built). UPDATED (C8 Task 9): 884-994 (881-995
+    // re-derived, D10) is now lifted too — the LAST thing the "Deliberately
+    // NOT lifted" framing pointed at — so design note 1 retires that
+    // framing outright ("a stale 'not lifted' note is worse than none")
+    // rather than leaving it dangling over an empty set. This test is
+    // updated in place, not deleted, so the header's history — 662-743
+    // flipped first, 884-994 flipped one task later and took the framing
+    // with it — stays legible in the test file too.
     const header = css.slice(0, css.indexOf(':root{'))
     expect(header).toContain('662-743')
-    const notLiftedIdx = header.indexOf('Deliberately NOT lifted')
-    expect(notLiftedIdx, '"Deliberately NOT lifted" paragraph').toBeGreaterThan(-1)
-    const notLiftedParagraph = header.slice(notLiftedIdx)
-    expect(notLiftedParagraph).not.toContain('662-743')
-    expect(notLiftedParagraph).toContain('881-995')
-    // the acct/auth classes are named in the (now non-disclaiming) header
+    expect(header).not.toContain('Deliberately NOT lifted')
+    // the acct/auth classes are named in the (non-disclaiming) header
     expect(header).toContain('.acct-chip')
     expect(header).toContain('.auth-input')
     // .demo-hint is documented as lifted-but-unused, matching the style
@@ -381,5 +520,23 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
     const calloutIdx = header.indexOf('.demo-hint', firstMention + 1)
     expect(calloutIdx, '.demo-hint mentioned a second time (the callout)').toBeGreaterThan(-1)
     expect(header.slice(calloutIdx, calloutIdx + 300).toUpperCase()).toContain('LIFTED BUT')
+  })
+
+  it("Task 9 (C8): the header now lifts 884-994 instead of disclaiming it (D10)", () => {
+    // D10: the range was previously cited 881-995, off by one at both ends
+    // — the block's own comment header is 880-883, its first rule
+    // (.describe-entry) is 884, its last (.fill-review .pstep-box) is 994.
+    const header = css.slice(0, css.indexOf(':root{'))
+    expect(header).toContain('884-994')
+    // the old, off-by-one-both-ways citation stays on the record as history
+    expect(header).toContain('881-995')
+    // representative class names from the newly-lifted range are named
+    expect(header).toContain('.describe-entry')
+    expect(header).toContain('.fill-review')
+    // the .read-change scoped exclusion is explained with corrected numbers
+    // (939-943 for the rule itself, 944 for its separate :hover — design
+    // note 2, previously mis-cited as a single "939-944" span)
+    expect(header).toContain('939-943')
+    expect(header).toContain('944')
   })
 })

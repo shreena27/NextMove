@@ -20,13 +20,18 @@
  *  .auth-field/.auth-label/.auth-input/.otp-input/.auth-err/.auth-divider/
  *  .btn-google/.auth-switch/.auth-note. This is C7's sign-in surface (Task
  *  9). One rule inside this range, `.demo-hint` (739-743), is LIFTED BUT
- *  CURRENTLY UNUSED — the same way 744-878 below lifts .saved-actions/
- *  .saved-continue/.saved-remove: `.demo-hint` styles the locked
- *  prototype's demo-mode hint text, and no component built in C7 renders
- *  it. It is lifted anyway because 662-743 is a contiguous, faithful
- *  transcription — carving one rule out of the middle would make the range
- *  a judgment call instead of a copy — not because anything currently
- *  renders it), and 744-878
+ *  NOT YET CONSUMED — unlike 744-878 below's .saved-actions/.saved-continue/
+ *  .saved-remove, which are PERMANENT orphans (their markup was cut from
+ *  the compact-card spec for good), `.demo-hint` has a real, still-scheduled
+ *  consumer: the prototype's own renderInterpConfirm (prototype 3037-3105,
+ *  not yet built) places `.demo-hint`-classed text on BOTH branches of C8's
+ *  describe-it confirm screen — the "we couldn't safely place this"
+ *  unplaceable panel (prototype 3063) and the "here's how we read it" cards
+ *  (prototype 3102) — so a later C8 task (Task 12 owns that markup) gives
+ *  it a real consumer (D9). It is lifted anyway because 662-743 is a
+ *  contiguous, faithful transcription — carving one rule out of the middle
+ *  would make the range a judgment call instead of a copy — not because
+ *  anything renders it yet), and 744-878
  *  (.saved-card through .log-note: the compact Home casefile card,
  *  .home-cases, .case-meta-line, .case-links/.case-link, .case-remove,
  *  .case-h1 + its 960px media query, .case-progress/.cp-*, the escalation
@@ -72,17 +77,29 @@
  *  tokens.test.ts for why (no Tailwind import, no apply-directives, no
  *  preflight reset).
  *
- *  Deliberately NOT lifted (a later chunk owns it): 881-995 (.describe-*,
- *  .youwrote, .read-*, .span-quote, .ropt*, .fact-chips, .fchip*,
- *  .interp-frame, .unplace-panel, .fill-list, .fill-review -> C8) — WITH ONE
- *  SCOPED CORRECTION (Task 9, from Task 8's review): `.read-change` (939-944)
- *  physically sits inside this range but is NOT describe-it-specific — it is
- *  a small, generic, reusable text-link-styled button utility (JourneyLog's
- *  "Show all N entries", Task 8; CasefileScreen's "Copy reminder"/"Undo this
- *  check-in", Task 9) that happened to be swept into the blanket exclusion.
- *  It is lifted on its own, next to the Task 1 casefile block, with its own
- *  comment — its `.read-*` neighbours (.read-q, .read-pick, .read-opts, plus
- *  .span-quote/.ropt*) stay excluded, still C8's. */
+ *  Also lifted, but appended separately at the END of this file rather than
+ *  in prototype order above, is 884-994 (Task 9 — C8's "describe it in your
+ *  own words" free-text interpretation flow: .describe-*, .youwrote,
+ *  .read-q, .read-pick, .span-quote, .ropt*, .fact-chips, .fchip*,
+ *  .interp-frame, .unplace-panel, .fill-list, .fill-review). This plan
+ *  previously cited the range as 881-995; re-derived (D10), the block's own
+ *  comment header sits at 880-883, its first rule (.describe-entry) is at
+ *  884, its last (.fill-review .pstep-box) is at 994, and 995 is blank —
+ *  both ends of the old citation were off by one. `.read-change` (939-943)
+ *  and `.read-change:hover` (944) sit physically inside this span but are
+ *  NOT part of it — they were already lifted on their own, next to the
+ *  Task 1 casefile block, back when this whole range was still disclaimed
+ *  (see that rule's own comment below, which is now a completed hand-off,
+ *  not a pending exclusion); the transcription here is therefore 884-938
+ *  and 945-994, six lines short of the full span, with `.read-opts` (945)
+ *  included. Appended at the END of the lifted-CSS region below — after
+ *  #app.settled, before the reduced-motion media query — rather than
+ *  threaded back into prototype position between `.log-note` and
+ *  `.read-change`, because that would displace #app.settled relative to
+ *  rules that already precede it, for zero benefit: a grep of every
+ *  selector in this range against the rest of the file confirmed zero
+ *  collisions, so nothing here is cascade-load-bearing either way (design
+ *  note 3). */
 
 :root{
   --paper:#FAF7EF;
@@ -868,15 +885,18 @@ h2.headline{
   font-size:10.5px; color:var(--ink-faint); margin-top:8px; font-family:'IBM Plex Mono',monospace;
 }
 
-/* .read-change (prototype 939-944) — a SCOPED CORRECTION to the "881-995 is
-   all C8" exclusion below, caught during Task 8's review. It physically
-   sits among C8's describe-it rules (930-945: .read-q, .read-pick,
-   .span-quote, .read-opts, .ropt...), which is why an earlier pass swept it
-   into that blanket exclusion — but it is not describe-it-specific: it is a
-   small, generic, reusable text-link-styled button utility, already used by
-   JourneyLog's "Show all N entries" button (Task 8) and by CasefileScreen's
-   "Copy reminder" and "Undo this check-in" buttons (Task 9). Lifted here,
-   on its own, verbatim — its describe-it neighbours stay excluded below. */
+/* .read-change (prototype 939-943, plus .read-change:hover at 944) —
+   lifted here on its own, verbatim, AHEAD of the rest of C8's describe-it
+   range (884-938, 945-994), which Task 9 now lifts too, appended at the end
+   of this file: a COMPLETED HAND-OFF, not a pending exclusion, caught
+   during Task 8's review. It physically sits among C8's describe-it rules
+   (930-945: .read-q, .read-pick, .span-quote, .read-opts, .ropt...), which
+   is why an earlier pass swept it into that range — but it is not
+   describe-it-specific: it is a small, generic, reusable text-link-styled
+   button utility, already used by JourneyLog's "Show all N entries" button
+   (Task 8) and by CasefileScreen's "Copy reminder" and "Undo this check-in"
+   buttons (Task 9). Its describe-it neighbours are lifted separately below
+   — see that block's own comment for why it isn't threaded back in here. */
 .read-change{
   background:none; border:none; cursor:pointer; padding:4px 0; margin-top:10px;
   font-family:'Work Sans',sans-serif; font-size:13px; color:var(--ink-soft);
@@ -891,6 +911,130 @@ h2.headline{
 #app.settled .dep-block, #app.settled .ct-step, #app.settled .mark::after{
   animation:none;
 }
+
+/* ---------- C8 Task 9: describe-it's free-text entry, the "how we read it"
+   / "you wrote" confirm cards, and the fills-from-your-text review
+   (prototype 884-938, 945-994). The full range this file's header has
+   reserved since C5 (formerly cited 881-995, corrected to 884-994 — D10)
+   minus the six lines already lifted on their own above, next to the
+   Task 1 casefile block: `.read-change` (939-943) and `.read-change:hover`
+   (944). Appended HERE, at the END of the lifted-CSS region — after
+   #app.settled, before the reduced-motion media query — rather than
+   threaded back into prototype position between `.log-note` and
+   `.read-change` above; doing that would displace #app.settled relative to
+   rules that already precede it, for zero benefit, since a grep of every
+   selector below against the rest of the file confirmed zero collisions
+   (design note 3). The prototype's own section comment for this range
+   follows, transcribed verbatim. ---------- */
+/* ---------- describe it: free text + AI-suggested, user-confirmed ----
+   The AI translates language into the same taps the user could have
+   made; it never decides. Spec: docs/superpowers/specs/
+   2026-09-05-describe-it-ai-interpretation-design.md ---------- */
+.describe-entry{margin-top:26px; border-top:1px dashed var(--line-strong); padding-top:14px;}
+.describe-row{
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  background:none; border:none; cursor:pointer; padding:10px 4px;
+  font-family:'Work Sans',sans-serif; color:var(--ink-soft);
+  transition:color 150ms ease;
+}
+.describe-row:hover{color:var(--ink);}
+.describe-row .dr-icon{
+  flex:0 0 auto; width:32px; height:32px; border-radius:9px; background:var(--butter-soft);
+  display:flex; align-items:center; justify-content:center; color:var(--ink);
+}
+.describe-row .dr-label{font-size:14.5px;}
+.describe-row .dr-label b{color:var(--ink); font-weight:600;}
+.describe-box{margin-top:10px; animation:enter 220ms var(--ease);}
+.describe-ta{
+  width:100%; border:1.5px solid var(--line-strong); border-radius:14px; padding:14px 16px;
+  font-family:'Work Sans',sans-serif; font-size:14.5px; line-height:1.6; color:var(--ink);
+  background:var(--card); resize:vertical; min-height:110px; caret-color:var(--ink);
+}
+.describe-ta:focus-visible{outline:2.5px solid var(--ink); outline-offset:2px;}
+.describe-meta{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:8px; flex-wrap:wrap;}
+.char-count{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink-faint);}
+.lang-note{font-size:12px; color:var(--ink-faint); line-height:1.5;}
+.ex-chips{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;}
+.ex-chip{
+  font-family:'Work Sans',sans-serif; font-size:12px; color:var(--ink-soft);
+  background:var(--card); border:1px dashed var(--line-strong); border-radius:999px;
+  padding:7px 13px; cursor:pointer; text-align:left;
+  transition:border-color 150ms ease, color 150ms ease;
+}
+.ex-chip:hover{border-color:var(--ink); color:var(--ink);}
+.describe-actions{margin-top:12px;}
+.describe-err{font-size:13px; color:var(--escalate); margin-top:8px; font-weight:500;}
+
+/* confirm screen */
+.youwrote{
+  background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  padding:16px 20px; margin:18px 0 0;
+}
+.youwrote .nm-k{margin-bottom:6px;}
+.youwrote-text{font-size:14px; line-height:1.6; color:var(--ink); font-style:italic;}
+.read-card{
+  background:var(--card); border:1px solid var(--line-strong); border-radius:14px;
+  padding:18px 20px; margin-bottom:16px;
+}
+.read-q{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase;
+  color:var(--ink-faint); margin:0 0 8px;
+}
+.read-pick{font-size:15.5px; font-weight:600; line-height:1.45;}
+.span-quote{
+  font-size:12.5px; color:var(--ink-soft); margin-top:7px; font-style:italic;
+}
+.span-quote::before{content:"you wrote: "; font-style:normal; color:var(--ink-faint);}
+.read-opts{margin-top:10px; border-top:1px solid var(--line);}
+.ropt{
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  padding:13px 4px; border:none; border-bottom:1px solid var(--line); background:none;
+  cursor:pointer; font-family:'Work Sans',sans-serif; color:var(--ink); font-size:14.5px;
+  transition:background 150ms ease;
+}
+.ropt:hover{background:var(--butter-soft);}
+.ropt-dot{
+  flex:0 0 auto; width:17px; height:17px; border-radius:50%; border:1.5px solid var(--line-strong);
+  background:var(--card); display:flex; align-items:center; justify-content:center;
+}
+.ropt.picked .ropt-dot{border-color:var(--ink); background:var(--ink);}
+.ropt.picked .ropt-dot::after{content:""; width:7px; height:7px; border-radius:50%; background:var(--butter);}
+.ropt.picked{font-weight:600;}
+.fact-chips{display:flex; gap:9px; flex-wrap:wrap; margin-top:12px;}
+.fchip{
+  display:inline-flex; align-items:center; gap:8px;
+  background:var(--card); border:1px solid var(--line-strong); border-radius:999px;
+  padding:7px 8px 7px 13px; font-size:12.5px; color:var(--ink);
+}
+.fchip .fk{font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-faint);}
+.fchip .fv{font-family:'IBM Plex Mono',monospace; font-size:12px;}
+.fchip button{
+  background:none; border:none; cursor:pointer; color:var(--ink-faint); padding:2px 5px;
+  font-size:12px; border-radius:50%;
+}
+.fchip button:hover{color:var(--escalate);}
+.fchip-edit{display:inline-flex; gap:6px; align-items:center;}
+.fchip-edit input{
+  font-family:'IBM Plex Mono',monospace; font-size:12px; border:1px solid var(--line-strong);
+  border-radius:8px; padding:5px 9px; width:170px; background:var(--paper); color:var(--ink);
+}
+.interp-frame{font-size:13.5px; color:var(--ink-soft); line-height:1.6; margin:0 0 18px; max-width:52ch;}
+.unplace-panel{
+  background:var(--card); border:1.5px dashed var(--line-strong); border-radius:14px;
+  padding:18px 20px; margin-bottom:20px;
+}
+/* fills-from-your-text review */
+.fill-list{
+  margin-top:12px; padding:12px 16px; background:var(--butter-soft); border-radius:12px;
+  font-size:12.5px; color:var(--ink); line-height:1.7;
+}
+.fill-list .fk{font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-soft); display:block; margin-bottom:4px;}
+.fill-review{
+  display:flex; align-items:center; gap:10px; margin-top:10px; cursor:pointer;
+  font-size:13px; color:var(--ink); background:none; border:none; padding:4px 0;
+  font-family:'Work Sans',sans-serif; text-align:left;
+}
+.fill-review .pstep-box{width:18px; height:18px;}
 
 /* ---------- reduced motion: fewer + gentler, feedback stays ---------- */
 @media (prefers-reduced-motion:reduce){
