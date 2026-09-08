@@ -116,8 +116,18 @@ function normSpan(s: string): string {
  *  `reachableIf` is different ON PURPOSE (prototype 1916): it explicitly
  *  composes `{...known, ...mapped}` so a branch gate CAN see an earlier
  *  pick from this same interpretation; `opts()` never does that in the
- *  prototype, so this port doesn't either. */
-function resolveOptionValues(entry: ChainEntry, knownAnswers: AnswerRecord): readonly string[] {
+ *  prototype, so this port doesn't either.
+ *
+ *  Exported for `templates/UnplaceablePanel.tsx` (Task 14, "Gap 2" of that
+ *  task's own brief): the unplaceable panel needs the FULL option list for
+ *  whichever question it offers, which means the exact same "is this a
+ *  function or a plain array, call it correctly if so" resolution this gate
+ *  already performs — writing a second copy would be exactly the kind of
+ *  drift-prone duplication this module exists to avoid. `templates/`
+ *  importing from `domain/` is layering-legal (only the reverse direction
+ *  is forbidden); adding `export` here changes nothing about this module's
+ *  own call site below. */
+export function resolveOptionValues(entry: ChainEntry, knownAnswers: AnswerRecord): readonly string[] {
   return typeof entry.optionValues === 'function' ? entry.optionValues(knownAnswers) : entry.optionValues
 }
 

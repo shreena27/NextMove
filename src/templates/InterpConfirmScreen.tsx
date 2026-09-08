@@ -95,8 +95,18 @@ import { UI } from '../screens/screenCopy'
 /** Design note 4 of task-12-brief.md: ONE label-resolution helper, not six
  *  inline lookups — six lookups is six places to forget SIR's own phase
  *  argument. Maps a question's option VALUE to its display label; `domain/`
- *  only ever hands this component a value (D1's split), never a label. */
-function labelsFor(questionId: string, answers: AnswerRecord): Record<string, string> {
+ *  only ever hands this component a value (D1's split), never a label.
+ *
+ *  Exported for `UnplaceablePanel.tsx` (Task 14, "Gap 1" of that task's own
+ *  brief): the unplaceable panel offers one question from this exact same
+ *  six-source universe (SIR's phase-dependent throw guard included), so it
+ *  reuses this resolution rather than carrying a second copy of the same
+ *  switch — this file's own reasoning above applies doubly across two
+ *  components sharing it. Adding `export` here changes nothing about this
+ *  file's own callers below; they are unaffected by a function also being
+ *  visible to another module. */
+// oxlint-disable-next-line react/only-export-components -- deliberate: a plain helper, not a component, exported for UnplaceablePanel.tsx's reuse (see doc comment above); Crumbs.tsx/serviceSquare.ts's own "move it to its own file" precedent is the wrong fix here specifically, since labelsFor's SIR branch is tightly coupled to InterpConfirmScreen's own six-source switch and splitting it out would separate the export from the six-lookups reasoning it exists to protect
+export function labelsFor(questionId: string, answers: AnswerRecord): Record<string, string> {
   switch (questionId) {
     case 'q1': return PASSPORT_Q1_LABELS
     case 'q2': return PASSPORT_Q2_LABELS
