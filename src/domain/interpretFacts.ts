@@ -109,16 +109,28 @@ function aadhaarBefore(text: string, idx: number): boolean {
 const APPLIED_DATE_RE = /(applied|submitted).{0,20}?((\d{1,2}\s)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s?\d{2,4})/i
 const OTHER_DATE_RE = /\b(\d{1,2}\s)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s?\d{0,4}\b/i
 
-/** The app deriving facts from the citizen's OWN typed text — no provider
- *  input here at all. Pure: same `(engine, text)` always produces
- *  deep-equal output, and mutates neither `text` (strings are immutable
- *  anyway) nor any module-level table.
+/** Internal counterpart to `extractFacts`, below, which additionally exposes
+ *  the `taken` array built while deriving facts from the citizen's OWN text.
+ *  `extractFacts` projects `taken` away for every EXTERNAL caller (Task 4's
+ *  `interpretGates.ts` included); `gateFacts`, in THIS SAME module, needs
+ *  the raw array, because `taken` here contains every value the shape loop
+ *  touched, REFUSALS INCLUDED — a bare Aadhaar-shaped 12-digit number, or an
+ *  explicitly Aadhaar-cued number, is pushed into `taken` at the exact
+ *  moment it is refused (see the `taken.push(m[0])` inside both refusal
+ *  branches below), even though a refusal produces no `Fact`.
  *
- *  This is also the seed every provider's `gateFacts` baseline is built
- *  from (D18) — the facts and refusals a citizen sees are identical
- *  whichever interpreter ran, because they are computed here, not reported
- *  by whichever interpreter ran. */
-export function extractFacts(engine: ServiceKey, text: string): { facts: Fact[]; droppedSensitive: boolean } {
+ *  THE C-1 FIX: `gateFacts`'s first cut reconstructed `taken` as
+ *  `baseline.facts.map(f => f.value)` — since a refusal produces no fact,
+ *  that reconstruction is BLIND to every refused value, which makes a
+ *  refused Aadhaar number resurrectable through a provider-supplied
+ *  substring (the independent review's Finding C-1: a hostile or merely
+ *  mistaken provider echoes a 10-digit fragment of the number back as its
+ *  own `{ value }`, and — because `taken` never saw the refusal — the
+ *  fragment sails through gateFacts's own containment checks as an
+ *  innocuous "unknown" chip). Seeding `gateFacts`'s `taken` from THIS
+ *  function's own `taken`, not from `facts`, closes that gap: the refused
+ *  digits are in `taken` whether or not they ever became a `Fact`. */
+function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]; droppedSensitive: boolean; taken: string[] } {
   const facts: Fact[] = []
   const taken: string[] = []
   let droppedSensitive = false
@@ -191,6 +203,24 @@ export function extractFacts(engine: ServiceKey, text: string): { facts: Fact[];
     facts.push({ kind: 'date', refType: 'date_other', label: DATE_OTHER_LABEL, value: otherDate[0].trim(), fills: null })
   }
 
+  return { facts, droppedSensitive, taken }
+}
+
+/** The app deriving facts from the citizen's OWN typed text — no provider
+ *  input here at all. Pure: same `(engine, text)` always produces
+ *  deep-equal output, and mutates neither `text` (strings are immutable
+ *  anyway) nor any module-level table.
+ *
+ *  This is also the seed every provider's `gateFacts` baseline is built
+ *  from (D18) — the facts and refusals a citizen sees are identical
+ *  whichever interpreter ran, because they are computed here, not reported
+ *  by whichever interpreter ran. Projects `extractFactsInternal`'s `taken`
+ *  array away — every caller OUTSIDE this module gets `{facts,
+ *  droppedSensitive}` only; `gateFacts`, in this same module, calls
+ *  `extractFactsInternal` directly instead, precisely so it can see `taken`
+ *  (see that function's own doc comment — the C-1 fix). */
+export function extractFacts(engine: ServiceKey, text: string): { facts: Fact[]; droppedSensitive: boolean } {
+  const { facts, droppedSensitive } = extractFactsInternal(engine, text)
   return { facts, droppedSensitive }
 }
 
@@ -283,9 +313,17 @@ function classifyValue(engine: ServiceKey, text: string, value: string, index: n
  *  for EVERY provider, unconditionally, and it is the only function that
  *  module imports from here.
  *
- *  1. `extractFacts(engine, text)` runs first. Its facts and its
- *     `droppedSensitive` are the BASELINE for every provider, seeding the
- *     dedup list and the one-unknown budget — this is why the facts a
+ *  1. `extractFactsInternal(engine, text)` runs first — NOT the public
+ *     `extractFacts`, because `gateFacts` also needs the internal `taken`
+ *     array, refusals included (see that function's doc comment; this is
+ *     the independent review's Finding C-1: seeding `taken` from
+ *     `baseline.facts` alone is blind to every refused value, since a
+ *     refusal produces no fact — which makes a refused Aadhaar number
+ *     resurrectable through a provider-supplied substring). The baseline's
+ *     facts, `droppedSensitive`, and `taken` — refusals included — seed
+ *     every provider's dedup list; a boolean `unknownChipUsed`, seeded from
+ *     whether the baseline already produced a `refType: 'unknown'` chip
+ *     (Finding I-1), seeds the one-unknown budget. This is why the facts a
  *     citizen sees are identical whichever interpreter ran.
  *  2. For each `rawFacts` entry, only `value` is ever read. Every other key
  *     a provider sent — `label`, `fills`, `refType`, `kind`, `edited`, or
@@ -300,10 +338,14 @@ function classifyValue(engine: ServiceKey, text: string, value: string, index: n
  *     whitespace-only, or non-substring `value` is dropped.
  *  4/5. The surviving value is CLASSIFIED using this module's own rules —
  *     never the provider's label/fills/refType — and de-duplicated against
- *     everything already taken, using the SAME one-directional (shape) /
- *     bidirectional (unknown) split `extractFacts` itself uses (design note
- *     2/M5). A value this module cannot classify at all is dropped, never
- *     chipped under a model-authored label.
+ *     everything already taken (refusals included — the C-1 fix), using the
+ *     SAME one-directional (shape) / bidirectional (unknown) split
+ *     `extractFacts` itself uses (design note 2/M5). A classified value
+ *     whose `refType` is `'unknown'` is additionally refused once the
+ *     one-unknown budget is already spent, by the baseline OR by an earlier
+ *     provider fact in this same call (the I-1 fix). A value this module
+ *     cannot classify at all is dropped, never chipped under a
+ *     model-authored label.
  *  6. `droppedSensitive` is the OR of every refusal across both the
  *     baseline and every provider fact. It is NEVER read from a provider —
  *     `RawInterpretation` does not even carry the field (Task 2 design note
@@ -315,10 +357,20 @@ export function gateFacts(
   text: string,
   rawFacts: readonly { value: string }[],
 ): { facts: Fact[]; droppedSensitive: boolean } {
-  const baseline = extractFacts(engine, text)
+  const baseline = extractFactsInternal(engine, text)
   const facts: Fact[] = [...baseline.facts]
-  const taken: string[] = baseline.facts.map(f => f.value)
+  const taken: string[] = [...baseline.taken]
   let droppedSensitive = baseline.droppedSensitive
+  // THE I-1 FIX: the one-unknown-chip budget carries forward from the
+  // baseline. `extractFacts`'s own sweep already enforces "at most one
+  // unknown chip" WITHIN a single call (the `break` at design note 4); this
+  // flag extends the SAME guarantee across a whole `gateFacts` call, so a
+  // provider cannot add a second `refType: 'unknown'` chip beyond whatever
+  // budget the baseline already spent — see Finding I-1. Without this, two
+  // provider-supplied fragments that individually clear the containment
+  // checks (Finding C-1) can each be chipped separately, amplifying a
+  // partial leak into a full reconstruction.
+  let unknownChipUsed = baseline.facts.some(f => f.refType === 'unknown')
 
   const normalizedText = normalizeWs(text)
 
@@ -348,8 +400,17 @@ export function gateFacts(
       : taken.some(t => t.includes(value))
     if (alreadyTaken) continue
 
+    // THE I-1 FIX, continued: an accepted candidate whose reconstructed
+    // fact still carries `refType: 'unknown'` — whether classified via the
+    // shape loop's own honest-chip fallback (category 'shape') or via
+    // UNKNOWN_REF (category 'unknown') — is refused once the budget is
+    // already spent, by the baseline or by an earlier provider fact in this
+    // same loop.
+    if (classified.fact.refType === 'unknown' && unknownChipUsed) continue
+
     facts.push(classified.fact)
     if (classified.category !== 'date') taken.push(value)
+    if (classified.fact.refType === 'unknown') unknownChipUsed = true
   }
 
   return { facts, droppedSensitive }

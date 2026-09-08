@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import type { Fact } from './interpret'
 import { extractFacts, gateFacts, interpretFactsCopyExtras } from './interpretFacts'
+import { passportPlaybook } from '../playbooks/passportPlaybook'
+import { voterPlaybook } from '../playbooks/voterPlaybook'
+import { sirPlaybook, SIR_STATES } from '../playbooks/sirPlaybook'
+import { guardrailFindings } from '../playbooks/guardrails/suite'
 
 describe('extractFacts — reference-number shapes (REF_SHAPES, prototype 1833-1846)', () => {
   it('passport file number (letter-bearing, no cue needed) fills the bracket directly', () => {
@@ -197,22 +201,36 @@ describe('gateFacts — the C1 fix: runs the SAME rules against ANY provider out
     expect(gateFacts(engine, text, [])).toEqual(extractFacts(engine, text))
   })
 
-  it('C2\'s field-reconstruction pin: a provider fact with a spoofed label/fills/refType/kind and an invented extra key survives ONLY as the app\'s own reconstructed fields — a .filter would pass all of it through by reference', () => {
+  it("C2's field-reconstruction pin (I-2 fix): a provider fact with a spoofed label/fills/refType/kind and an invented extra key survives ONLY as the app's own reconstructed fields — a .filter would pass all of it through by reference. The fixture's TEXT carries TWO grievance numbers so extractFacts's own baseline (which only ever finds the FIRST occurrence of a given shape via a non-global .match) does NOT already produce the second one — otherwise gateFacts's exact-duplicate check short-circuits before classifyValue ever runs, and the assertion passes on the baseline fact alone, proving nothing (the original vacuous version of this test, per finding I-2)", () => {
     expect.assertions(2)
-    const text = 'My file number is BN1068334517807, and my Aadhaar is not in this message.'
+    const text = 'My grievance number is PGRAMS/2026/0012345, and my old one was OLDGRV/2024/0099999.'
+    const baseline = extractFacts('passport', text)
+    // Sanity: the baseline really does NOT already contain the second
+    // grievance number — if it did, this fixture would be exactly as
+    // vacuous as the one it replaces.
+    expect(baseline.facts.some(f => f.value === 'OLDGRV/2024/0099999')).toBe(false)
     const rawFacts = [
-      { value: 'BN1068334517807', label: 'Aadhaar', fills: '[date you applied]', refType: 'evil', kind: 'note', extra: '<script>' } as unknown as { value: string },
+      { value: 'OLDGRV/2024/0099999', label: 'Aadhaar', fills: '[date you applied]', refType: 'evil', kind: 'note', extra: '<script>' } as unknown as { value: string },
     ]
     const result = gateFacts('passport', text, rawFacts)
     const expected: Fact = {
       kind: 'reference_number',
-      refType: 'passport_file_no',
-      label: 'File Number',
-      value: 'BN1068334517807',
-      fills: '[File Number / ARN]',
+      refType: 'grievance_no',
+      label: 'Grievance number',
+      value: 'OLDGRV/2024/0099999',
+      fills: '[CPGRAMS grievance number]',
     }
-    expect(result.facts).toEqual([expected])
-    expect(Object.keys(result.facts[0]).sort()).toEqual(Object.keys(expected).sort())
+    expect(result.facts).toContainEqual(expected)
+  })
+
+  it("C2's field-reconstruction pin, key-shape half: the reconstructed fact carries EXACTLY the app's own five fields, nothing spoofed added or dropped", () => {
+    const text = 'My grievance number is PGRAMS/2026/0012345, and my old one was OLDGRV/2024/0099999.'
+    const rawFacts = [
+      { value: 'OLDGRV/2024/0099999', label: 'Aadhaar', fills: '[date you applied]', refType: 'evil', kind: 'note', extra: '<script>' } as unknown as { value: string },
+    ]
+    const result = gateFacts('passport', text, rawFacts)
+    const reconstructed = result.facts.find(f => f.value === 'OLDGRV/2024/0099999')
+    expect(reconstructed && Object.keys(reconstructed).sort()).toEqual(['fills', 'kind', 'label', 'refType', 'value'])
   })
 
   it("C1's provider-Aadhaar pin: an Aadhaar-shaped 12-digit value the provider LABELLED 'ARN' with fills: '[File Number / ARN]' is still refused, never chipped, never persisted — this rule must run for every provider, not just the simulator", () => {
@@ -225,12 +243,20 @@ describe('gateFacts — the C1 fix: runs the SAME rules against ANY provider out
     expect(JSON.stringify(result)).not.toContain('123456789012')
   })
 
-  it("C1's provider-unknown-number pin: a provider fact CLAIMING fills: '[date you applied]' on an unrecognised, uncued number is rebuilt as an honest unknown chip that fills nothing — the claimed fills is discarded, not honoured", () => {
-    const text = 'the number was 9988776655 as far as I remember'
-    const rawFacts = [{ value: '9988776655', fills: '[date you applied]', refType: 'date_applied', label: 'Applied' } as unknown as { value: string }]
+  it("C1's provider-unknown-number pin (I-3 fix): a provider fact CLAIMING fills: '[date you applied]' on an unrecognised, uncued number is rebuilt as an honest unknown chip that fills nothing — the claimed fills is discarded, not honoured. The original fixture's value ('9988776655') was already produced by extractFacts's own unknown-sweep BEFORE the provider entry was ever examined (see finding I-3), so that test passed on the baseline fact alone and proved nothing. This fixture instead embeds the candidate in a 20-character alphanumeric run, one longer than UNKNOWN_REF's 8-18-char window and with no internal word boundary — so extractFacts's own sweep, which scans the FULL text, finds NO match here at all (there is no `\b` position inside the run for `\b[A-Z0-9]{8,18}\b` to anchor on), while classifyValue's `matchesWhole` check tests the provider's shorter VALUE in isolation, where a fresh `\b` boundary exists at both ends of the isolated string — 'anchored to the whole value', design note 8 step 5. So the baseline genuinely contributes NOTHING here (budget unspent), and the provider's candidate is what classifyValue actually classifies", () => {
+    const run = 'A1B2C3D4E5F6G7H8I9J0' // 20 chars, digit+letter alternating: no 12-digit or [A-Z]{2}\\d{13} run, and (per the reasoning above) NOT matched by UNKNOWN_REF's own 8-18-char sweep as a whole run
+    expect(run.length).toBe(20)
+    const text = `the number was ${run} as far as I remember`
+    const baseline = extractFacts('passport', text)
+    // Sanity: the baseline's own sweep really does find nothing here — the
+    // whole point of this fixture. If it did, this test would be exactly as
+    // vacuous as the one it replaces.
+    expect(baseline.facts).toEqual([])
+    const value = run.slice(0, 10) // 'A1B2C3D4E5' — a genuine, isolated-\b-bounded substring of the run
+    const rawFacts = [{ value, fills: '[date you applied]', refType: 'date_applied', label: 'Applied', kind: 'evil' } as unknown as { value: string }]
     const result = gateFacts('passport', text, rawFacts)
     expect(result.facts).toEqual([
-      { kind: 'reference_number', refType: 'unknown', label: 'A number you mentioned', value: '9988776655', fills: null },
+      { kind: 'reference_number', refType: 'unknown', label: 'A number you mentioned', value, fills: null },
     ])
   })
 
@@ -268,6 +294,62 @@ describe('gateFacts — the C1 fix: runs the SAME rules against ANY provider out
   })
 })
 
+describe('gateFacts — C-1 (Critical fix): a refused Aadhaar number must stay unrecoverable through a provider-supplied substring', () => {
+  it("the reviewer's exact adversarial trace — gateFacts('passport', 'my aadhaar is 123456789012', [{ value: '2345678901' }]) — must NOT resurrect a 10-digit substring of the refused Aadhaar number as an innocuous 'unknown' chip. Pre-fix, this produced exactly that: taken was rebuilt from baseline.facts (empty, since a refusal produces no fact), so the containment check never saw the refused digits, and '2345678901' (an interior substring of '123456789012') was pushed as {refType:'unknown', value:'2345678901', fills:null}", () => {
+    expect.assertions(3)
+    const result = gateFacts('passport', 'my aadhaar is 123456789012', [{ value: '2345678901' }])
+    expect(result.facts).toEqual([])
+    expect(result.droppedSensitive).toBe(true)
+    expect(JSON.stringify(result)).not.toContain('123456789012')
+  })
+
+  it('the full-reconstruction attack (C-1 + I-1 combined): two provider facts, each a distinct 9-digit substring of the SAME refused Aadhaar number, NEITHER containing the other — so, pre-fix, their union alone reconstructs all 12 digits across two separate chips even though no single field or JSON.stringify dump ever holds the whole string — must BOTH be dropped', () => {
+    expect.assertions(3)
+    const result = gateFacts('passport', 'my aadhaar is 123456789012', [
+      { value: '123456789' }, // first 9 digits of the Aadhaar number
+      { value: '456789012' }, // last 9 digits — does not contain, and is not contained by, '123456789'
+    ])
+    expect(result.facts).toEqual([])
+    expect(result.droppedSensitive).toBe(true)
+    expect(JSON.stringify(result)).not.toContain('123456789012')
+  })
+
+  it("gateFacts's own bidirectional taken check, direction one (design note 2/M5, now exercised at the gateFacts level — previously zero coverage per the C-1 finding): a provider-supplied unknown-category candidate that CONTAINS an already-taken value is refused", () => {
+    const text = 'ARN 123456789012 and elsewhere I wrote AB123456789012CD by mistake.'
+    const baseline = extractFacts('passport', text)
+    // Sanity: the candidate is not already sitting in baseline.facts (which
+    // would let the exact-duplicate check short-circuit before the
+    // containment check under test ever runs).
+    expect(baseline.facts.some(f => f.value === 'AB123456789012CD')).toBe(false)
+    const result = gateFacts('passport', text, [{ value: 'AB123456789012CD' }])
+    expect(result.facts).toEqual(baseline.facts)
+  })
+
+  it("gateFacts's own bidirectional taken check, direction two (design note 2/M5, now exercised at the gateFacts level): a provider-supplied unknown-category candidate CONTAINED BY an already-taken (longer) value is refused", () => {
+    const text = 'File no BN1068334517807. Also saw 10683345 written down somewhere unrelated.'
+    const baseline = extractFacts('passport', text)
+    expect(baseline.facts.some(f => f.value === '10683345')).toBe(false)
+    const result = gateFacts('passport', text, [{ value: '10683345' }])
+    expect(result.facts).toEqual(baseline.facts)
+  })
+})
+
+describe('gateFacts — I-1 fix: the one-unknown-chip budget carries forward from the baseline', () => {
+  it('a provider cannot add a SECOND unknown-category chip once the baseline\'s own sweep has already spent the one-per-interpretation budget — even on a genuinely different, non-overlapping token the containment checks alone would let through', () => {
+    const text = 'I saw XYZAB123 and also QRSTU456 and also LMNOP789 written on different papers.'
+    const baseline = extractFacts('passport', text)
+    // Sanity: the baseline's own sweep already spent its one-chip budget on
+    // 'XYZAB123' (the sweep's own `break` — design note 4), and 'QRSTU456'
+    // below is genuinely a second, non-duplicate, non-contained candidate —
+    // containment alone does not explain why it must be refused.
+    expect(baseline.facts).toEqual([
+      { kind: 'reference_number', refType: 'unknown', label: 'A number you mentioned', value: 'XYZAB123', fills: null },
+    ])
+    const result = gateFacts('passport', text, [{ value: 'QRSTU456' }])
+    expect(result.facts).toEqual(baseline.facts) // unchanged: the second unknown candidate is refused by budget, not containment
+  })
+})
+
 describe('interpretFactsCopyExtras — sweeps REF_SHAPES\' label strings for the content-safety scan (design note 1)', () => {
   it('returns a non-empty CopyLocation[] covering every REF_SHAPES label plus the unknown/date labels', () => {
     const extras = interpretFactsCopyExtras()
@@ -279,5 +361,16 @@ describe('interpretFactsCopyExtras — sweeps REF_SHAPES\' label strings for the
     }
     const texts = extras.map(e => e.text)
     expect(texts).toEqual(expect.arrayContaining(['File Number', 'ARN', 'Grievance number', 'EPIC number', 'Reference number', 'A number you mentioned']))
+  })
+})
+
+describe('interpretFactsCopyExtras() guardrail sweep (I-5 fix: the shape prep.test.ts/casefile.test.ts use — every sibling data-shaped-copy module feeds guardrailFindings(), this one had no test that actually did)', () => {
+  const PLAYBOOKS = [passportPlaybook, voterPlaybook, sirPlaybook]
+
+  it.each(PLAYBOOKS.map(p => [p.serviceId, p] as const))('%s: interpretFacts copy is clean under the content-safety scan', (_id, playbook) => {
+    expect(guardrailFindings(playbook, {
+      currentPhaseId: playbook.serviceId === 'sir' ? SIR_STATES.delhi.phase!.id : 'none',
+      extra: interpretFactsCopyExtras(),
+    })).toEqual([])
   })
 })
