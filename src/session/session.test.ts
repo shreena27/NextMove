@@ -204,23 +204,31 @@ describe('RESTART preserves the persisted slice AND the signed-in user (Issue #7
 
     const s = r(dirty, { type: 'RESTART' })
 
-    expect(s).toEqual({ ...initialSession, savedCases, user: FIXTURE_USER })
+    expect(s).toEqual({ ...initialSession, savedCases, user: FIXTURE_USER, migration: 'running' })
     expect(s.savedCases).toBe(savedCases) // the SAME array, not a copy
     expect(s.user, 'the topbar brand button dispatches RESTART; without this, tapping the logo signs the citizen out').toBe(FIXTURE_USER)
+    // Whole-branch review Finding C1: migration must survive RESTART too.
+    // With migration silently reset to 'idle', App.tsx's effect gates
+    // (state.user !== null && state.migration === 'idle') make every
+    // save after this point write to memory only — see the it.each below
+    // for the full structural pin across all three initialSession-reset
+    // arms.
+    expect(s.migration, 'RESTART must not reset migration — doing so re-opens the App.tsx effect-gate hole (Finding C1)').toBe('running')
     for (const key of Object.keys(initialSession) as (keyof SessionState)[]) {
-      if (key === 'savedCases' || key === 'user') continue
+      if (key === 'savedCases' || key === 'user' || key === 'migration') continue
       expect(s[key], `RESTART must reset ${key} to initialSession's value`).toEqual(initialSession[key])
     }
   })
 })
 
 describe('BACK to Home preserves the persisted slice AND the signed-in user (design note 4; C7 design note 6)', () => {
-  it('preserves savedCases and user when the previous screen is home — the single most likely place to silently wipe a citizen\'s saved casefiles', () => {
+  it('preserves savedCases, user AND migration when the previous screen is home — the single most likely place to silently wipe a citizen\'s saved casefiles (Finding C1)', () => {
     const savedCases = [FIXTURE_CASE]
     const dirty: SessionState = {
       ...initialSession,
       savedCases,
       user: FIXTURE_USER,
+      migration: 'running',
       history: ['home'],
       screen: 'passport-q1',
       answers: { q1: 'adverse' },
@@ -232,7 +240,59 @@ describe('BACK to Home preserves the persisted slice AND the signed-in user (des
     expect(s.screen).toBe('home')
     expect(s.savedCases).toBe(savedCases) // the SAME array, not a copy
     expect(s.user, 'the topbar brand button dispatches RESTART; without this, tapping the logo signs the citizen out').toBe(FIXTURE_USER)
-    expect(s).toEqual({ ...initialSession, savedCases, user: FIXTURE_USER })
+    expect(s.migration, 'BACK-to-home must not reset migration — doing so re-opens the App.tsx effect-gate hole (Finding C1)').toBe('running')
+    expect(s).toEqual({ ...initialSession, savedCases, user: FIXTURE_USER, migration: 'running' })
+  })
+})
+
+describe('user and migration survive every `{ ...initialSession, ... }` reset arm — RESTART, BACK-to-home, CLOSE_UNRESOLVED (whole-branch review Findings C1/C2, 2026-09-07 fix wave)', () => {
+  // Task 4 built a per-arm named test for RESTART and BACK-to-home (above),
+  // but neither dirtied `migration`, so neither would have caught Finding
+  // C1 (both arms silently dropped it) or Finding C2 (CLOSE_UNRESOLVED also
+  // dropped `user`, re-opening a cross-account data leak — see caseSync.ts
+  // rule zero and App.tsx's effect 1). This it.each is the structural fix
+  // the review asked for: one assertion covering every arm that spreads
+  // `initialSession`, so a FOURTH field added to SessionState later and
+  // forgotten on one of these arms fails here immediately, the same way
+  // the nav-clear-set it.each above (`$name clears authErr and acctOpen`)
+  // already catches a forgotten clear.
+  const NOW = 1_725_000_000_000
+  const CLOSABLE_CASE: Casefile = {
+    ...FIXTURE_CASE, id: 'c1', outcome: 'still_open',
+    log: [{ t: NOW - 1000, kind: 'diagnosed', text: 'Escalate' }],
+  }
+
+  const arms: Array<{ name: string; dirty: SessionState; run: (s: SessionState) => SessionState }> = [
+    {
+      name: 'RESTART',
+      dirty: {
+        ...initialSession, user: FIXTURE_USER, migration: 'running',
+        savedCases: [FIXTURE_CASE], screen: 'passport-diagnosis', history: ['home', 'passport-q1'],
+      },
+      run: (dirty) => r(dirty, { type: 'RESTART' }),
+    },
+    {
+      name: 'BACK to home',
+      dirty: {
+        ...initialSession, user: FIXTURE_USER, migration: 'running',
+        savedCases: [FIXTURE_CASE], screen: 'passport-q1', history: ['home'],
+      },
+      run: (dirty) => r(dirty, { type: 'BACK' }),
+    },
+    {
+      name: 'CLOSE_UNRESOLVED',
+      dirty: {
+        ...initialSession, user: FIXTURE_USER, migration: 'running',
+        savedCases: [CLOSABLE_CASE], activeCaseId: 'c1', screen: 'checkin', history: ['home'],
+      },
+      run: (dirty) => r(dirty, { type: 'CLOSE_UNRESOLVED', now: NOW }),
+    },
+  ]
+
+  it.each(arms)('$name preserves user and migration', ({ dirty, run }) => {
+    const s = run(dirty)
+    expect(s.user, "must not silently sign the citizen out — Finding C2's cross-account leak starts exactly here").toEqual(FIXTURE_USER)
+    expect(s.migration, "must not reset migration to 'idle' — that re-arms MIGRATION_STARTED's guard and blanks App.tsx's persistence/push effect gates (Finding C1)").toBe('running')
   })
 })
 

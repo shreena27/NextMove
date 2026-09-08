@@ -341,3 +341,47 @@ describe('onAuthChange', () => {
     expect(seenEvents).toEqual(['SIGNED_IN', 'INITIAL_SESSION', 'SIGNED_OUT', 'USER_UPDATED', 'TOKEN_REFRESHED'])
   })
 })
+
+// Whole-branch review Finding I1, 2026-09-07 fix wave. getClient() (supabase.
+// ts) throws synchronously when VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY are
+// unset or malformed — verified empirically by the reviewer:
+// `createClient(undefined, undefined)` throws `supabaseUrl is required.`.
+// Every OTHER function on this surface funnels that same throw through
+// `guardResult` (it's an `async` function, so a synchronous throw inside it
+// becomes a rejected promise `guardResult`'s own try/catch already catches —
+// see `getCurrentUser`'s coverage above). `onAuthChange` is NOT async and had
+// no such wrapper: called from App.tsx's effect 3 with no error boundary
+// anywhere in the tree, the throw propagated straight out of the commit
+// phase and unmounted the whole app — including for a signed-out citizen who
+// never touched auth.
+//
+// This block needs its OWN fresh module instance rather than reusing the
+// file's shared `mockClient`: `supabase.ts`'s `client` singleton is already
+// non-null by this point in the file (every describe above this one calls a
+// function that calls `getClient()` at least once), so calling `getClient()`
+// again here would just return the already-memoized client and never reach
+// `createClient()` at all — the throw would never fire, and the test would
+// pass for the wrong reason. `vi.resetModules()` + a dynamic `import('./auth')`
+// gets a genuinely fresh `client = null` to throw against, while the
+// `@supabase/supabase-js` mock (captured via `vi.hoisted`, module-instance-
+// independent) stays wired to the same `mockCreateClient` this file already
+// controls.
+describe('onAuthChange degrades to signed-out/local-only when getClient() throws (Finding I1)', () => {
+  it('does not throw, never calls the listener, and returns a safely-callable unsubscribe — a misconfigured environment must not crash the app for a signed-out citizen', async () => {
+    vi.resetModules()
+    mockCreateClient.mockImplementationOnce(() => {
+      throw new Error('supabaseUrl is required.')
+    })
+    const freshAuth = await import('./auth')
+    const cb = vi.fn()
+
+    let unsubscribe: (() => void) | undefined
+    expect(() => { unsubscribe = freshAuth.onAuthChange(cb) }).not.toThrow()
+
+    expect(cb).not.toHaveBeenCalled()
+    // App.tsx's effect 3 unconditionally returns this as its cleanup
+    // function and React calls it on every unmount — it must itself never
+    // throw, even though no real subscription was ever registered.
+    expect(() => unsubscribe?.()).not.toThrow()
+  })
+})

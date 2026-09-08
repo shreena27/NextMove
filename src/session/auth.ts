@@ -208,10 +208,32 @@ export async function getCurrentUser(): Promise<AuthUserResult> {
  *  names becomes exhaustiveness-checked by `tsc`, the same discipline this
  *  project already applies to `ScreenId`/`SessionAction` — an unknown or
  *  typo'd event name is now a compile error, not a silent no-op falling
- *  through an unremarked case. */
+ *  through an unremarked case.
+ *
+ *  Whole-branch review Finding I1 (2026-09-07 fix wave): `getClient()`
+ *  (supabase.ts) throws SYNCHRONOUSLY when `VITE_SUPABASE_URL`/
+ *  `VITE_SUPABASE_ANON_KEY` are unset or malformed — verified empirically:
+ *  `createClient(undefined, undefined)` throws `supabaseUrl is required.`.
+ *  Every other function on this surface funnels that same failure through
+ *  `guardResult` (each is `async`, so a synchronous throw inside becomes a
+ *  rejected promise `guardResult`'s own try/catch already catches). This
+ *  function is not async and had no equivalent guard: called from App.tsx's
+ *  effect 3 with no error boundary anywhere in the tree, the throw
+ *  propagated straight out of React's commit phase and unmounted the WHOLE
+ *  app — including for a signed-out citizen who never touched auth, which
+ *  contradicts the trust promise this whole chunk is built around. The
+ *  try/catch below degrades instead: no subscription is registered, `cb` is
+ *  never called, and the citizen lands in exactly the signed-out,
+ *  local-only state `getCurrentUser()` (effect 2) already fails soft into
+ *  via `guardResult` — the app boots normally, just permanently signed out,
+ *  for as long as the misconfiguration lasts. */
 export function onAuthChange(cb: (event: AuthChangeEvent, user: AppUser | null) => void): () => void {
-  const { data } = getClient().auth.onAuthStateChange((event, session) => {
-    cb(event, toAppUser(session?.user ?? null))
-  })
-  return () => { data.subscription.unsubscribe() }
+  try {
+    const { data } = getClient().auth.onAuthStateChange((event, session) => {
+      cb(event, toAppUser(session?.user ?? null))
+    })
+    return () => { data.subscription.unsubscribe() }
+  } catch {
+    return () => {}
+  }
 }

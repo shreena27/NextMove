@@ -541,11 +541,19 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       const history = s.history.slice(0, -1)
       const prev = s.history[s.history.length - 1]
       // Home is a clean slate, always (prototype back(), line 2035-2040).
-      // Explicit allowlist, not a blanket initialSession reset: savedCases
-      // AND (C7) user are the persisted slice and must survive this, and
-      // only this — RESTART's own arm comment explains why user must be on
-      // this allowlist.
-      if (prev === 'home') return { ...initialSession, savedCases: s.savedCases, user: s.user }
+      // Explicit allowlist, not a blanket initialSession reset: savedCases,
+      // user AND (whole-branch review Finding C1, 2026-09-07 fix wave)
+      // migration are the persisted slice and must survive this, and only
+      // this — RESTART's own arm comment explains why user must be on this
+      // allowlist. migration was missing here because the field that
+      // *reads* it (App.tsx's effect gates) was introduced by a later
+      // task than the one that wrote this arm — dropping it silently
+      // stops both the local-persistence effect (gated on user !== null)
+      // and the server-push effect (gated on migration === 'done') from
+      // ever running again after a Back-to-home, so a casefile saved
+      // after that point exists only in memory. See the it.each in
+      // session.test.ts pinning all three initialSession-reset arms.
+      if (prev === 'home') return { ...initialSession, savedCases: s.savedCases, user: s.user, migration: s.migration }
       // DEVIATION from the prototype's back() (2035-2040), which clears
       // only trustOpen/authErr — not acctOpen, and not restartConfirm
       // either; only nav() and restart() carry the full clear set. This
@@ -569,14 +577,24 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
     case 'RESTART_REQUEST': return { ...s, restartConfirm: true }
     case 'RESTART_CANCEL': return { ...s, restartConfirm: false }
     // Explicit allowlist, not a blanket initialSession reset (Issue #7,
-    // design note 3; C7 design note 6): savedCases AND (from C7) user are
-    // the persisted slice and must survive a restart — every other field,
-    // including any added later, resets to initialSession's value by
-    // default. `user` is on this allowlist because the topbar BRAND BUTTON
-    // dispatches RESTART (prototype topbar(), 2273): without it, tapping
-    // the logo would silently sign the citizen out. Signing out is a
-    // separate, explicit action (SIGN_OUT) — never a RESTART side effect.
-    case 'RESTART': return { ...initialSession, savedCases: s.savedCases, user: s.user }
+    // design note 3; C7 design note 6): savedCases, user AND (whole-branch
+    // review Finding C1, 2026-09-07 fix wave) migration are the persisted
+    // slice and must survive a restart — every other field, including any
+    // added later, resets to initialSession's value by default. `user` is
+    // on this allowlist because the topbar BRAND BUTTON dispatches RESTART
+    // (prototype topbar(), 2273), and — pointedly — so does the account
+    // popover's own primary row (AccountChip.tsx's "Your casefile · N
+    // open" button): without it, either tap would silently sign the
+    // citizen out. Signing out is a separate, explicit action (SIGN_OUT)
+    // — never a RESTART side effect. `migration` is on this allowlist for
+    // the same reason: dropping it to 'idle' blanks App.tsx's
+    // persistence/server-push effect gates (so a later save lands nowhere
+    // durable) AND re-arms MIGRATION_STARTED's guard, so a re-emitted
+    // SIGNED_IN (tab focus / cross-tab recovery) re-runs the migration
+    // against an already-cleared nm_cases and can drop cases saved since
+    // the restart. See the it.each in session.test.ts pinning all three
+    // initialSession-reset arms (RESTART, BACK-to-home, CLOSE_UNRESOLVED).
+    case 'RESTART': return { ...initialSession, savedCases: s.savedCases, user: s.user, migration: s.migration }
     case 'TOGGLE_TRUST': return { ...s, trustOpen: !s.trustOpen }
     case 'SET_RECOVERY_TEXT': return { ...s, recoveryText: a.text }
     case 'EXPLAIN_VOTER_ENTRY': return { ...s, voterEntryExplain: true }
@@ -734,13 +752,29 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       )
       if (!fragment) return s
       // Prototype closeUnresolved() ends in restart() (2729) — the SAME
-      // explicit allowlist RESTART's own arm uses (design note 3): only
-      // savedCases survives. Design note 9: for a working (unsaved) case,
-      // `fragment.workingCase` holds the just-closed case, but it was
+      // explicit allowlist RESTART's own arm uses (design note 3), now
+      // matching that allowlist exactly: savedCases, user AND migration
+      // survive (whole-branch review Finding C2, 2026-09-07 fix wave).
+      // Task 4's review flagged this arm as an unbriefed, untouched clone
+      // of RESTART's allowlist and explicitly deferred the decision here.
+      // The ruling: it must match RESTART, not diverge from it. Dropping
+      // `user` here silently signs the citizen out while their Supabase
+      // session stays live — the account chip disappears, a later Save
+      // takes the signed-out branch, the closure itself never reaches the
+      // server (effect 6 is gated on user !== null, so the next sign-in's
+      // rule-zero authoritative-remote-row logic silently reverts it), and
+      // — the actual leak — with `user` now null, App.tsx's local-
+      // persistence effect no longer early-returns, so it writes this
+      // account's savedCases into nm_cases; a different account signing in
+      // next on the same browser then migrates account A's cases onto
+      // account B. `migration` is on the same allowlist for the same
+      // reason RESTART carries it. Design note 9: for a working (unsaved)
+      // case, `fragment.workingCase` holds the just-closed case, but it was
       // never a member of savedCases and is dropped here exactly like
       // everywhere else RESTART drops workingCase — leaving genuinely no
-      // record, on purpose.
-      return { ...initialSession, savedCases: fragment.savedCases }
+      // record, on purpose. See the it.each in session.test.ts pinning all
+      // three initialSession-reset arms.
+      return { ...initialSession, savedCases: fragment.savedCases, user: s.user, migration: s.migration }
     }
     case 'REOPEN_CASE': {
       const fragment = reopenCase(s.savedCases, a.id, a.now)
