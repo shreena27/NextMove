@@ -445,7 +445,7 @@ describe('open variant — the case is still_open', () => {
     expect(screen.queryByRole('button', { name: UI.saveControl.saveWithSteps })).toBeNull()
   })
 
-  it('the working-case tail\'s Save button fires BEGIN_SAVE', () => {
+  it('the working-case tail\'s Save button fires BEGIN_SAVE, with a freshly minted UUID newId (D4)', () => {
     const working = makeCase('passport', state1D, state1Answers, { unsaved: true })
     const dispatch = vi.fn()
     render(<CasefileScreen case={working} answers={working.answers} d={state1D} {...baseProps({ dispatch })} />)
@@ -453,6 +453,7 @@ describe('open variant — the case is still_open', () => {
     expect(dispatch).toHaveBeenCalledWith({
       type: 'BEGIN_SAVE', engineKey: 'passport', serviceLabel: working.serviceLabel,
       returnScreen: working.returnScreen, now: NOW,
+      newId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
     })
   })
 
@@ -559,6 +560,14 @@ describe('closed variant — the case is not still_open', () => {
     expect(document.querySelector('.case-h1')).toHaveTextContent(UI.casefile.closedUnresolvedHeadline)
   })
 
+  it('a superseded case renders its own headline, not the got-it or unresolved one (D3)', () => {
+    const c = makeCase('passport', state1D, state1Answers, { outcome: 'superseded', closedAt: NOW + 1000 })
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps()} />)
+    expect(document.querySelector('.case-h1')).toHaveTextContent(UI.casefile.closedSupersededHeadline)
+    expect(document.querySelector('.case-h1')).not.toHaveTextContent(UI.casefile.closedGotItHeadline)
+    expect(document.querySelector('.case-h1')).not.toHaveTextContent(UI.casefile.closedUnresolvedHeadline)
+  })
+
   it('closed-deliverable_received crumbs use CLOSED_TITLE; closed-unresolved crumbs use stateLabel', () => {
     const gotIt = makeCase('passport', state1D, state1Answers, { outcome: 'deliverable_received' })
     const { unmount } = render(<CasefileScreen case={gotIt} answers={gotIt.answers} d={state1D} {...baseProps()} />)
@@ -579,6 +588,23 @@ describe('closed variant — the case is not still_open', () => {
     screen.getByRole('button', { name: new RegExp(UI.casefile.reopen) }).click()
     expect(dispatch).toHaveBeenCalledWith({ type: 'REOPEN_CASE', id: 'c1', now: NOW })
   })
+
+  it("D5 — renders the reopen control when no OTHER still_open case shares this case's engine", () => {
+    const c = makeCase('passport', state1D, state1Answers, { outcome: 'closed_unresolved' })
+    render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps({ savedCases: [c] })} />)
+    expect(screen.getByRole('button', { name: new RegExp(UI.casefile.reopen) })).toBeInTheDocument()
+  })
+
+  it(
+    'D5 — does NOT render the reopen control when a sibling still_open passport case already exists: ' +
+    "reopening would be rejected server-side by casefiles_one_open_per_service (Task 2's partial unique index)",
+    () => {
+      const c = makeCase('passport', state1D, state1Answers, { outcome: 'closed_unresolved' })
+      const sibling = makeCase('passport', state5aD, state5aAnswers, { id: 'c2', outcome: 'still_open' })
+      render(<CasefileScreen case={c} answers={c.answers} d={state1D} {...baseProps({ savedCases: [c, sibling] })} />)
+      expect(screen.queryByRole('button', { name: new RegExp(UI.casefile.reopen) })).not.toBeInTheDocument()
+    },
+  )
 
   it('renders NO check-in machinery: no .update-mod, no .arow option rows, no .remind-row', () => {
     const c = makeCase('passport', state5aD, state5aAnswers, { outcome: 'deliverable_received' })

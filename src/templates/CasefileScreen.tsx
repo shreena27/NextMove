@@ -88,6 +88,7 @@ import type { Casefile } from '../domain/casefile'
 import { CLOSED_TITLE, DELIVERABLE_Q, checkinOptionsFor, type CheckinOption } from '../domain/checkinOptions'
 import type { ScreenId, SessionAction } from '../session/session'
 import type { CiSnapshot } from '../session/cases'
+import { newCaseId } from '../session/cases'
 import { prepPlanFor } from '../playbooks/prep'
 import { Crumbs } from '../ui/Crumbs'
 import { Split } from '../ui/Split'
@@ -224,6 +225,23 @@ export function CasefileScreen({
   // -------------------------------------------------------------------
   if (c.outcome !== 'still_open') {
     const gotIt = c.outcome === 'deliverable_received'
+    // Task 5 (D3): a superseded case's headline must not claim "unresolved"
+    // (false — it was set aside, never exhausted) or "got it" (also false).
+    const superseded = c.outcome === 'superseded'
+    const headline = gotIt
+      ? UI.casefile.closedGotItHeadline
+      : superseded ? UI.casefile.closedSupersededHeadline : UI.casefile.closedUnresolvedHeadline
+    // Task 5 (D5) — the server-side mirror of casefiles_one_open_per_service
+    // (Task 2's partial unique index, on (user_id, engine_key) where
+    // outcome = 'still_open'): session/cases.ts's reopenCase returns null
+    // under this SAME condition, because Postgres would reject that write.
+    // The reopen control renders only when reopening is actually possible —
+    // the same shape SaveControl already uses for caseIsSaved (render the
+    // note instead of the button) — no replacement copy: the control is
+    // simply absent.
+    const canReopen = !savedCases.some(
+      x => x.id !== c.id && x.engineKey === c.engineKey && x.outcome === 'still_open',
+    )
     return (
       <>
         {topbar}
@@ -238,9 +256,7 @@ export function CasefileScreen({
                   ]}
                   sqClass={sqClass}
                 />
-                <h1 className="case-h1">
-                  {gotIt ? UI.casefile.closedGotItHeadline : UI.casefile.closedUnresolvedHeadline}
-                </h1>
+                <h1 className="case-h1">{headline}</h1>
                 <p className="lede">{UI.casefile.closedLede}</p>
                 <div className="case-meta-line">
                   {UI.casefile.metaSaved.replace('{day}', fmtDay(c.savedAt))}
@@ -252,12 +268,14 @@ export function CasefileScreen({
               <>
                 <div className="nm-k" style={{ margin: '0 0 4px' }}>{journeyHeading}</div>
                 <JourneyLog case={c} logOpen={logOpen} onShowAll={() => dispatch?.({ type: 'TOGGLE_LOG', caseId: c.id })} />
-                <div className="case-links">
-                  <button className="case-link" onClick={() => dispatch?.({ type: 'REOPEN_CASE', id: c.id, now })}>
-                    {UI.casefile.reopen}
-                    <span className="arow-chevron" style={{ marginLeft: 'auto' }}>{ICONS.chevron}</span>
-                  </button>
-                </div>
+                {canReopen ? (
+                  <div className="case-links">
+                    <button className="case-link" onClick={() => dispatch?.({ type: 'REOPEN_CASE', id: c.id, now })}>
+                      {UI.casefile.reopen}
+                      <span className="arow-chevron" style={{ marginLeft: 'auto' }}>{ICONS.chevron}</span>
+                    </button>
+                  </div>
+                ) : null}
                 {removeCtl}
               </>
             }
@@ -541,6 +559,9 @@ export function CasefileScreen({
                         // string type).
                         returnScreen: c.returnScreen as ScreenId,
                         now,
+                        // D4: minted in this onClick, not hoisted next to
+                        // `now` — never called during render.
+                        newId: newCaseId(),
                       })
                     }
                   />

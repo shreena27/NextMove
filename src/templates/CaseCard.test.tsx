@@ -69,6 +69,17 @@ describe('CaseCard (port of caseCard, prototype 3117-3135) — the whole card is
     expect(container.querySelector('.saved-kicker')).toHaveTextContent(UI.card.closedUnresolved)
   })
 
+  it('a superseded card shows the "Closed — set aside" kicker, never "Closed — unresolved" (D3: a superseded case is not an unresolved one)', () => {
+    const c = baseCase({ outcome: 'superseded', closedAt: NOW })
+    const { container } = render(<CaseCard case={c} onOpen={() => {}} now={NOW} />)
+    expect(
+      container.querySelector('.saved-kicker'),
+      'D3: a superseded case is not an unresolved one — it never went through the escalation ladder, so it must not fall into the closedUnresolved kicker',
+    ).toHaveTextContent(UI.card.closedSuperseded)
+    expect(container.querySelector('.saved-kicker')).not.toHaveTextContent(UI.card.closedUnresolved)
+    expect(container.querySelector('.saved-card')).toHaveClass('closed')
+  })
+
   it('no closed card renders a coloured status chip — only the CLOSED mark', () => {
     const c = baseCase({ outcome: 'closed_unresolved', closedAt: NOW })
     const { container } = render(<CaseCard case={c} onOpen={() => {}} now={NOW} />)

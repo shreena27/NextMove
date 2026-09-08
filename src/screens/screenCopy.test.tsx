@@ -6,8 +6,8 @@
 // own data module stays plain .ts, which is what the isolation scan
 // actually walks.)
 import { describe, it, expect, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { readFileSync, readdirSync } from 'node:fs'
+import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { render, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -37,6 +37,8 @@ import {
 import { VoterEntry, VoterQ1, VoterQ2 } from './voter/VoterScreens'
 import { SirState, SirUnsupported, SirReverifying, SirQ1 } from './sir/SirScreens'
 import { Topbar } from '../ui/Topbar'
+import { AccountChip } from '../ui/AccountChip'
+import { Footer } from '../ui/Footer'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { DiagnosisScreen } from '../templates/DiagnosisScreen'
 import { NextMoveScreen } from '../templates/NextMoveScreen'
@@ -52,6 +54,9 @@ import { SaveControl } from '../templates/SaveControl'
 import { DeadEndScreen } from '../templates/DeadEndScreen'
 import { CaseClosedScreen } from '../templates/CaseClosedScreen'
 import { SaveDoneScreen } from '../templates/SaveDoneScreen'
+import { SaveCaseScreen } from '../templates/SaveCaseScreen'
+import { SaveOtpScreen } from '../templates/SaveOtpScreen'
+import { SaveNameScreen } from '../templates/SaveNameScreen'
 
 const noop = () => {}
 
@@ -199,6 +204,24 @@ describe('C3 screen copy passes the same content-safety scan as rule copy (§7)'
     expect(guardrailFindings(passportPlaybook, { extra: SCREEN_COPY.ui })).toEqual([])
   })
 
+  it('the ui: bucket actually grew with the C7 auth/account entries (a sweep over an accidentally-unregistered tree is vacuously clean)', () => {
+    // task-10-brief.md RED item 1: `guardrailFindings` passing above proves
+    // nothing on its own if the new copy was never registered under `UI` in
+    // the first place — this pins that it genuinely was, by name, before
+    // trusting the clean scan above.
+    const ats = SCREEN_COPY.ui.map(c => c.at)
+    for (const at of [
+      'ui:saveCase.trust',
+      'ui:saveOtp.resendWaitOne',
+      'ui:saveName.saveMidSave',
+      'ui:saveName.saveStandalone',
+      'ui:account.casefilesOne',
+      'ui:saveDone.ledeTailPhone',
+    ]) {
+      expect(ats, at).toContain(at)
+    }
+  })
+
   it('every bucket exists and is non-empty (the sweep cannot pass by being empty)', () => {
     for (const key of ['passport', 'voter', 'sir', 'ui'] as const) {
       expect(SCREEN_COPY[key].length, key).toBeGreaterThan(0)
@@ -223,6 +246,89 @@ describe('C3 screen copy passes the same content-safety scan as rule copy (§7)'
     for (const [bucket, entries] of Object.entries(SCREEN_COPY)) {
       for (const c of entries) expect(c.at).toMatch(new RegExp(`^${bucket}:`))
     }
+  })
+
+  it('UI.saveCase.trust is registered as ONE whole paragraph carrying all four load-bearing clauses', () => {
+    // task-10-brief.md RED item 2 / design note 2: this paragraph is "the
+    // load-bearing promise of this entire chunk" — splitting it into
+    // sentence fragments would let one clause be edited out of the
+    // guardrail scan's sight without anything catching it, which is why it
+    // is transcribed and registered as exactly one string, not several.
+    expect(typeof UI.saveCase.trust).toBe('string')
+    const clauses = ['exactly one thing', 'No marketing', 'Remove deletes a case for good', 'never required signing in']
+    for (const clause of clauses) {
+      expect(
+        UI.saveCase.trust,
+        `UI.saveCase.trust must stay ONE whole paragraph carrying "${clause}" — splitting it would let this clause drift out of the guardrail scan's sight`,
+      ).toContain(clause)
+    }
+  })
+
+  it('CAPTION_TEMPLATES includes the four new C7 template entries', () => {
+    // task-10-brief.md RED item 3. The full consistency check (that
+    // CAPTION_SUBSTITUTIONS covers exactly these keys) lives in the
+    // coverage-holds-by-construction describe block below, alongside every
+    // other CAPTION_TEMPLATES entry.
+    for (const key of ['ui:saveOtp.lede', 'ui:saveOtp.resendWaitMany', 'ui:account.casefilesOne', 'ui:account.casefilesMany']) {
+      expect(CAPTION_TEMPLATES.has(key), key).toBe(true)
+    }
+    // resendWaitOne carries no placeholder (its value is the fixed string
+    // 'Send again in one second'), so it is NOT a template — same shape as
+    // time.today/time.yesterday alongside time.daysAgo.
+    expect(CAPTION_TEMPLATES.has('ui:saveOtp.resendWaitOne')).toBe(false)
+  })
+
+  it('all six UI.saveName branch strings are registered and distinct', () => {
+    // task-10-brief.md RED item 4 / design note 6 — "the detail most likely
+    // to be missed": renderSaveName branches on midSave in three places;
+    // these six are the lede-clause pair and both button pairs, never
+    // collapsed into one shared string per pair.
+    const six = [
+      UI.saveName.ledeClauseMidSave,
+      UI.saveName.ledeClauseStandalone,
+      UI.saveName.saveMidSave,
+      UI.saveName.saveStandalone,
+      UI.saveName.switchMidSave,
+      UI.saveName.switchStandalone,
+    ]
+    for (const s of six) expect(typeof s).toBe('string')
+    expect(new Set(six).size, six.join(' | ')).toBe(6)
+  })
+
+  const TEXT_FILE_RE = /\.(ts|tsx|json|css|html?|md|txt|svg)$/i
+
+  /** Every text file under `dir`, recursively — used only by the D1 sweep
+   *  below. Deliberately broad (not scoped to .ts/.tsx) since the brief's
+   *  own RED item 5 asks for "nowhere in src/", not "nowhere in src/*.ts".
+   *  Skips binary assets (src/assets/fonts/*.woff2) by extension allowlist
+   *  rather than by directory, so it stays correct if fonts move. Skips
+   *  *.test.ts/*.test.tsx files (the same carve-out guardrails/
+   *  isolation.test.ts's own `applicationTsFiles` already applies): a test
+   *  file legitimately needs to reference the needle text to assert its
+   *  absence — this very file does, right below — so scanning test files
+   *  would make the assertion self-defeating. */
+  const TEST_FILE_RE = /\.test\.tsx?$/
+  function allSrcTextFiles(dir: string): string[] {
+    const out: string[] = []
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) { out.push(...allSrcTextFiles(full)); continue }
+      if (!entry.isFile() || !TEXT_FILE_RE.test(entry.name) || TEST_FILE_RE.test(entry.name)) continue
+      out.push(full)
+    }
+    return out
+  }
+
+  it("'Design prototype: any 6 digits work here.' appears nowhere in src/ (D1)", () => {
+    // task-10-brief.md RED item 5 / design note 4: the prototype's
+    // demo-hint is prototype-only scaffold copy, deliberately NOT
+    // registered in SCREEN_COPY — this is the repo-wide half of that rule,
+    // not scoped to any one component.
+    const here = dirname(fileURLToPath(import.meta.url)) // -> <repo>/src/screens
+    const srcRoot = join(here, '..') // -> <repo>/src
+    const needle = 'Design prototype: any 6 digits work here.'
+    const offenders = allSrcTextFiles(srcRoot).filter(f => readFileSync(f, 'utf8').includes(needle))
+    expect(offenders.map(f => f.split(sep).join('/')), offenders.join('\n')).toEqual([])
   })
 
   it("screenCopy.ts declares its own {at,text} type and imports no guardrail module", () => {
@@ -288,6 +394,17 @@ const closedUnresolvedCase: Casefile = {
   ...caseSnap, id: 'ui-case-closed-unresolved', outcome: 'closed_unresolved',
   lastCheck: null, remindAt: null, closedAt: CASE_NOW, log: [],
 }
+// Task 5 (D3): the 'superseded' outcome's own card kicker (card.closedSuperseded).
+const closedSupersededCase: Casefile = {
+  ...caseSnap, id: 'ui-case-closed-superseded', outcome: 'superseded',
+  lastCheck: null, remindAt: null, closedAt: CASE_NOW, log: [],
+}
+// Task 15: the account popover's own fixture, reusing openCase/
+// closedSupersededCase above rather than minting a third set of case data —
+// one still_open case and one superseded one, so the same mount that closes
+// the ui:account.* coverage gap also stands as a live (not just AccountChip.
+// test.tsx-only) proof that a superseded case is not counted.
+const acctUnnamedUser = { method: 'phone' as const, id: '+919876543210', name: null }
 
 const journeyLogA: Casefile = {
   ...caseSnap, id: 'ui-log-a', outcome: 'still_open', lastCheck: null, remindAt: null,
@@ -350,6 +467,11 @@ const cfClosedGotIt: Casefile = {
 }
 const cfClosedUnresolved: Casefile = {
   ...caseSnap, id: 'ui-cf-closed-unresolved', outcome: 'closed_unresolved',
+  lastCheck: null, remindAt: null, closedAt: CASE_NOW, log: [{ t: CASE_NOW, kind: 'diagnosed', text: 'x' }],
+}
+// Task 5 (D3): the 'superseded' outcome's own headline (casefile.closedSupersededHeadline).
+const cfClosedSuperseded: Casefile = {
+  ...caseSnap, id: 'ui-cf-closed-superseded', outcome: 'superseded',
   lastCheck: null, remindAt: null, closedAt: CASE_NOW, log: [{ t: CASE_NOW, kind: 'diagnosed', text: 'x' }],
 }
 
@@ -452,14 +574,50 @@ function SirBucketScreens() {
  *  copy is already covered by the two direct <Topbar/> mounts above, so
  *  this is added only where design note 4 explicitly asks for it. */
 function topbar(showBack: boolean, showRestart: boolean) {
-  return <Topbar showBack={showBack} showRestart={showRestart} hasAnswers={false} restartConfirm={false} dispatch={noop} />
+  return (
+    <Topbar
+      showBack={showBack} showRestart={showRestart} hasAnswers={false} restartConfirm={false}
+      state={initialSession} dispatch={noop}
+    />
+  )
 }
 
 function UiChrome() {
+  // Task 12's SaveOtpScreen fixture below needs a deadline just under
+  // 1000ms from the REAL clock (its live countdown reads `Date.now()`
+  // directly, design note 4 — CASE_NOW is a fixed fixture timestamp long
+  // past by the time this suite runs, so it cannot stand in here). Computed
+  // once, outside the JSX, so the one-off `Date.now()` read is not itself
+  // flagged as an impure call "during render" (this is a plain function
+  // call producing a fixture, not an actually re-rendering component).
+  // oxlint-disable-next-line react/purity -- one-off test fixture value, not a live render read; see comment above
+  const otpAlmostDueBy = Date.now() + 950
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={false} restartConfirm={false} dispatch={noop} />
-      <Topbar showBack showRestart hasAnswers restartConfirm dispatch={noop} />
+      <Topbar showBack showRestart hasAnswers={false} restartConfirm={false} state={initialSession} dispatch={noop} />
+      <Topbar showBack showRestart hasAnswers restartConfirm state={initialSession} dispatch={noop} />
+      {/* Task 15: closes the 'ui:account.*' coverage gap task-10-brief.md's
+          own design note 9 opened and task-12-brief.md's CAPTION_TEMPLATES
+          comment kept scoped down to exactly these entries. One mount,
+          open with a NAMELESS user and the sign-out confirm armed, covers
+          every non-templated ui:account.* string in a single pass:
+          ariaLabel (the popover's own aria-label), casefilesSub (always
+          rendered), addName/addNameSub (only without a name), and signOut/
+          signOutConfirm.prompt/yes/cancel (signOutConfirm.yes reuses the
+          same literal text as signOut, screenCopy.ts's own comment) —
+          casefilesOne/Many are CAPTION_TEMPLATES (they interpolate {n}),
+          so they are deliberately NOT asserted by this sweep; their
+          substituted forms get their own dedicated render check in
+          CAPTION_SUBSTITUTIONS' own `it` below, same as every other
+          templated entry in this file. */}
+      <AccountChip
+        state={{
+          ...initialSession, user: acctUnnamedUser, acctOpen: true, signOutConfirm: true,
+          savedCases: [openCase, closedSupersededCase],
+        }}
+        dispatch={noop}
+      />
+      <Footer />
       <Home state={initialSession} dispatch={noop} />
       <OtherServices state={initialSession} dispatch={noop} />
       <PhaseEyebrow service={UI.serviceLabel.sir} />
@@ -549,6 +707,7 @@ function UiChrome() {
       <CaseCard case={daysAgoCase} onOpen={noop} now={CASE_NOW} />
       <CaseCard case={closedGotItCase} onOpen={noop} now={CASE_NOW} />
       <CaseCard case={closedUnresolvedCase} onOpen={noop} now={CASE_NOW} />
+      <CaseCard case={closedSupersededCase} onOpen={noop} now={CASE_NOW} />
       {/* C5 Task 9: CasefileScreen — open (working + confirm panel),
           (saved + valence panel), (saved + closureq panel + remove-confirm),
           (reassure panel), and both closed headline branches. Together with
@@ -574,6 +733,7 @@ function UiChrome() {
       />
       <CasefileScreen case={cfClosedGotIt} answers={cfClosedGotIt.answers} d={helplineDiagnosis} {...casefileBaseProps} />
       <CasefileScreen case={cfClosedUnresolved} answers={cfClosedUnresolved.answers} d={helplineDiagnosis} {...casefileBaseProps} />
+      <CasefileScreen case={cfClosedSuperseded} answers={cfClosedSuperseded.answers} d={helplineDiagnosis} {...casefileBaseProps} />
       {/* copiedLabel ("Copied") only renders once reminderCopied is true —
           no click needed to reach it (props-driven, unlike PrepareScreen's
           own internal copy state), just its own static mount. */}
@@ -623,6 +783,72 @@ function UiChrome() {
           presence, so this duplicates coverage the mount above already
           gives; design note 8 asks for it explicitly regardless. */}
       <SaveDoneScreen pendingSave={null} dispatch={noop} />
+      {/* Task 14: SaveDoneScreen WITH a user (ledeTailPhone/ledeTailOther,
+          the OQ1 restoration) — one mount per branch of the ternary, a
+          phone user for ledeTailPhone and a Google user for ledeTailOther
+          (email hits the same else-branch string, covered by
+          SaveDoneScreen.test.tsx's own dedicated test, not duplicated
+          here). */}
+      <SaveDoneScreen pendingSave={null} user={{ method: 'phone', id: 'ui-sd-phone', name: null }} dispatch={noop} />
+      <SaveDoneScreen pendingSave={null} user={{ method: 'google', id: 'ui-sd-google', name: null }} dispatch={noop} />
+      {/* Task 12: SaveCaseScreen (Task 11) and SaveOtpScreen (Task 12),
+          wired in per the deferral this file's own INTERACTION_GATED
+          comment and CAPTION_SUBSTITUTIONS both left for "once SaveOtp/
+          SaveCase exist". Three SaveCaseScreen mounts cover every branch a
+          static render can reach: phone with no error (crumb/headline/
+          lede/trust/google/divider/fieldLabelMobile/placeholderMobile/
+          send/switchToEmail/authNote), email with its own error set
+          (fieldLabelEmail/placeholderEmail/switchToMobile/errors.email),
+          and phone with the OTHER error (errors.mobile) — both errors are
+          reachable as plain controlled props (SaveCaseScreen.test.tsx's own
+          Fix Round 1, Finding 3 precedent), no click needed. */}
+      <SaveCaseScreen authMethod="phone" authId="" authErr={null} authBusy={false} now={CASE_NOW} dispatch={noop} />
+      <SaveCaseScreen
+        authMethod="email" authId="" authErr={UI.saveCase.errors.email} authBusy={false} now={CASE_NOW}
+        dispatch={noop}
+      />
+      <SaveCaseScreen
+        authMethod="phone" authId="" authErr={UI.saveCase.errors.mobile} authBusy={false} now={CASE_NOW}
+        dispatch={noop}
+      />
+      {/* SaveOtpScreen: one mount with errors.code set (also covers
+          crumbTail/headline/fieldLabel/placeholder/verify/resendPrompt, all
+          reachable together since none of those depend on authErr), one
+          with otpResent (resendSent — a controlled prop, no click needed,
+          same reasoning as the errors above), and one whose
+          otpCooldownUntil sits just under 1000ms from the REAL clock (not
+          CASE_NOW, which is a fixed fixture timestamp long past by the time
+          this suite runs against the real `Date.now()` this component
+          reads for its live countdown — design note 4) so resendWaitOne
+          renders without needing fake timers here. saveOtp.lede
+          (CAPTION_TEMPLATES) and resendWaitMany (CAPTION_TEMPLATES) get
+          their own dedicated, fake-timer-backed render checks in
+          CAPTION_SUBSTITUTIONS below, not here. */}
+      <SaveOtpScreen
+        authMethod="phone" authId="+919876543210" otp="" authErr={UI.saveOtp.errors.code} authBusy={false}
+        otpResent={false} otpCooldownUntil={null} now={CASE_NOW} dispatch={noop}
+      />
+      <SaveOtpScreen
+        authMethod="phone" authId="+919876543210" otp="" authErr={null} authBusy={false}
+        otpResent otpCooldownUntil={null} now={CASE_NOW} dispatch={noop}
+      />
+      <SaveOtpScreen
+        authMethod="phone" authId="+919876543210" otp="" authErr={null} authBusy={false}
+        otpResent={false} otpCooldownUntil={otpAlmostDueBy} now={CASE_NOW} dispatch={noop}
+      />
+      {/* Task 13: SaveNameScreen — TWO mounts, one per branch (mid-save/
+          standalone), since design note 1 branches the crumbs, the lede
+          clause and both buttons on `midSave = !!pendingSave`. Both are
+          fully controlled components (no interaction needed for any of the
+          11 ui:saveName.* strings — headline/ledeStem/fieldLabel/
+          placeholder are shared, the other 8 split evenly across these two
+          mounts), same reasoning as the SaveCaseScreen/SaveOtpScreen mounts
+          above. */}
+      <SaveNameScreen
+        pendingSave={{ engineKey: 'passport', serviceLabel: UI.serviceLabel.passport, returnScreen: 'passport-nextmove' }}
+        pendingName="" now={CASE_NOW} dispatch={noop}
+      />
+      <SaveNameScreen pendingSave={null} pendingName="" now={CASE_NOW} dispatch={noop} />
     </>
   )
 }
@@ -683,6 +909,32 @@ const CAPTION_TEMPLATES = new Set([
   'sir:reverifying.headline', // interpolates the SIR state's name for {state}
   'sir:reverifying.lede', // interpolates the SIR state's name for {state} and changedOnFor for {date}
   'sir:reverifying.verifiedNote', // interpolates SOURCES_VERIFIED for {date}
+  // C7 (Task 10 — auth/account copy). saveOtp.lede interpolates the masked
+  // destination (the citizen's own phone or email, not a government-process
+  // claim) for {dest}. saveOtp.resendWaitMany interpolates
+  // Math.ceil(msRemaining/1000) for {n} — always >= 1 while the resend
+  // control is disabled (see UI.saveOtp's own header comment in
+  // screenCopy.ts); its n===1 sibling, resendWaitOne, carries no
+  // placeholder and is NOT in this set (ordinary literal-string sweep,
+  // same shape as time.today/time.yesterday alongside time.daysAgo).
+  // account.casefilesOne/Many interpolate the signed-in citizen's own open
+  // casefile count, same category as home.casefilesOne/Many above.
+  //
+  // UPDATED (Task 12): SaveCaseScreen (Task 11) and SaveOtpScreen (Task 12)
+  // now exist and are wired into UiChrome() / their own dedicated mounts
+  // below — 'ui:saveOtp.lede' and 'ui:saveOtp.resendWaitMany' both now have
+  // real substituted-form RENDER assertions (see CAPTION_SUBSTITUTIONS'
+  // own `it` below), not just the key-equality check.
+  // UPDATED (Task 15): 'ui:account.casefilesOne'/'casefilesMany' — the last
+  // two of the original four — now ALSO have real substituted-form render
+  // assertions (AccountChip now exists), closing the gap task-10-brief.md
+  // design note 9 opened and task-12-brief.md's own comment here narrowed
+  // down to exactly these two. Every CAPTION_TEMPLATES entry now has a real
+  // render check; none remain gapped.
+  'ui:saveOtp.lede',
+  'ui:saveOtp.resendWaitMany',
+  'ui:account.casefilesOne',
+  'ui:account.casefilesMany',
 ])
 
 // `INTERACTION_GATED` itself (design note 4a: entries no STATIC mount can
@@ -699,6 +951,43 @@ const CAPTION_TEMPLATES = new Set([
 // `Record` of per-entry assertions whose keys are asserted to equal
 // `[...INTERACTION_GATED]`, the same pattern `CAPTION_SUBSTITUTIONS` below
 // already uses for `CAPTION_TEMPLATES`.
+//
+// UPDATED (Task 12 — resolves Task 10's own deferred question, task-10-
+// brief.md design note 9's "likely candidates" list). Now that SaveCase/
+// SaveOtp actually exist, each of the five was checked against the real
+// rule this file's own header note states: gate ONLY what a static mount
+// genuinely cannot produce, never merely what is "fiddly" to mount. Result
+// — NONE of the five needed gating, because both screens are fully
+// controlled components (SaveCaseScreen.tsx design note 3 / SaveOtpScreen.
+// tsx's own header note): every field a "real interaction" would normally
+// be needed to reach is instead a plain prop, settable directly, exactly
+// the precedent SaveCaseScreen.test.tsx's own Fix Round 1, Finding 3
+// already established for `ui:saveCase.errors.email` (a dedicated render
+// test with `authErr` set directly, no click).
+//   - `ui:saveOtp.errors.code`, `ui:saveCase.errors.mobile`/`.email`,
+//     `ui:saveOtp.resendSent` — all reachable by setting `authErr`/
+//     `otpResent` directly; covered by UiChrome()'s own SaveCaseScreen/
+//     SaveOtpScreen mounts above, same as every other prop-driven branch
+//     in this file (e.g. the `reminderCopied`/`phaseDrift` CasefileScreen
+//     mounts).
+//   - `ui:saveOtp.resendWaitOne` — reachable by setting `otpCooldownUntil`
+//     to just under 1000ms from the REAL clock at mount time (SaveOtp
+//     Screen's countdown reads `Date.now()` directly, design note 4) —
+//     still zero interaction, just a controlled prop; covered by its own
+//     UiChrome() mount.
+//   - `ui:saveOtp.resendWaitMany` — already in CAPTION_TEMPLATES (it
+//     interpolates {n}), so it was never a candidate for THIS set; its
+//     substituted form gets its own dedicated, fake-timer-pinned render
+//     check in CAPTION_SUBSTITUTIONS' own `it` below, for the same
+//     no-interaction reason as the other four.
+// UPDATED (Task 15): the `account.*` subtree is now built and mounted —
+// `ui:account.casefilesOne`/`casefilesMany` are covered by their own
+// CAPTION_SUBSTITUTIONS render check below (same as every other templated
+// entry); the rest of `account.*` is a plain literal-string sweep, covered
+// by the dedicated AccountChip mount in UiChrome() above. Neither needed
+// INTERACTION_GATED — the account popover is a fully controlled component
+// (`state.acctOpen`/`state.signOutConfirm` are plain props), same as
+// SaveCase/SaveOtp before it.
 
 const SCREENS: [keyof typeof SCREEN_COPY, () => ReactElement][] = [
   ['passport', PassportBucketScreens],
@@ -808,9 +1097,29 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     'sir:reverifying.headline': SIR_COPY.reverifying.headline.replace('{state}', 'Delhi'),
     'sir:reverifying.lede': SIR_COPY.reverifying.lede.replace('{state}', 'Delhi').replace('{date}', ''),
     'sir:reverifying.verifiedNote': SIR_COPY.reverifying.verifiedNote.replace('{date}', SOURCES_VERIFIED),
+    // C7 (Task 10 registered these; Task 12 closed SaveOtp's own gap below;
+    // Task 15 closes the last one — account.casefilesOne/Many, off a real
+    // AccountChip render, same as every other entry in this map).
+    // 'ui:saveOtp.lede': CORRECTED from Task 10's own placeholder value
+    // ('+91 98765 43210', a guess at a "naturally formatted" phone number
+    // made before SaveOtpScreen existed to test it against). The real,
+    // mandated derivation (SaveOtpScreen.tsx design note 1 / D12) is
+    // `'+91 ' + authId.slice(3)` — a single contiguous 10-digit block, ONE
+    // space total, reproducing the prototype's own rendered string exactly.
+    // The placeholder's extra inner space was simply never exercised by a
+    // render until now; task-12-brief.md's own RED item 1 pins the corrected
+    // form directly on SaveOtpScreen.test.tsx too.
+    'ui:saveOtp.lede': UI.saveOtp.lede.replace('{dest}', '+91 9876543210'),
+    'ui:saveOtp.resendWaitMany': UI.saveOtp.resendWaitMany.replace('{n}', '5'),
+    'ui:account.casefilesOne': UI.account.casefilesOne.replace('{n}', '1'),
+    'ui:account.casefilesMany': UI.account.casefilesMany.replace('{n}', '2'),
   }
 
   it('CAPTION_SUBSTITUTIONS covers exactly CAPTION_TEMPLATES, and each substituted form actually renders', async () => {
+    // NOTE (C7 Task 10/12/15): the key-equality check below covers all of
+    // CAPTION_TEMPLATES — every entry, including 'ui:account.casefilesOne'/
+    // 'casefilesMany', now ALSO has a real render assertion following it;
+    // none remain gapped.
     expect(Object.keys(CAPTION_SUBSTITUTIONS).sort()).toEqual([...CAPTION_TEMPLATES].sort())
 
     const { container: trustContainer } = render(
@@ -890,6 +1199,55 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     expect(sirContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['sir:reverifying.headline'])
     expect(sirContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['sir:reverifying.lede'])
     expect(sirContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['sir:reverifying.verifiedNote'])
+
+    // C7 (Task 12) — SaveOtpScreen. `lede`'s `{dest}` substitution needs no
+    // clock at all (design note 1 / D12), so it renders off a plain mount.
+    // `resendWaitMany`'s `{n}` substitution is the ONE CAPTION_TEMPLATES
+    // entry in this whole file that is genuinely wall-clock-LIVE rather
+    // than driven by an injected `now`/date prop (SaveOtpScreen.tsx's own
+    // design note 4) — a fake, pinned clock is what makes '5' the exactly
+    // right, non-flaky answer here, not a coincidence of real elapsed time.
+    const { container: otpLedeContainer } = render(
+      <SaveOtpScreen
+        authMethod="phone" authId="+919876543210" otp="" authErr={null} authBusy={false}
+        otpResent={false} otpCooldownUntil={null} now={CASE_NOW} dispatch={noop}
+      />,
+    )
+    expect(otpLedeContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:saveOtp.lede'])
+
+    vi.useFakeTimers()
+    vi.setSystemTime(CASE_NOW)
+    try {
+      const { container: otpWaitContainer } = render(
+        <SaveOtpScreen
+          authMethod="phone" authId="+919876543210" otp="" authErr={null} authBusy={false}
+          otpResent={false} otpCooldownUntil={CASE_NOW + 5000} now={CASE_NOW} dispatch={noop}
+        />,
+      )
+      expect(otpWaitContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:saveOtp.resendWaitMany'])
+    } finally {
+      vi.useRealTimers()
+    }
+
+    // C7 (Task 15) — the account popover. casefilesOne's substituted form
+    // (openN===1) is reachable off the SAME uiContainer mount above — its
+    // dedicated AccountChip fixture is seeded with exactly one still_open
+    // case plus one superseded one (savedCases: [openCase,
+    // closedSupersededCase]), so this also doubles as a live proof that a
+    // superseded case is not counted. casefilesMany needs its own render,
+    // with a SECOND still_open case added alongside the same superseded
+    // one — proving the exclusion holds at n=2 too, not just n=1.
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:account.casefilesOne'])
+    const { container: acctManyContainer } = render(
+      <AccountChip
+        state={{
+          ...initialSession, user: acctUnnamedUser, acctOpen: true,
+          savedCases: [openCase, yesterdayCase, closedSupersededCase],
+        }}
+        dispatch={noop}
+      />,
+    )
+    expect(acctManyContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:account.casefilesMany'])
   })
 
   // `INTERACTION_GATED` needs no membership pin here (fix-round review

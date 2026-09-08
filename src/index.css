@@ -11,7 +11,22 @@
  *  by C5), 569-646 (.psteps/.pstep-* + .channel-* + .prep-trust + .visit-*:
  *  step checklist, official channel, in-person visit card), 651-661
  *  (.btn-ghost + .btn-ghost:hover + .saved-note — updateEntry and
- *  saveControl are the only .btn-ghost users in the app), and 744-878
+ *  saveControl are the only .btn-ghost users in the app), 662-743
+ *  (.acct-chip through .demo-hint: the account chip/avatar and its
+ *  border-only popover — .acct-chip/.acct-chip.noname/.acct-av/.acct-wrap/
+ *  .acct-scrim/.acct-pop/.acct-pop-head/.acct-pop-name/.acct-pop-sub/
+ *  .acct-pop-row/.acct-pop-confirm — plus the auth screen's field/label/
+ *  input/OTP/error/divider/Google-button/switch/note components —
+ *  .auth-field/.auth-label/.auth-input/.otp-input/.auth-err/.auth-divider/
+ *  .btn-google/.auth-switch/.auth-note. This is C7's sign-in surface (Task
+ *  9). One rule inside this range, `.demo-hint` (739-743), is LIFTED BUT
+ *  CURRENTLY UNUSED — the same way 744-878 below lifts .saved-actions/
+ *  .saved-continue/.saved-remove: `.demo-hint` styles the locked
+ *  prototype's demo-mode hint text, and no component built in C7 renders
+ *  it. It is lifted anyway because 662-743 is a contiguous, faithful
+ *  transcription — carving one rule out of the middle would make the range
+ *  a judgment call instead of a copy — not because anything currently
+ *  renders it), and 744-878
  *  (.saved-card through .log-note: the compact Home casefile card,
  *  .home-cases, .case-meta-line, .case-links/.case-link, .case-remove,
  *  .case-h1 + its 960px media query, .case-progress/.cp-*, the escalation
@@ -41,17 +56,23 @@
  *  ordering of both pairs for exactly this reason — see the cascade-order
  *  pin test below the CSS-fidelity block.
  *
+ *  662-743 (Task 9) is likewise appended in its prototype position —
+ *  between 651-661 and 744-878 — but for a different reason than the pair
+ *  above: no selector in 662-743 collides with anything else in this file
+ *  (checked: .acct-*, .auth-*, .btn-google, .otp-input, .demo-hint appear
+ *  nowhere else), so unlike .saved-next/.saved-meta, placing it out of
+ *  order would not silently change which declaration wins the cascade —
+ *  nothing here is load-bearing. It is placed in prototype order anyway
+ *  because that is this file's append-order convention, and honouring it
+ *  costs nothing; tokens.test.ts pins indexOf('.btn-ghost') <
+ *  indexOf('.acct-chip') < indexOf('.saved-card') to keep it that way.
+ *
  *  Every value, comment, keyframe, nth-child stagger and ::after marker
  *  stroke below is transcribed, not re-authored — see src/ui/tokens.ts and
  *  tokens.test.ts for why (no Tailwind import, no apply-directives, no
  *  preflight reset).
  *
- *  Deliberately NOT lifted (later chunks own them): 662-743 (.auth-field,
- *  .auth-label, .auth-input, .otp-input, .auth-err, .auth-divider,
- *  .btn-google, .auth-switch, .auth-note, .demo-hint, .acct-chip, .acct-av,
- *  .acct-wrap, .acct-scrim, .acct-pop* -> C7; this range sits physically
- *  between this task's 651-661 and 744-878 ranges and must be skipped, not
- *  swallowed into one contiguous append), and 881-995 (.describe-*,
+ *  Deliberately NOT lifted (a later chunk owns it): 881-995 (.describe-*,
  *  .youwrote, .read-*, .span-quote, .ropt*, .fact-chips, .fchip*,
  *  .interp-frame, .unplace-panel, .fill-list, .fill-review -> C8) — WITH ONE
  *  SCOPED CORRECTION (Task 9, from Task 8's review): `.read-change` (939-944)
@@ -160,9 +181,16 @@ body{
 .stage{
   max-width:1460px; margin:0 auto; padding:56px 48px 90px; position:relative;
 }
+.footer{
+  display:flex; justify-content:center;
+  padding:20px 40px; border-top:1px solid var(--line);
+  font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.02em;
+  color:var(--ink-soft);
+}
 @media (max-width:600px){
   .topbar{padding:14px 18px;}
   .stage{padding:24px 18px 70px;}
+  .footer{padding:16px 18px;}
 }
 
 /* ---------- desktop split: context left, action right ----------
@@ -620,6 +648,88 @@ h2.headline{
 .saved-note{
   display:flex; align-items:center; justify-content:center; gap:8px; margin-top:14px;
   font-size:13.5px; color:var(--wait); font-weight:600;
+}
+.acct-chip{
+  font-family:'Work Sans',sans-serif; font-weight:600; font-size:13px;
+  color:var(--ink); background:var(--card); border:1px solid var(--line-strong);
+  border-radius:999px; padding:5px 14px 5px 5px; cursor:pointer;
+  display:inline-flex; align-items:center; gap:8px;
+  transition:border-color 150ms ease, color 150ms ease;
+}
+.acct-chip:hover{border-color:var(--ink);}
+.acct-chip.noname{font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.03em; color:var(--ink-soft);}
+.acct-chip.noname:hover{color:var(--ink);}
+.acct-av{
+  flex:0 0 auto; width:24px; height:24px; border-radius:50%;
+  background:var(--butter); color:var(--ink); border:1px solid var(--ink);
+  display:inline-flex; align-items:center; justify-content:center;
+  font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:12.5px;
+}
+/* The small account popover: border-only card (small popovers read as
+   cards, not overlays — they don't earn shadow elevation). Case actions
+   deliberately live on Home's cards, never here. */
+.acct-wrap{position:relative; display:inline-flex;}
+.acct-scrim{position:fixed; inset:0; z-index:19; background:transparent;}
+.acct-pop{
+  position:absolute; top:calc(100% + 10px); right:0; z-index:20;
+  min-width:250px; background:var(--card); border:1px solid var(--line-strong);
+  border-radius:14px; padding:6px; animation:enter 180ms var(--ease);
+  text-align:left;
+}
+.acct-pop-head{padding:12px 14px 10px; border-bottom:1px solid var(--line);}
+.acct-pop-name{font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:16.5px; color:var(--ink);}
+.acct-pop-sub{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-soft); margin-top:3px;}
+.acct-pop-row{
+  display:block; width:100%; text-align:left; background:none; border:none; cursor:pointer;
+  font-family:'Work Sans',sans-serif; font-size:13.5px; color:var(--ink);
+  padding:11px 14px; border-radius:9px; transition:background 150ms ease;
+}
+.acct-pop-row:hover{background:var(--butter-soft);}
+.acct-pop-row .row-sub{display:block; font-size:11.5px; color:var(--ink-faint); margin-top:2px;}
+.acct-pop-confirm{padding:11px 14px; font-size:13px; color:var(--ink-soft); line-height:1.5;}
+.acct-pop-confirm .yes{color:var(--escalate); font-weight:600; background:none; border:none; cursor:pointer; padding:6px 8px 0 0;}
+.acct-pop-confirm .no{color:var(--ink-soft); background:none; border:none; cursor:pointer; text-decoration:underline; padding:6px 0 0;}
+.auth-field{margin:0 0 16px;}
+.auth-label{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--ink-soft); margin:0 0 8px;
+}
+.auth-input{
+  width:100%; border:1.5px solid var(--line-strong); border-radius:14px; padding:14px 16px;
+  font-family:'Work Sans',sans-serif; font-size:16px; color:var(--ink); background:var(--card);
+  caret-color:var(--ink); transition:border-color 150ms ease;
+}
+.auth-input:hover{border-color:var(--ink-faint);}
+.auth-input:focus-visible{outline:2.5px solid var(--ink); outline-offset:2px; border-color:var(--ink);}
+.otp-input{
+  font-family:'IBM Plex Mono',monospace; font-size:26px; letter-spacing:0.45em; text-align:center;
+  padding:16px 10px 16px 22px;
+}
+.auth-err{font-size:13px; color:var(--escalate); margin:8px 0 0; font-weight:500;}
+.auth-divider{
+  display:flex; align-items:center; gap:12px; margin:18px 0;
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.auth-divider::before, .auth-divider::after{content:""; flex:1; height:1px; background:var(--line);}
+.btn-google{
+  width:100%; display:inline-flex; align-items:center; justify-content:center; gap:10px;
+  font-family:'Work Sans',sans-serif; font-weight:600; font-size:14.5px; color:var(--ink);
+  background:var(--card); border:1.5px solid var(--line-strong); border-radius:999px;
+  padding:13px 22px; cursor:pointer; transition:border-color 150ms ease, transform 180ms var(--ease);
+}
+.btn-google:hover{border-color:var(--ink); transform:translateY(-1px);}
+.auth-switch{
+  background:none; border:none; cursor:pointer; padding:4px 0; margin-top:4px;
+  font-family:'Work Sans',sans-serif; font-size:13.5px; color:var(--ink-soft);
+  text-decoration:underline; text-underline-offset:3px;
+}
+.auth-switch:hover{color:var(--ink);}
+.auth-note{font-size:12.5px; color:var(--ink-faint); line-height:1.55; margin-top:16px;}
+.demo-hint{
+  font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-faint);
+  border:1px dashed var(--line-strong); border-radius:8px; padding:8px 12px; margin-top:14px;
+  display:inline-block;
 }
 
 /* the saved casefile on Home — a compact, whole-card tap target that

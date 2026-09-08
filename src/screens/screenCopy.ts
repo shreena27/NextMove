@@ -78,8 +78,42 @@ export const UI = {
       cancel: 'Cancel',
     },
   },
+  /** Account popover (C7, Task 10) — port of `acctPopover()` (design/
+   *  nextmove-v1-prototype.html, 2246-2271, tag v1-design-lock-2), the
+   *  chip-triggered menu Topbar shows once a citizen is signed in.
+   *  `casefilesOne`/`casefilesMany` are TWO SEPARATE templates, never one
+   *  string built by concatenating a plural `s` — the same
+   *  `home.casefilesOne`/`casefilesMany` and `casefile.journeyOne`/
+   *  `journeyMany` precedent this file already sets. `signOutConfirm.prompt`
+   *  transcribes the PROTOTYPE's period-ended sentence (2257) — a
+   *  deliberate deviation (D11) from the spec's em-dash variant.
+   *  `signOutConfirm.yes` reuses the same literal text as `signOut` (both
+   *  render "Sign out" in the prototype's own source — the row button and
+   *  the confirm panel's "yes" button), kept as its own key because the
+   *  confirm panel is its own distinct piece of UI, the same reasoning
+   *  `topbar.restartConfirm` above already applies to its own `yes`/
+   *  `cancel` pair. Rendered starting Task 15 — not yet mounted anywhere,
+   *  so this subtree is expected to show up red in the coverage sweep
+   *  until then (task-10-brief.md design note 9 / the GREEN note). */
+  account: {
+    ariaLabel: 'Account',
+    casefilesOne: 'Your casefile · {n} open', // TEMPLATE
+    casefilesMany: 'Your casefiles · {n} open', // TEMPLATE
+    casefilesSub: 'On the Home screen, where they live',
+    addName: 'Add your name',
+    addNameSub: "Optional; it's how your casefile greets you",
+    signOut: 'Sign out',
+    signOutConfirm: {
+      prompt: 'Sign out? Your cases stay on your account. Sign back in any time.',
+      yes: 'Sign out',
+      cancel: 'Cancel',
+    },
+  },
   common: {
     backToHome: 'Back to Home',
+  },
+  footer: {
+    copyright: '© 2026 NextMove. All rights reserved.',
   },
   home: {
     hero: {
@@ -256,6 +290,12 @@ export const UI = {
     // The closed variant (2884-2901).
     closedGotItHeadline: 'Case closed: you got it.',
     closedUnresolvedHeadline: 'Case closed. The record stays.',
+    // Task 5 (D3) — FINALIZED, added during the same Fable consultation
+    // that authored LOG_COPY.superseded (domain/casefile.ts). Not in the
+    // original draft; reuses closedUnresolvedHeadline's exact second
+    // sentence deliberately, so closedLede below still reads true beneath
+    // it without its own change (see task-5-brief.md design note 4).
+    closedSupersededHeadline: 'Case set aside. The record stays.',
     closedLede: "Nothing further is tracked on a closed case. The journey record stays yours. It's the paper trail any future step would start from.",
     reopen: 'This came back; reopen it',
 
@@ -328,6 +368,12 @@ export const UI = {
     savedPrefix: 'Saved {date}', // TEMPLATE
     closedGotIt: 'Closed — got it',
     closedUnresolved: 'Closed — unresolved',
+    // Task 5 (D3) — FINALIZED. "Closed" is the right lead word specifically
+    // because this codebase's OWN existing usage already means "not
+    // active, record kept, can come back" (closedUnresolved cases are
+    // already reopenable), not "final" — a set-aside case fits the same
+    // category honestly. See task-5-brief.md design note 4.
+    closedSuperseded: 'Closed — set aside',
     next: 'Next: {what}', // TEMPLATE — the "→ " prefix is the CSS ::before, not part of this string.
     steps: '{done} of {total} steps done', // TEMPLATE
     lastUpdate: 'last update {ago}', // TEMPLATE
@@ -394,26 +440,150 @@ export const UI = {
     ledeSavedClause: '; the casefile and its journey stay under "Closed" on Home if you ever need the record.',
     backToHome: 'Back to Home',
   },
-  /** SaveDoneScreen (C5, Task 10) — port of `renderSaveDone` (prototype
-   *  3887-3899, tag v1-design-lock-2): the confirmation shown right after a
-   *  case is saved.
+  /** The four-screen save/sign-in flow (C7, Task 10) — ports of
+   *  `renderSaveCase` (3823-3845), `renderSaveOtp` (3846-3865) and
+   *  `renderSaveName` (3870-3886), design/nextmove-v1-prototype.html, tag
+   *  v1-design-lock-2. Registered here, ahead of Tasks 11-15 building the
+   *  four screens themselves (task-10-brief.md design note 1), so the
+   *  screens are assembled from already-registered, already-safety-swept
+   *  copy rather than inline literals moved into place later. None of
+   *  these three subtrees is mounted anywhere yet — the coverage sweep is
+   *  expected to go red for all of them until their screens exist (design
+   *  note 9 / the GREEN note).
    *
-   *  `lede` is ONLY the prototype's first sentence (design note 3 of the
-   *  task brief; Open Question 1, RESOLVED, option (b)) — the second
-   *  sentence ("Nothing else happens with your
-   *  ${S.user && S.user.method==='phone' ? 'number' : 'account'}.") is a
-   *  deliberate SUBTRACTION, not an oversight: C5 is device-local, has no
-   *  accounts at all, and keeping that sentence would tell a reader they DO
-   *  have an account. C7 (real auth) restores it with its original ternary
-   *  — both branches recorded here so it is re-derived, not re-authored:
-   *    - phone sign-in: "Nothing else happens with your number."
-   *    - any other sign-in: "Nothing else happens with your account." */
+   *  `trust` (3831) is registered as ONE whole string, not split into
+   *  sentence fragments — it is the load-bearing promise of this entire
+   *  chunk ("your details are used for exactly one thing"), and splitting
+   *  it would let one clause be edited out of the guardrail scan's sight.
+   *  See screenCopy.test.tsx's dedicated assertion on this entry. */
+  saveCase: {
+    crumb: 'Save your case',
+    headline: 'Keep this case. NextMove walks with you.',
+    lede: 'Sign in once and this becomes a living casefile: add updates as things happen, watch your journey build, and always know your next move, whenever you come back.',
+    trust: 'Your details are used for exactly one thing: bringing your case back to you, including anything you typed about your case. No marketing, nothing else. Remove deletes a case for good; Sign out just signs you out, and your cases stay on your account. And the diagnosis you just got never required signing in. This is only for keeping it.',
+    google: 'Continue with Google',
+    divider: 'or',
+    fieldLabelMobile: 'Mobile number',
+    fieldLabelEmail: 'Email address',
+    placeholderMobile: '10-digit mobile number',
+    placeholderEmail: 'you@example.com',
+    send: 'Send me a code',
+    switchToEmail: 'Use email instead',
+    switchToMobile: 'Use mobile number instead',
+    authNote: 'Signing in never changes your diagnosis, and NextMove still never acts on your behalf.',
+    // The inline validation errors (2108, 2111) — straight apostrophes in
+    // the source ("doesn't"), transcribed exactly, not curled.
+    errors: {
+      mobile: 'That doesn\'t look like a full mobile number yet.',
+      email: 'That doesn\'t look like a complete email address yet.',
+    },
+  },
+  /** `renderSaveOtp` (3846-3865). `crumbTail` is the SECOND crumb segment
+   *  only — the first segment reuses `saveCase.crumb` ("Save your case"),
+   *  the same two-part-array convention `DeadEndScreen.tsx` already uses
+   *  for its own `[c.serviceLabel, UI.deadEnd.crumbTail]`. `lede` is a
+   *  TEMPLATE (interpolates the masked destination for `{dest}`).
+   *
+   *  `resendWaitMany`/`resendWaitOne` (D2) are FINALIZED — a Fable
+   *  consultation the repo owner explicitly requested (Open Question 2,
+   *  resolved 2026-09-07) REPLACED the draft single `resendWait: 'You can
+   *  ask for another code in {n}s'`: (a) the resend control already has a
+   *  verb ("Send again"), so the cooldown state is that SAME control,
+   *  disabled, keeping that verb rather than inventing "ask for" plus
+   *  permission-granting filler this codebase's voice never uses elsewhere;
+   *  (b) a raw `{n}s` abbreviation has no precedent — `time.daysAgo` spells
+   *  its unit out and dodges the singular by splitting into two entries
+   *  rather than concatenating a plural `s`, the same mechanism used here.
+   *  `resendWaitOne` is spelled out ("one second"), not "1 second", keeping
+   *  it digit-free like its sibling so the numeric content-safety scan sees
+   *  no number to flag in EITHER form. The shown value is
+   *  `Math.ceil(msRemaining / 1000)`, which is what makes 'Send again in 0
+   *  seconds' unreachable and pins `n >= 1` for the whole disabled-state
+   *  window (see task-10-brief.md design note 5 for the full reasoning).
+   *
+   *  No `demo-hint` entry (D1, design note 4) — the prototype's "Design
+   *  prototype: any 6 digits work here." is prototype-only scaffold copy,
+   *  never rendered by the real app; registering it would put an unrendered
+   *  string into the coverage sweep. screenCopy.test.tsx asserts it appears
+   *  nowhere under src/. */
+  saveOtp: {
+    crumbTail: 'One-time code',
+    headline: 'Enter the code we sent.',
+    lede: 'A 6-digit code is on its way to {dest}.', // TEMPLATE
+    fieldLabel: '6-digit code',
+    placeholder: '••••••',
+    verify: 'Verify and save my case',
+    resendPrompt: "Didn't get it? Send again",
+    resendSent: 'Code sent again ✓',
+    resendWaitMany: 'Send again in {n} seconds', // TEMPLATE — FINALIZED, see header note above.
+    resendWaitOne: 'Send again in one second', // FINALIZED, see header note above; NOT a template (no placeholder) — same one-literal-alongside-a-template shape as time.today/time.yesterday alongside time.daysAgo.
+    // The code-length error (2121).
+    errors: {
+      code: 'The code is 6 digits.',
+    },
+  },
+  /** `renderSaveName` (3870-3886) — the one optional, skippable name ask,
+   *  reached either mid-save (`midSave = !!S.pendingSave`, true) or
+   *  standalone from the account popover's "Add your name" row (false).
+   *  THREE places branch on `midSave`: the crumbs, a trailing clause on the
+   *  lede, and both buttons — six distinct strings below
+   *  (`ledeClauseMidSave`/`ledeClauseStandalone`, `saveMidSave`/
+   *  `saveStandalone`, `switchMidSave`/`switchStandalone`), never collapsed
+   *  into one pair (task-10-brief.md design note 6 — "the detail most
+   *  likely to be missed"). `crumbTailMidSave` reuses `saveCase.crumb` as
+   *  its array's first segment at the call site (same convention as
+   *  `saveOtp.crumbTail` above); `crumbStandalone` is the WHOLE single-part
+   *  crumb array on its own (the standalone entry has no shared first
+   *  segment). `ledeStem` is the shared lede sentence; the render joins it
+   *  to whichever lede clause applies with a single space, inside the same
+   *  `.lede` text node — the prototype builds one string (3877), the same
+   *  join discipline `saveDone.ledeTailPhone`/`ledeTailOther` below need. */
+  saveName: {
+    crumbTailMidSave: 'One last thing, optional',
+    crumbStandalone: 'Your name (optional)',
+    headline: 'What should we call you?',
+    ledeStem: "Just a first name is fine; it's how your casefile greets you when you come back.",
+    ledeClauseMidSave: 'Skip it and nothing changes about your case.',
+    ledeClauseStandalone: 'It changes nothing about your cases.',
+    fieldLabel: 'Your name',
+    placeholder: 'First name',
+    saveMidSave: 'Save my case',
+    saveStandalone: 'Save name',
+    switchMidSave: 'Skip and save without a name',
+    switchStandalone: 'Never mind',
+  },
+  /** SaveDoneScreen (C5, Task 10; C7 Task 10 adds `ledeTailPhone`/
+   *  `ledeTailOther`; C7 Task 14 wires them in) — port of `renderSaveDone`
+   *  (prototype 3887-3899, tag v1-design-lock-2): the confirmation shown
+   *  right after a case is saved.
+   *
+   *  `lede` is ONLY the prototype's first sentence (design note 3 of C5's
+   *  own task-10 brief; Open Question 1, RESOLVED, option (b)) — the
+   *  second sentence was a deliberate SUBTRACTION there: C5 was
+   *  device-local, had no accounts at all, and keeping that sentence would
+   *  have told a reader they DID have an account.
+   *
+   *  `ledeTailPhone`/`ledeTailOther` are TWO complete entries, a ternary
+   *  choosing between two full sentences rather than one template with a
+   *  slot, exactly how the prototype writes it (3894). Task 14 (C7)
+   *  discharges the debt C5 recorded against it: `SaveDoneScreen.tsx` joins
+   *  whichever branch applies onto `lede` with a single space, in the SAME
+   *  `.lede` text node — never a separate `<span>` or `<br>`. It renders
+   *  `ledeTailPhone` when the signed-in user's method is `'phone'`,
+   *  `ledeTailOther` for Google or email, and — deliberately diverging from
+   *  the prototype's own ternary, which falls through to 'account' with no
+   *  user — renders NEITHER sentence when there is no user at all, since
+   *  that would be exactly the misleading claim C5 subtracted the sentence
+   *  to avoid. See `SaveDoneScreen.tsx`'s own header comment for the full
+   *  restoration note. */
   saveDone: {
     crumb: 'Case saved',
     headline: 'Your casefile is saved.',
     lede:
       "It's waiting on the Home screen whenever you come back: your answers, your diagnosis, and any steps "
       + "you've already ticked off.",
+    ledeTailPhone: 'Nothing else happens with your number.',
+    ledeTailOther: 'Nothing else happens with your account.',
     backToCase: 'Back to my case',
     goHome: 'Go to Home',
   },

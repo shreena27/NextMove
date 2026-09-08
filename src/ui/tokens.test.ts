@@ -132,6 +132,26 @@ describe('contrast (PRD §16 — verified at the token level before building)', 
     expect(contrastRatio(TOKENS['butter-deep'], TOKENS.paper)).toBeLessThan(3)
     expect(css).toContain('outline:2.5px solid var(--ink)')
   })
+
+  // Task 9 design note 5: three rendered text/background pairs in the
+  // lifted auth/account CSS get a genuine contrast CHECK, not an
+  // assumption, even though their tokens are already covered against
+  // --paper above. --card is pure white (#FFFFFF, the lightest possible
+  // background), so in principle every pair here can only measure AT LEAST
+  // as high a ratio as the same foreground on --paper — but that is exactly
+  // the kind of "should be fine" reasoning design note 5 says not to trust
+  // silently; each is measured and pinned explicitly instead.
+  it.each([
+    // selector, size, fg token, bg token, min ratio (AA, small text = 4.5:1)
+    ['.acct-chip.noname', '11px', 'ink-soft', 'card', 4.5],
+    ['.acct-pop-sub', '11px', 'ink-soft', 'card', 4.5],
+    // the tightest pair in the range — --ink-faint is the lighter of the
+    // two secondary-gray tokens (see tokens.ts comment)
+    ['.acct-pop-row .row-sub', '11.5px', 'ink-faint', 'card', 4.5],
+  ])('%s (%s, %s on %s) clears %s:1', (_selector, _size, fg, bg, min) => {
+    const ratio = contrastRatio(TOKENS[fg as keyof typeof TOKENS], TOKENS[bg as keyof typeof TOKENS])
+    expect(ratio, `${fg} on ${bg}`).toBeGreaterThanOrEqual(min as number)
+  })
 })
 
 describe('the stylesheet is the lifted prototype and nothing else', () => {
@@ -213,18 +233,51 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
     }
   })
 
-  it("does NOT ship C7's auth/account CSS or C8's describe-it CSS", () => {
-    // 662-743 (.auth-*, .btn-google, .otp-input, .acct-*, .demo-hint) sits
-    // physically BETWEEN this task's 651-661 and 744-878 ranges and belongs
-    // to C7 — it must be skipped, not swallowed into one contiguous append,
-    // the same kind of interleaved-range hazard C4 had to handle. 881-995
-    // (C8's describe-it / fills-review CSS) still isn't built.
+  it("does NOT ship C8's describe-it CSS", () => {
+    // 662-743 (.auth-*, .btn-google, .otp-input, .acct-*, .demo-hint) used
+    // to sit physically BETWEEN this task's 651-661 and 744-878 ranges and
+    // was skipped rather than swallowed into one contiguous append (the
+    // same kind of interleaved-range hazard C4 had to handle) — Task 9
+    // lifts it, so it is now asserted PRESENT below ('lifts the
+    // auth/account CSS' block), not absent here. 881-995 (C8's describe-it
+    // / fills-review CSS) still isn't built, so that half of this test
+    // stays.
     // Scoped to the body — see the test above for why.
     const body = css.slice(css.indexOf(':root{'))
     for (const cls of [
-      '.auth-input', '.btn-google', '.otp-input', '.acct-chip', '.acct-pop',
-      '.demo-hint', '.fill-list', '.fill-review', '.describe-ta', '.fchip',
+      '.fill-list', '.fill-review', '.describe-ta', '.fchip',
     ]) expect(body, cls).not.toContain(cls)
+  })
+
+  it('lifts the auth/account CSS (prototype 662-743)', () => {
+    // Inverse of the test above, now that Task 9 lifts this range. It sits
+    // physically between .btn-ghost/.saved-note (651-661) and .saved-card
+    // (744-878) — checked here as one presence test; per-selector RED
+    // coverage (so a PARTIAL lift fails loudly, selector by selector) lives
+    // in the it.each block right below.
+    const body = css.slice(css.indexOf(':root{'))
+    for (const cls of [
+      '.auth-input', '.btn-google', '.otp-input', '.acct-chip', '.acct-pop',
+      '.demo-hint',
+    ]) expect(body, cls).toContain(cls)
+  })
+
+  // Selector text carries the opening brace (or the exact descendant
+  // combinator) so a PARTIAL lift fails on exactly the missing rules —
+  // '.acct-chip' alone is a substring of '.acct-chip.noname{', so a bare
+  // class-name match would pass even if only the .noname variant shipped.
+  // Same reasoning as the '.copy-btn{' vs '.copy-btn.copied{' pair above.
+  it.each([
+    '.acct-chip{', '.acct-chip.noname{',
+    '.acct-av{', '.acct-wrap{', '.acct-scrim{',
+    '.acct-pop{', '.acct-pop-head{', '.acct-pop-name{', '.acct-pop-sub{',
+    '.acct-pop-row{', '.acct-pop-confirm{',
+    '.auth-field{', '.auth-label{', '.auth-input{', '.otp-input{',
+    '.auth-err{', '.auth-divider{', '.btn-google{', '.auth-switch{',
+    '.auth-note{', '.demo-hint{',
+  ])('body contains %s (prototype 662-743)', selector => {
+    const body = css.slice(css.indexOf(':root{'))
+    expect(body).toContain(selector)
   })
 
   it('keeps the prototype ordering: prepare CSS precedes the settled/reduced-motion tail', () => {
@@ -264,11 +317,28 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
     expect(savedMetaSecond).toBeGreaterThan(savedMetaFirst)
   })
 
+  it('keeps 662-743 in prototype position: between .btn-ghost and .saved-card', () => {
+    // No selector in 662-743 collides with anything else in the file
+    // (design note 2), so unlike the .saved-next/.saved-meta pair above
+    // this ordering isn't cascade-load-bearing — but the file's own
+    // append-order convention is prototype order, and honouring it costs
+    // nothing.
+    const body = css.slice(css.indexOf(':root{'))
+    const btnGhost = body.indexOf('.btn-ghost')
+    const acctChip = body.indexOf('.acct-chip')
+    const savedCard = body.indexOf('.saved-card')
+    expect(btnGhost, '.btn-ghost').toBeGreaterThan(-1)
+    expect(acctChip, '.acct-chip').toBeGreaterThan(-1)
+    expect(savedCard, '.saved-card').toBeGreaterThan(-1)
+    expect(btnGhost).toBeLessThan(acctChip)
+    expect(acctChip).toBeLessThan(savedCard)
+  })
+
   it("the file's own provenance header no longer disclaims what it now ships", () => {
     // A provenance header that lies is worse than none. Design note 6.
-    // C5 Task 1 lifts three more ranges — the header must say so, in order,
-    // with the reason the order is load-bearing, and it must still disclaim
-    // the C7 range sitting physically between two of them.
+    // C5 Task 1 lifted three more ranges — the header must say so, in
+    // order, with the reason the order is load-bearing, and (at that point)
+    // still disclaim the C7 range sitting physically between two of them.
     const header = css.slice(0, css.indexOf(':root{'))
     expect(header).toContain('533-561')
     expect(header).toContain('569-646')
@@ -276,8 +346,7 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
     expect(header).toContain('562-568')
     expect(header).toContain('651-661')
     expect(header).toContain('744-878')
-    // still disclaimed: C7's interleaved range, and C8's not-yet-built range
-    expect(header).toContain('662-743')
+    // C8's range is still not built, still disclaimed
     expect(header).toContain('881-995')
     // the cascade-order reasoning is on the record, not just followed
     expect(header.toLowerCase()).toContain('cascade')
@@ -285,5 +354,32 @@ describe('the stylesheet is the lifted prototype and nothing else', () => {
     expect(header).toContain('.saved-actions')
     expect(header).toContain('.saved-continue')
     expect(header).toContain('.saved-remove')
+  })
+
+  it("Task 9: the header now lifts 662-743 instead of disclaiming it", () => {
+    // Companion to the test above — 662-743 flips from "Deliberately NOT
+    // lifted" to lifted-and-documented, so the "662-743" string must now
+    // appear OUTSIDE the "Deliberately NOT lifted" paragraph, and the
+    // paragraph that remains there must only disclaim 881-995 (C8's).
+    const header = css.slice(0, css.indexOf(':root{'))
+    expect(header).toContain('662-743')
+    const notLiftedIdx = header.indexOf('Deliberately NOT lifted')
+    expect(notLiftedIdx, '"Deliberately NOT lifted" paragraph').toBeGreaterThan(-1)
+    const notLiftedParagraph = header.slice(notLiftedIdx)
+    expect(notLiftedParagraph).not.toContain('662-743')
+    expect(notLiftedParagraph).toContain('881-995')
+    // the acct/auth classes are named in the (now non-disclaiming) header
+    expect(header).toContain('.acct-chip')
+    expect(header).toContain('.auth-input')
+    // .demo-hint is documented as lifted-but-unused, matching the style
+    // already used for .saved-actions/.saved-continue/.saved-remove. Find
+    // the SECOND mention (the callout), not the first (the range-summary
+    // class list at the top of the 662-743 paragraph), and check what
+    // follows it names the unused status.
+    const firstMention = header.indexOf('.demo-hint')
+    expect(firstMention, '.demo-hint mentioned in header').toBeGreaterThan(-1)
+    const calloutIdx = header.indexOf('.demo-hint', firstMention + 1)
+    expect(calloutIdx, '.demo-hint mentioned a second time (the callout)').toBeGreaterThan(-1)
+    expect(header.slice(calloutIdx, calloutIdx + 300).toUpperCase()).toContain('LIFTED BUT')
   })
 })

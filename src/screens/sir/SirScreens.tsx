@@ -54,7 +54,7 @@ export function SirState({ state, dispatch }: ScreenProps) {
   }
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <Split
           left={<>
@@ -79,7 +79,7 @@ export function SirUnsupported({ state, dispatch }: ScreenProps) {
   const st = SIR_STATES[state.answers.sirState]
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <div className="narrow">
           <PhaseEyebrow service={UI.serviceLabel.voterServices} phase={`${UI.serviceLabel.sir} · ${st.name}`} />
@@ -111,7 +111,7 @@ export function SirReverifying({ state, dispatch }: ScreenProps) {
   const changedOn = changedOnFor(sirPlaybook.rules) ?? ''
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <div className="narrow">
           <PhaseEyebrow service={UI.serviceLabel.voterServices} phase={`${UI.serviceLabel.sir} · ${st.name}`} />
@@ -148,7 +148,7 @@ export function SirQ1({ state, dispatch }: ScreenProps) {
   }
   return (
     <>
-      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} dispatch={dispatch} />
+      <Topbar showBack showRestart hasAnswers={hasAnswers(state)} restartConfirm={state.restartConfirm} state={state} dispatch={dispatch} />
       <div className="stage screen">
         <Split
           left={<>

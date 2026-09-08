@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Casefile } from '../domain/casefile'
-import { loadCases, saveCases } from './caseStore'
+import { loadCases, saveCases, clearLocalCases } from './caseStore'
 import { diagnose } from '../domain/engine'
 import { voterEngine } from '../playbooks/engines'
 
@@ -69,6 +69,29 @@ describe('loadCases / saveCases', () => {
     let result: Casefile[] | undefined
     expect(() => { result = loadCases() }).not.toThrow()
     expect(result).toEqual([])
+    spy.mockRestore()
+  })
+})
+
+// Pulled forward from Task 8's own RED list (docs/superpowers/plans/
+// 2026-09-07-c7-auth.md, Task 8 RED bullet 1) — see clearLocalCases()'s own
+// doc comment in caseStore.ts for why Task 7 needs this function to exist
+// before Task 8 is reached.
+describe('clearLocalCases', () => {
+  it('removes nm_cases', () => {
+    saveCases([makeCasefile()])
+    expect(localStorage.getItem('nm_cases')).not.toBeNull()
+
+    clearLocalCases()
+
+    expect(localStorage.getItem('nm_cases')).toBeNull()
+  })
+
+  it('does not throw when localStorage.removeItem throws (storage full/disabled)', () => {
+    const spy = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('SecurityError')
+    })
+    expect(() => clearLocalCases()).not.toThrow()
     spy.mockRestore()
   })
 })

@@ -1,13 +1,17 @@
-// RED for Task 10 — SaveDoneScreen, the port of `renderSaveDone` (design/
-// nextmove-v1-prototype.html, 3887-3899, tag v1-design-lock-2): the
-// confirmation shown right after a case is saved.
+// RED for Task 10, restored (with the auth-coupled tail) by Task 14 — Save
+// DoneScreen, the port of `renderSaveDone` (design/nextmove-v1-prototype.html,
+// 3887-3899, tag v1-design-lock-2): the confirmation shown right after a case
+// is saved.
 //
 // DESIGN NOTE 3's lede subtraction (Open Question 1, RESOLVED — option (b))
-// is the load-bearing assertion in this file: the prototype's lede is two
-// sentences, the second an auth-status statement C5 (device-local, no
-// accounts) cannot back honestly. Only the first, true sentence is
-// registered and rendered; the second is a deliberate omission for C7 to
-// restore with its full ternary, not a bug to "fix" back in.
+// is DISCHARGED as of Task 14: the prototype's lede is two sentences, the
+// second an auth-status statement C5 (device-local, no accounts) could not
+// back honestly, so C5 registered only the first sentence and left the
+// second as a deliberate, recorded omission for C7 (real auth) to restore.
+// The debt is now paid — the describe block below pins both restored
+// branches (phone -> "...your number.", Google/email -> "...your account.")
+// plus the no-user guard that deliberately does NOT match the prototype's own
+// ternary (which falls through to 'account' with no user).
 //
 // "Back to my case" navigates directly via `pendingSave.returnScreen` (a
 // plain NAVIGATE) — never through `continueSaved`/`CONTINUE_SAVED`, which
@@ -18,6 +22,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SaveDoneScreen } from './SaveDoneScreen'
 import { UI } from '../screens/screenCopy'
+import type { AppUser } from '../session/auth'
 
 const pendingSave = {
   engineKey: 'passport' as const,
@@ -37,22 +42,53 @@ describe('SaveDoneScreen (port of renderSaveDone, prototype 3887-3899)', () => {
   })
 
   describe(
-    'DESIGN NOTE 3 (Task 10, Open Question 1 RESOLVED, option (b)) — the lede is the one true sentence, ' +
-    'the auth-coupled second sentence is a deliberate C7 subtraction',
+    'DESIGN NOTE 3 (Task 10, Open Question 1 RESOLVED, option (b)) — Task 14 (C7, real auth) restores the ' +
+    'auth-coupled second sentence; the debt C5 recorded is now paid',
     () => {
+      const phoneUser: AppUser = { method: 'phone', id: 'u-phone', name: null }
+      const googleUser: AppUser = { method: 'google', id: 'u-google', name: null }
+      const emailUser: AppUser = { method: 'email', id: 'u-email', name: null }
+
       it(
-        'the lede contains "It\'s waiting on the Home screen whenever you come back" and does NOT contain ' +
-        '"Nothing else happens with your"',
+        'phone user — the .lede\'s full textContent is the first sentence, one space, then "Nothing else ' +
+        'happens with your number." (joined-string equality, not per-half toContain, so a missing or doubled ' +
+        'separator fails)',
         () => {
-          render(<SaveDoneScreen pendingSave={null} dispatch={vi.fn()} />)
+          render(<SaveDoneScreen pendingSave={null} user={phoneUser} dispatch={vi.fn()} />)
           const lede = document.querySelector('.lede')!.textContent!
-          expect(lede).toContain("It's waiting on the Home screen whenever you come back")
-          expect(
-            lede,
-            'OQ1(b): this sentence is a deliberate subtraction (C5 is device-local, has no accounts at all — ' +
-            'keeping it would assert the reader has one). Restoring it is C7\'s job (real auth); do not "fix" it ' +
-            'back in here.',
-          ).not.toContain('Nothing else happens with your')
+          expect(lede).toBe(`${UI.saveDone.lede} ${UI.saveDone.ledeTailPhone}`)
+        },
+      )
+
+      it(
+        'google user — the .lede\'s full textContent is the first sentence, one space, then "Nothing else ' +
+        'happens with your account."',
+        () => {
+          render(<SaveDoneScreen pendingSave={null} user={googleUser} dispatch={vi.fn()} />)
+          const lede = document.querySelector('.lede')!.textContent!
+          expect(lede).toBe(`${UI.saveDone.lede} ${UI.saveDone.ledeTailOther}`)
+        },
+      )
+
+      it(
+        'email user — the .lede\'s full textContent is the first sentence, one space, then "Nothing else ' +
+        'happens with your account." (the ternary\'s else branch covers both Google and email)',
+        () => {
+          render(<SaveDoneScreen pendingSave={null} user={emailUser} dispatch={vi.fn()} />)
+          const lede = document.querySelector('.lede')!.textContent!
+          expect(lede).toBe(`${UI.saveDone.lede} ${UI.saveDone.ledeTailOther}`)
+        },
+      )
+
+      it(
+        'no user — the .lede\'s full textContent is ONLY the first sentence; neither auth-coupled sentence ' +
+        'renders. This is the one place C7 deliberately does not transcribe the prototype\'s own ternary (which ' +
+        'falls through to \'account\' with no user): rendering the "account" sentence with no real account would ' +
+        'be exactly the misleading claim C5 subtracted this sentence to avoid',
+        () => {
+          render(<SaveDoneScreen pendingSave={null} user={null} dispatch={vi.fn()} />)
+          const lede = document.querySelector('.lede')!.textContent!
+          expect(lede).toBe(UI.saveDone.lede)
         },
       )
     },

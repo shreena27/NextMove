@@ -5,11 +5,24 @@
 // suite checks this — and per the project's own standing rule, "a declared
 // guardrail without an executable test is a defect," this IS that test.
 //
-// Files inside src/playbooks/guardrails/ itself are exempt: they are the
-// harness, so they are allowed to import each other and node:fs/node:url —
-// that is their whole job. Every OTHER .ts/.tsx file under src/ (application,
-// domain and playbook-data code, excluding *.test.ts/*.test.tsx files) must
-// never:
+// Files inside src/playbooks/guardrails/ itself are exempt from BOTH rules
+// below: they are the harness, so they are allowed to import each other
+// and node:fs/node:url — that is their whole job.
+//
+// src/test/ (path-anchored — see TEST_INFRA_DIR below, not name-matched)
+// gets a NARROWER exemption, from rule 2 only: it is this project's shared
+// TEST INFRASTRUCTURE directory (vite.config.ts's own `setupFiles:
+// ['./src/test/setup.ts']`; Task 3 adds src/test/supabaseMock.ts alongside
+// it), so it legitimately needs `vitest` (`vi.fn()` etc.) the same way an
+// individual *.test.ts file already may — this is that same carve-out,
+// applied at directory granularity because these files support tests
+// without themselves carrying a `.test.ts` suffix. It is NOT exempt from
+// rule 1: nothing about being test infrastructure justifies reaching into
+// the guardrail harness, so a file under src/test/ that imported
+// guardrails/ would still (correctly) be flagged.
+//
+// Every OTHER .ts/.tsx file under src/ (application, domain and
+// playbook-data code, excluding *.test.ts/*.test.tsx files) must never:
 //   1. import anything under guardrails/, or
 //   2. import node:fs, node:path, node:url or vitest directly — those are
 //      guardrail-harness-only dependencies that application/domain/
@@ -29,14 +42,29 @@ import { fileURLToPath } from 'node:url'
 // guardrails/manifest.ts uses for the same reason).
 const srcRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..') // -> <repo>/src
 
+// Path-anchored (NOT name-matched): only this exact directory is shared
+// test infrastructure. A directory merely NAMED "test" elsewhere under
+// src/ (e.g. src/screens/test/) is a different directory and gets no
+// exemption from anything.
+const TEST_INFRA_DIR = join(srcRoot, 'test')
+
+function isSharedTestInfraFile(file: string): boolean {
+  return file === TEST_INFRA_DIR || file.startsWith(TEST_INFRA_DIR + sep)
+}
+
 const DISALLOWED_BARE_IMPORTS = ['node:fs', 'node:path', 'node:url', 'vitest']
 
 /** Every .ts/.tsx file under src/, excluding *.test.ts/*.test.tsx files and
- *  anything inside playbooks/guardrails/ (the harness itself, which is
- *  allowed to use these dependencies — that's its entire purpose). Used to
- *  cover `.ts` only, on the theory that App.tsx/main.tsx were the only
- *  `.tsx` files and carried no such imports — C3 added ~30 more `.tsx`
- *  screen/template files, so the extension filter now covers both. */
+ *  anything inside playbooks/guardrails/ (the harness itself, exempt from
+ *  BOTH rules below — that's its entire purpose). src/test/ (shared test
+ *  infrastructure) is DELIBERATELY still included here, unlike
+ *  guardrails/: it only gets the narrower rule-2-only exemption applied in
+ *  findingsFor (via isSharedTestInfraFile above), so it stays subject to
+ *  rule 1 — importing the guardrail harness would still be flagged even
+ *  from a src/test/ file. Used to cover `.ts` only, on the theory that
+ *  App.tsx/main.tsx were the only `.tsx` files and carried no such
+ *  imports — C3 added ~30 more `.tsx` screen/template files, so the
+ *  extension filter now covers both. */
 function applicationTsFiles(dir: string): string[] {
   const out: string[] = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -79,6 +107,9 @@ function findingsFor(file: string): string[] {
   const source = readFileSync(file, 'utf8')
   const label = file.split(sep).join('/')
   const violations: string[] = []
+  // Rule 2 only (see this file's header comment) — src/test/ still gets
+  // rule 1 applied below, unconditionally.
+  const exemptFromBareImportRule = isSharedTestInfraFile(file)
 
   for (const spec of importSpecifiers(source)) {
     if (GUARDRAILS_PATH_RE.test(spec)) {
@@ -86,7 +117,7 @@ function findingsFor(file: string): string[] {
         `${label}: imports "${spec}" — the guardrail harness under src/playbooks/guardrails/ must never be imported by application code.`,
       )
     }
-    if (DISALLOWED_BARE_IMPORTS.includes(spec)) {
+    if (!exemptFromBareImportRule && DISALLOWED_BARE_IMPORTS.includes(spec)) {
       violations.push(
         `${label}: imports "${spec}" directly — that is a guardrail-harness-only dependency (node:fs/node:path/node:url/vitest have no place in application, domain or playbook-data code).`,
       )
