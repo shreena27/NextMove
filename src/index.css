@@ -1036,6 +1036,26 @@ h2.headline{
 }
 .fill-review .pstep-box{width:18px; height:18px;}
 
+/* ---------- .vh (NOT from the locked prototype) ----------
+   `InterpConfirmScreen` (Task 12) is the first place this codebase needs a
+   screen-reader-only, visually-hidden node: the post-interpretation live
+   region (spec §7 — a composed summary, never shown to a sighted citizen)
+   and a duplicate of `.span-quote::before`'s "you wrote: " label inside the
+   accessible name (design note 10 of task-12-brief.md; Task 9's own
+   `.span-quote::before{content:"you wrote: "}`, above, is CSS-generated
+   content, invisible to some assistive tech's accessible-name computation,
+   which is exactly why a real, duplicate text node is needed alongside it).
+   No prototype rule to transcribe — the prototype does no screen-reader
+   announcement anywhere on this screen at all — so this is authored fresh,
+   the standard "clip a 1x1px box" visually-hidden pattern used across the
+   industry (same technique as e.g. Bootstrap's/WordPress's own .sr-only),
+   not this codebase's own invention. Kept short and undecorated on purpose:
+   this is a11y plumbing, not a design-system surface. */
+.vh{
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+}
+
 /* ---------- reduced motion: fewer + gentler, feedback stays ---------- */
 @media (prefers-reduced-motion:reduce){
   .screen,.arow,.stamp,.dep-block,.ct-step,.gem,.mark::after{animation:none;}

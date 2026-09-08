@@ -1739,7 +1739,14 @@ describe('INTERP_REPICK — thin arm over D4\'s pure repick', () => {
     // stub. That chain's voterAppealedRaw is reachableIf voterQ1==='decision';
     // changing voterQ1 away from 'decision' is exactly what should void it.
     const s = r(dirty, { type: 'INTERP_REPICK', questionId: 'voterQ1', value: 'no_word' })
-    expect(s.interp?.mappings).toEqual([{ questionId: 'voterQ1', value: 'no_word', span: 'a decision', optionValues: [] }])
+    // Task 12's own gap close (interpret.ts's GatedMapping.changed, flagged
+    // here in this very describe block's own review as work Task 12 would
+    // need): 'decision' -> 'no_word' is a GENUINE value change, so the
+    // repicked mapping now also carries `changed: true` — see repick's own
+    // doc comment (domain/interpret.ts) for the full reasoning.
+    expect(s.interp?.mappings).toEqual([
+      { questionId: 'voterQ1', value: 'no_word', span: 'a decision', optionValues: [], changed: true },
+    ])
     expect(s.interp?.discarded).toEqual([{ questionId: 'voterAppealedRaw', reason: 'unreachable' }])
     expect(oldMappings).toEqual([
       { questionId: 'voterQ1', value: 'decision', span: 'a decision', optionValues: [] },

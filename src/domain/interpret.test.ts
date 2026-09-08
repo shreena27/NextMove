@@ -219,6 +219,53 @@ describe('repick (D4, prototype 2437-2446)', () => {
     const result = repick(interp, 'voterQ1', 'decision', chain) // no-op change, still 'decision'
     expect(result.mappings.map(m => m.questionId)).toEqual(['voterQ1', 'voterAppealedRaw'])
   })
+
+  // Task 12's own gap close (flagged in Task 6's review): `changed` did not
+  // exist on `GatedMapping` until now. `InterpConfirmScreen` (Task 12) reads
+  // it to suppress the span quote once a citizen has overridden a pick — see
+  // GatedMapping's and repick's own doc comments (interpret.ts) for why.
+  describe('changed (Task 12 gap close)', () => {
+    it('repicking to a genuinely different value sets changed:true on that mapping and nothing else', () => {
+      const interp = makeInterp()
+      const result = repick(interp, 'voterQ1', 'no_word', chain)
+      const q1 = result.mappings.find(m => m.questionId === 'voterQ1')!
+      expect(q1.changed).toBe(true)
+      // 'no_word' makes voterAppealedRaw unreachable, so it is discarded, not
+      // kept with a stale `changed` — nothing else survives to check here.
+      expect(result.mappings).toHaveLength(1)
+    })
+
+    it('repicking to the SAME value it already had does not set changed (matches applyCorrection\'s own "same value written = no real change" convention)', () => {
+      const interp = makeInterp()
+      const result = repick(interp, 'voterQ1', 'decision', chain) // already 'decision'
+      const q1 = result.mappings.find(m => m.questionId === 'voterQ1')!
+      expect(q1.changed).toBeUndefined()
+      const appeal = result.mappings.find(m => m.questionId === 'voterAppealedRaw')!
+      expect(appeal.changed).toBeUndefined()
+    })
+
+    it("a mapping's changed:true from an earlier repick survives an unrelated later repick of a different question", () => {
+      const interp = makeInterp()
+      // First repick: voterQ1 stays 'decision' (a genuine change from
+      // whatever it is not — pick a different reachable value so
+      // voterAppealedRaw survives). voterQ1 has no other constant option
+      // here, so change it and back is unnecessary — instead: repick
+      // voterAppealedRaw itself first, then repick voterQ1 to a
+      // still-'decision'-preserving no-op, and assert voterAppealedRaw's
+      // changed:true survives.
+      const afterFirst = repick(interp, 'voterAppealedRaw', 'decided', chain) // 'pending' -> 'decided', genuine change
+      const appealAfterFirst = afterFirst.mappings.find(m => m.questionId === 'voterAppealedRaw')!
+      expect(appealAfterFirst.changed).toBe(true)
+      // Second, unrelated repick: voterQ1 stays 'decision' (no-op for THAT
+      // question) so voterAppealedRaw stays reachable and is merely copied
+      // forward, unrelated-question repick.
+      const afterSecond = repick(afterFirst, 'voterQ1', 'decision', chain)
+      const appealAfterSecond = afterSecond.mappings.find(m => m.questionId === 'voterAppealedRaw')!
+      expect(appealAfterSecond.changed).toBe(true)
+      const q1AfterSecond = afterSecond.mappings.find(m => m.questionId === 'voterQ1')!
+      expect(q1AfterSecond.changed).toBeUndefined() // the no-op repick itself sets nothing
+    })
+  })
 })
 
 describe('editFact / removeFact (D4)', () => {

@@ -58,6 +58,20 @@ export interface GatedMapping {
   value: string
   span: string
   optionValues: readonly string[]
+  /** Task 12's own addition — flagged as a forward-looking gap in Task 6's
+   *  review ("Task 2's `repick` missing a `changed` flag Task 12 will
+   *  need") and closed here. `true` once a citizen has REPICKED this
+   *  mapping to a genuinely different value than the one the model
+   *  originally proposed (prototype 2437-2446's own `interpPick`); absent
+   *  (never `false`) on every mapping the model's own read produced
+   *  untouched. `InterpConfirmScreen` (Task 12) reads this to suppress the
+   *  span quote once it is `true` — the model's justifying span no longer
+   *  justifies a value the model never proposed, so showing it under the
+   *  citizen's own override would be a false provenance record (that
+   *  component's own design note 5). Set by `repick` below, never by any
+   *  other writer — `editFact`/`removeFact` operate on `Fact[]`, a
+   *  different array entirely, and have no mapping to flag. */
+  changed?: boolean
 }
 
 /** What `gateInterpretation` returns, and the ONLY shape the app renders.
@@ -264,7 +278,22 @@ export const DESCRIBE_CHAINS: Record<DescribeEntryScreenId, DescribeChain> = {
  *  reachability purely from the mapping list itself, in original (chain)
  *  order, feeding each kept mapping's value forward as the next entry's
  *  `mapped` context — exactly the scope the RED spec's own live assertion
- *  ("voter Q2 mapping must vanish if Q1 changes") exercises. */
+ *  ("voter Q2 mapping must vanish if Q1 changes") exercises.
+ *
+ *  ALSO STAMPS `changed: true` on the repicked mapping (Task 12's own gap
+ *  close — flagged in Task 6's review as work Task 12 would need and closed
+ *  here rather than there, since it is `repick`'s own transform, the same
+ *  module that already owns this mapping's shape). Only when the picked
+ *  `value` GENUINELY differs from the mapping's current `value` — matching
+ *  `applyCorrection`'s (domain/answers.ts) own "same value written = no real
+ *  change" convention (`if (answers[key] === value) return { answers,
+ *  changed: false }`) — never merely because `INTERP_REPICK` was dispatched.
+ *  A no-op repick (re-selecting the value already shown) must not flip a
+ *  span quote off for a mapping the model's read still, in fact, justifies.
+ *  Every mapping OTHER than the one being repicked keeps whatever `changed`
+ *  value it already carried (the `{ ...m, value: nextValue }` spread copies
+ *  it forward unchanged) — a `changed: true` stamped by an EARLIER repick
+ *  must survive an unrelated LATER repick of a different question. */
 export function repick(
   interp: GatedInterpretation,
   questionId: string,
@@ -275,12 +304,14 @@ export function repick(
   const kept: GatedMapping[] = []
   const discarded = [...interp.discarded]
   for (const m of interp.mappings) {
-    const nextValue = m.questionId === questionId ? value : m.value
+    const isRepicked = m.questionId === questionId
+    const nextValue = isRepicked ? value : m.value
     const entry = chain.find(c => c.questionId === m.questionId)
     const reach = !entry?.reachableIf || entry.reachableIf(mapped)
     if (reach) {
       mapped[m.questionId] = nextValue
-      kept.push({ ...m, value: nextValue })
+      const genuineChange = isRepicked && value !== m.value
+      kept.push(genuineChange ? { ...m, value: nextValue, changed: true } : { ...m, value: nextValue })
     } else {
       discarded.push({ questionId: m.questionId, reason: 'unreachable' })
     }

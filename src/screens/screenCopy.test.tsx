@@ -460,6 +460,19 @@ describe('C3 screen copy passes the same content-safety scan as rule copy (§7)'
     const entries = SCREEN_COPY.ui.filter(c => newBucketPrefixes.some(p => c.at.startsWith(p)))
     expect(entries.length).toBeGreaterThan(0)
     for (const c of entries) {
+      if (NO_PROTOTYPE_SOURCE.has(c.at)) {
+        // Task 12's own carve-out, extending this design-note-11 check for
+        // exactly the reason its own header comment anticipates: a
+        // genuinely NEW, screen-reader-only string with no prototype
+        // equivalent to compare against at all — not merely assembled
+        // differently (that is the CAPTION_TEMPLATES branch below), but
+        // absent from the prototype altogether. See UI.interp.summary's own
+        // doc comment (screenCopy.ts) for why this specific subtree is the
+        // one deliberate exception to "C8 authors no new citizen-facing
+        // string": it is non-visual a11y chrome, not prose a sighted
+        // citizen reads, and its numbers are computed, never authored.
+        continue
+      }
       if (CAPTION_TEMPLATES.has(c.at)) {
         // The four chip aria-label templates + the discard note: the
         // prototype assembles these inline (e.g. `aria-label="Edit
@@ -1062,6 +1075,29 @@ function UiChrome() {
   )
 }
 
+/** Design note 11's OTHER carve-out (Task 12), distinct from
+ *  CAPTION_TEMPLATES below: strings with literally NO prototype source to
+ *  compare against at all, because they are genuinely new — the design-note-
+ *  11 test's own two branches (a literal string appearing verbatim, or a
+ *  template's literal parts appearing in order) both assume the string
+ *  EXISTS somewhere in the prototype, assembled differently or not. This
+ *  set is for the one case where that assumption itself is wrong. Currently
+ *  exactly `UI.interp.summary`'s five entries (screenCopy.ts's own doc
+ *  comment there has the full reasoning: the post-interpretation live-
+ *  region announcement spec §7 requires, which the prototype has no
+ *  equivalent of anywhere — not even assembled inline — because it does no
+ *  screen-reader announcement at all on this screen). Adding to this set
+ *  needs the same recorded reason CAPTION_TEMPLATES below already demands —
+ *  "no prototype source" is a claim, not a default, and must be checked,
+ *  not assumed, exactly like every other carve-out in this file. */
+const NO_PROTOTYPE_SOURCE = new Set([
+  'ui:interp.summary.matchedOne',
+  'ui:interp.summary.matchedMany',
+  'ui:interp.summary.factsOne',
+  'ui:interp.summary.factsMany',
+  'ui:interp.summary.discardedNote',
+])
+
 /** The template carve-outs (Open Question 3, and C4's design note 4). Each
  *  entry's REGISTERED string carries a `{…}` placeholder that gets
  *  interpolated at render, so the rendered form can never equal the
@@ -1157,6 +1193,22 @@ const CAPTION_TEMPLATES = new Set([
   'ui:facts.removeValueAria', // interpolates the fact's label/value for {label}/{value} — a chip's NORMAL state
   'ui:facts.editLabel', // interpolates the fact's label for {label} — a chip's EDIT-MODE state (also INTERACTION_GATED)
   'ui:facts.saveLabel', // interpolates the fact's label for {label} — a chip's EDIT-MODE state (also INTERACTION_GATED)
+  // Task 12's own addition — the two pluralized halves of the composed
+  // live-region summary (screenCopy.ts's own UI.interp.summary doc comment
+  // has the full reasoning for the whole subtree; NO_PROTOTYPE_SOURCE above
+  // is the OTHER carve-out this same subtree needs, for design note 11's
+  // check specifically — the two are independent gaps in two independent
+  // tests, both closed). `matchedOne`/`factsOne` carry no placeholder (the
+  // n===1 case is always spelled out, same convention as
+  // `ui:saveOtp.resendWaitOne` alongside its own `resendWaitMany`), so
+  // neither belongs in this set. Same "registered ahead of its own mounting
+  // screen" incremental step the five entries above already took —
+  // InterpConfirmScreen exists as of this task, but is not yet mounted in
+  // THIS file's own coverage sweep (that is Task 17's job), so these two
+  // stay key-equality-only in CAPTION_SUBSTITUTIONS below, no render check
+  // yet, matching the five above exactly.
+  'ui:interp.summary.matchedMany', // interpolates the live matched-mapping count for {matched}
+  'ui:interp.summary.factsMany', // interpolates the live picked-up-fact count for {facts}
 ])
 
 // `INTERACTION_GATED` itself (design note 4a: entries no STATIC mount can
@@ -1350,6 +1402,11 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     'ui:facts.removeValueAria': UI.facts.removeValueAria.replace('{label}', 'File Number').replace('{value}', 'BN1068334517807'),
     'ui:facts.editLabel': UI.facts.editLabel.replace('{label}', 'File Number'),
     'ui:facts.saveLabel': UI.facts.saveLabel.replace('{label}', 'File Number'),
+    // Task 12: InterpConfirmScreen's own composed live-region summary — see
+    // CAPTION_TEMPLATES' own comment just above these two keys. Same
+    // deferred-render-check shape as the five entries directly above.
+    'ui:interp.summary.matchedMany': UI.interp.summary.matchedMany.replace('{matched}', '2'),
+    'ui:interp.summary.factsMany': UI.interp.summary.factsMany.replace('{facts}', '2'),
   }
 
   it('CAPTION_SUBSTITUTIONS covers exactly CAPTION_TEMPLATES, and each substituted form actually renders', async () => {

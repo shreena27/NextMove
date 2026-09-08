@@ -755,6 +755,59 @@ export const UI = {
       voterAppealedRaw: 'Have you already appealed this decision?',
       sirQ1: 'What is happening with your SIR situation?',
     },
+    /** Task 12's own addition — NOT a prototype string, and the one
+     *  deliberate exception to this whole file's "C8 authors NO new
+     *  citizen-facing string" rule (docs/superpowers/plans/2026-09-08-c8-
+     *  describe-it.md, chunk-level constraint). Spec §7 requires a
+     *  post-interpretation live-region announcement (design note 10 of
+     *  task-12-brief.md), and the prototype has NO screen-reader
+     *  announcement anywhere on this screen to transcribe — Task 10's own
+     *  implementer found this same gap, correctly declined to invent the
+     *  string without a brief asking for it, and left it here for Task 12
+     *  (see task-10-report.md); Task 10's independent reviewer separately
+     *  confirmed that was the right call. This is authored HERE, now,
+     *  because: (1) it is screen-reader-ONLY chrome, never visible prose —
+     *  a `.vh`-classed live region, not a paragraph a sighted citizen reads;
+     *  (2) it is the SAME category of a11y addition this exact screen's
+     *  design notes already authorize elsewhere (D11's reveal-control
+     *  mechanism; design note 10's own focus-move/live-region requirements
+     *  generally) — "the prototype has none of this" is the brief's own
+     *  phrase for that category; (3) every number in it is COMPUTED at
+     *  render time from `state.interp` (mapping/fact/discard counts), never
+     *  an authored claim about a government process, so it adds no surface
+     *  to the numeric content-safety scan the same way `ui:time.daysAgo`'s
+     *  own comment already argues for arithmetic over the citizen's own
+     *  session data.
+     *
+     *  `matchedOne`/`factsOne` are FIXED, digit-free literals (never
+     *  templates) for the n===1 case — the same convention
+     *  `ui:saveOtp.resendWaitOne` already establishes alongside its own
+     *  `resendWaitMany` template sibling: 1 is the only value that branch
+     *  ever renders, so spelling it out costs nothing and keeps a bare
+     *  digit off the n===1 path entirely. `matchedMany`/`factsMany` are
+     *  CAPTION_TEMPLATES (screenCopy.test.tsx) for every other count,
+     *  INCLUDING 0 — standard English takes the plural for zero ("0 facts
+     *  picked up"), so no separate zero-count variant is needed, matching
+     *  `ui:account.casefilesMany`'s own precedent of covering 0 via the
+     *  "many" branch. `discardedNote` is a plain semicolon CLAUSE (not a
+     *  second sentence, not a count), appended only when
+     *  `interp.discarded.length > 0` — spec §7 only asks whether anything
+     *  was set aside, and design note 9 already establishes this bucket's
+     *  own "never a count of discards, only a fact of one" discipline for
+     *  the visible discard note right above; the semicolon join mirrors
+     *  `ui:interp.framingParagraph`'s own D8 semicolon, this bucket's
+     *  established voice. `InterpConfirmScreen.tsx` (Task 12) composes the
+     *  four pieces into one sentence; see its own header note for the exact
+     *  join. Design note 11's own verbatim-against-the-prototype check
+     *  (screenCopy.test.tsx) carves this whole `summary` subtree out by
+     *  name, for exactly this reason — see that test's own comment. */
+    summary: {
+      matchedOne: 'One reading matched',
+      matchedMany: '{matched} readings matched', // TEMPLATE
+      factsOne: 'one fact picked up',
+      factsMany: '{facts} facts picked up', // TEMPLATE
+      discardedNote: '; something you mentioned was set aside since it applies to a different path',
+    },
   },
   /** "We couldn't safely place this" — the fail-closed panel (C8, Task 10;
    *  port of `renderInterpConfirm`'s unplaceable branch, prototype 3044-3065,
