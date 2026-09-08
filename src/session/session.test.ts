@@ -1916,6 +1916,27 @@ describe('APPLY_INTERPRETATION — Task 7: the one path from a proposal to an an
     expect(s.workingCase).toBeNull()
   })
 
+  it(
+    'fix round 1, Finding 3: the re-snapshot guard is BOTH halves, not just engine match — a matching-engine ' +
+    'case whose outcome is NOT \'still_open\' is left untouched too, even though the session\'s own answers did ' +
+    'update (Task 5 design note 1: verified correct as-is, pinned so a later reader does not "fix" it — the same ' +
+    'precedent TOGGLE_PREP_STEP\'s own superseded-case test pins at session.test.ts:988-1005)',
+    () => {
+      const superseded: Casefile = {
+        ...FIXTURE_CASE, id: 'c1', engineKey: 'passport', outcome: 'superseded',
+        answers: { q1: 'no_contact' }, returnScreen: 'passport-nextmove', savedAt: NOW - 10_000,
+      }
+      const dirtyState: SessionState = {
+        ...dirty(), savedCases: [superseded], activeCaseId: 'c1', answers: { q1: 'no_contact' },
+      }
+      const s = r(dirtyState, { type: 'APPLY_INTERPRETATION', now: NOW })
+      expect(s.answers).toEqual({ q1: 'adverse', q2: 'formal_grievance' }) // the session's own answers DID update
+      expect(s.savedCases[0]).toEqual(superseded) // but the case's own snapshot is untouched
+      expect(s.savedCases).toBe(dirtyState.savedCases) // same reference — never rebuilt
+      expect(s.screen).toBe('passport-diagnosis') // the citizen still navigates to the real destination
+    },
+  )
+
   it('a MISMATCHED engine\'s active case is left untouched — applying a passport interpretation must never overwrite a voter case', () => {
     const voterCase: Casefile = {
       ...FIXTURE_CASE, id: 'c1', engineKey: 'voter', outcome: 'still_open', returnScreen: 'voter-nextmove', savedAt: NOW - 10_000,
@@ -1954,8 +1975,41 @@ describe('UNPLACEABLE_PICK — the unplaceable-panel fallback (design note 6, I1
     ...initialSession,
     interp: FIXTURE_INTERP,
     screen: 'interp-confirm', history: ['home', 'passport-q1'],
+    // Fix round 1, Finding 2: dirtied the same way APPLY_INTERPRETATION's
+    // own `dirty()` fixture (above) is — a pristine fixture cannot prove a
+    // clear happened, since the field was already at its post-clear value
+    // before the dispatch. Confirmed RED against the pre-fix code: the
+    // reviewer deleted the nav-clear-set line, the describeText/
+    // describeOpen line, and the `history` push in the UNPLACEABLE_PICK
+    // arm in turn, and every test in this block stayed green each time.
+    // Finding 1's prepChecks/prepDraft/fillsReviewed dirt is folded in here
+    // too, for the same reason.
+    prepChecks: { 0: true }, prepDraft: 'a draft', fillsReviewed: true,
+    describeText: 'they rejected my application', describeOpen: true,
+    trustOpen: true, restartConfirm: true, removeConfirm: 'c1', authErr: 'stale error', acctOpen: true,
     ...extra,
   })
+
+  it(
+    'fix round 1, Findings 1 & 2: clears prepChecks, prepDraft and fillsReviewed (the same three ANSWER/' +
+    'APPLY_INTERPRETATION already clear on a correction-path write) and applies the nav clear set, on the ' +
+    'write-and-navigate path',
+    () => {
+      const s = r(onPanel(), {
+        type: 'UNPLACEABLE_PICK', questionId: 'q1', value: 'adverse',
+        facts: [FIXTURE_FACT], text: 'they rejected my application', provenance: 'simulated (local matcher)',
+      })
+      expect(s.prepChecks).toEqual({})
+      expect(s.prepDraft).toBeNull()
+      expect(s.fillsReviewed).toBe(false)
+      expect(s.trustOpen).toBe(false)
+      expect(s.restartConfirm).toBe(false)
+      expect(s.removeConfirm).toBeNull()
+      expect(s.authErr).toBeNull()
+      expect(s.acctOpen).toBe(false)
+      expect(s.history).toEqual(['home', 'passport-q1', 'interp-confirm'])
+    },
+  )
 
   it('writes the answer, restores the facts/text/provenance, and navigates — all in one transition', () => {
     const s = r(onPanel(), {

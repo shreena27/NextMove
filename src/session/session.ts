@@ -1465,6 +1465,11 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         caseFacts: interp.facts, appliedText: interp.text, interpProvenance: interp.provenance,
         prepChecks: {}, prepDraft: null, fillsReviewed: false,
         describeText: '', describeOpen: false, interp: null,
+        // This push lands 'interp-confirm' on `history` (the real dispatch
+        // site's s.screen) in the same transition that nulls `interp`
+        // above — BACK can land back on 'interp-confirm' with
+        // `interp: null`. Intentional: Task 17's router renders Home for
+        // that case (no dispatch, no crash), not a defect to fix here.
         history: [...s.history, s.screen], screen,
         trustOpen: false, restartConfirm: false, removeConfirm: null, authErr: null, acctOpen: false,
       }
@@ -1503,7 +1508,20 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         // them on its own payload (`a.facts`/`a.text`/`a.provenance`) and
         // re-applies them itself, in this SAME transition.
         caseFacts: a.facts, appliedText: a.text, interpProvenance: a.provenance,
+        // Fix round 1, Finding 1: this arm is an ordinary answer pick — the
+        // same three clears the real onSelect for this question would
+        // produce (via ANSWER's own unconditional clear, design note 6)
+        // and APPLY_INTERPRETATION's sibling arm already applies above.
+        // Without these, a prepare-plan tick or an FR-AI-04 fills
+        // acknowledgment captured under one diagnosis could survive onto a
+        // different one reached via this panel.
+        prepChecks: {}, prepDraft: null, fillsReviewed: false,
         interp: null, describeText: '', describeOpen: false,
+        // This push lands 'interp-confirm' on `history` (the real dispatch
+        // site's s.screen) in the same transition that nulls `interp`
+        // above — BACK can land back on 'interp-confirm' with
+        // `interp: null`. Intentional: Task 17's router renders Home for
+        // that case (no dispatch, no crash), not a defect to fix here.
         history: [...s.history, s.screen], screen: plan.screen as ScreenId,
         trustOpen: false, restartConfirm: false, removeConfirm: null, authErr: null, acctOpen: false,
       }
