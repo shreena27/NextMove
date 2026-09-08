@@ -1981,7 +1981,12 @@ describe('UNPLACEABLE_PICK — the unplaceable-panel fallback (design note 6, I1
     // before the dispatch. Confirmed RED against the pre-fix code: the
     // reviewer deleted the nav-clear-set line, the describeText/
     // describeOpen line, and the `history` push in the UNPLACEABLE_PICK
-    // arm in turn, and every test in this block stayed green each time.
+    // arm in turn, and every test in this block stayed green each time —
+    // at that point this fixture dirtied describeText/describeOpen but no
+    // test yet asserted on them, so the RED confirmation didn't translate
+    // into real coverage for that pair (caught in scoped re-review, round
+    // 2). The test below now asserts `describeText`/`describeOpen` clear
+    // too, so that dirt is genuinely pinned, not just dirtied.
     // Finding 1's prepChecks/prepDraft/fillsReviewed dirt is folded in here
     // too, for the same reason.
     prepChecks: { 0: true }, prepDraft: 'a draft', fillsReviewed: true,
@@ -2008,6 +2013,8 @@ describe('UNPLACEABLE_PICK — the unplaceable-panel fallback (design note 6, I1
       expect(s.authErr).toBeNull()
       expect(s.acctOpen).toBe(false)
       expect(s.history).toEqual(['home', 'passport-q1', 'interp-confirm'])
+      expect(s.describeText).toBe('')
+      expect(s.describeOpen).toBe(false)
     },
   )
 
