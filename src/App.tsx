@@ -39,7 +39,10 @@
  *  render is safe here: both passes read the same ref (no effect has run
  *  between them yet), so both compute the same `settled`. */
 import { useReducer, useRef, useEffect, type ReactNode } from 'react'
-import { sessionReducer, initialSession, type ScreenId, type SessionAction } from './session/session'
+import {
+  sessionReducer, initialSession, PENDING_GOOGLE_SAVE_KEY, parsePendingGoogleSaveSnapshot,
+  type ScreenId, type ServiceKey, type SessionAction, type PendingGoogleSaveSnapshot,
+} from './session/session'
 import { activeCase, newCaseId } from './session/cases'
 import { loadCases, saveCases } from './session/caseStore'
 import { getCurrentUser, onAuthChange } from './session/auth'
@@ -120,7 +123,7 @@ export default function App() {
   const now = Date.now()
 
   // =========================================================================
-  // C7 Task 8 — the auth lifecycle. Five effects:
+  // C7 Task 8 — the auth lifecycle. Six effects (Task 19 adds the fifth):
   //   1. Signed-OUT persistence (C5's original effect, now gated).
   //   2. The mount effect — resolves any session supabase-js already
   //      restored, and strips a `?code=` param off the address bar.
@@ -128,7 +131,10 @@ export default function App() {
   //      explicitly (design note 5).
   //   4. The migration runner — the only place that ever calls
   //      `runSignInMigration`.
-  //   5. The signed-IN push effect.
+  //   5. Task 19's resume-after-migration effect — finishes a save resumed
+  //      from a pending-Google-save sessionStorage snapshot, once THIS
+  //      sign-in's own migration has actually settled.
+  //   6. The signed-IN push effect.
   // See each effect's own comment for its specific job; the migration
   // runner's comment explains the double-fire guard's actual mechanism.
   // =========================================================================
@@ -150,13 +156,30 @@ export default function App() {
 
   // `ADOPT_CASES`'s own payload, captured at its one dispatch site (effect
   // 4 below) — design note 7's push-effect optimisation. The signed-in
-  // push effect (5) skips a push when `state.savedCases` is
+  // push effect (6) skips a push when `state.savedCases` is
   // REFERENCE-identical to what the migration just adopted: the rows are
   // byte-identical to what the server already has (upsert-keyed on
   // `(user_id, id)`), so pushing them straight back is a wasted round
   // trip, never a correctness issue. This ref is what lets that effect
   // tell "just adopted" apart from "the citizen changed something."
   const justAdoptedRef = useRef<Casefile[] | null>(null)
+
+  // Task 19 (post-Task-18 fix): a pending-Google-save snapshot read off
+  // sessionStorage in the mount effect (2) below, held here until THIS
+  // sign-in's own migration has actually settled (effect 5). Deliberately
+  // NOT dispatched directly from the mount effect: `ADOPT_CASES` (effect
+  // 4's own dispatch) unconditionally REPLACES `state.savedCases` with the
+  // migration's merged set (fetched remote + local `nm_cases`) — dispatching
+  // `RESUME_PENDING_SAVE` synchronously alongside `MIGRATION_STARTED` would
+  // have the resumed case clobbered the instant that later, ASYNC
+  // `ADOPT_CASES` lands, since the resumed case was never part of either
+  // the remote fetch or the local `nm_cases` the migration reads (it only
+  // ever lived in `sessionStorage`). Verified directly: an earlier version
+  // of this fix dispatched `RESUME_PENDING_SAVE` inline in the mount effect,
+  // and the Task 19 integration test's own "Go home -> `.saved-card`"
+  // assertion failed — the case existed for exactly one render, then
+  // vanished under `ADOPT_CASES`.
+  const pendingResumeRef = useRef<PendingGoogleSaveSnapshot | null>(null)
 
   // 2. The mount effect: resolves whatever session supabase-js already
   // restored (a real page load, or the PKCE code exchange it just
@@ -170,6 +193,25 @@ export default function App() {
   // no way for the citizen to clear it but editing the address bar
   // themselves. No other file in `src/` reads `window.location` (design
   // note 6), so this is the app's only interaction with the URL.
+  //
+  // Task 19 (post-Task-18 fix): also where a pending-Google-save
+  // `sessionStorage` snapshot is read — a save that was in flight when a
+  // real Google OAuth redirect wiped `pendingSave`/`answers`/`prepChecks`
+  // out of memory. This IS that "fresh page load" the comment above already
+  // names, which is exactly why the read has to happen here rather than
+  // anywhere else. `SaveCaseScreen.tsx`'s `handleGoogle` is the write site;
+  // `session/session.ts`'s `PENDING_GOOGLE_SAVE_KEY` comment has the full
+  // design. Read once, act once (the same discipline caseStore.ts's own
+  // `nm_case` -> `nm_cases` migration uses): the key is cleared immediately
+  // after being read, so a snapshot that fails to parse can never replay on
+  // a later boot. A successfully parsed snapshot is stashed on
+  // `pendingResumeRef` (declared above), NOT dispatched here — see that
+  // ref's own comment for why the actual `RESUME_PENDING_SAVE` dispatch has
+  // to wait for effect 5. Only checked inside the `result.ok && result.user`
+  // branch — a snapshot written but never followed by an actual successful
+  // sign-in (the citizen cancelled at Google, or closed the tab) is left
+  // standing rather than guessed at; `sessionStorage` does not outlive the
+  // tab either way, so nothing leaks to a later session.
   useEffect(() => {
     let cancelled = false
     void (async () => {
@@ -177,6 +219,18 @@ export default function App() {
       if (!cancelled && result.ok && result.user) {
         dispatch({ type: 'SIGNED_IN', user: result.user })
         dispatch({ type: 'MIGRATION_STARTED' })
+        try {
+          const rawSnapshot = sessionStorage.getItem(PENDING_GOOGLE_SAVE_KEY)
+          if (rawSnapshot !== null) {
+            sessionStorage.removeItem(PENDING_GOOGLE_SAVE_KEY)
+            pendingResumeRef.current = parsePendingGoogleSaveSnapshot(rawSnapshot)
+          }
+        } catch {
+          // Storage absent, full, or disabled — same fail-soft discipline as
+          // caseStore.ts's own store.get/store.del. The redirect already
+          // completed; a lost resume here is the SAME pre-existing bug this
+          // task fixes, not a new failure mode.
+        }
       }
       if (window.location.search.includes('code=')) {
         history.replaceState(null, '', window.location.pathname)
@@ -331,7 +385,43 @@ export default function App() {
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- deliberate: `now` is a snapshot, not a re-run trigger; see comment above
   }, [state.migration])
 
-  // 5. The signed-in push effect — pushes `savedCases` to the server on
+  // 5. Task 19 (post-Task-18 fix) — the resume-after-migration effect.
+  // Finishes a save resumed from a pending-Google-save `sessionStorage`
+  // snapshot (effect 2 stashes it on `pendingResumeRef`, declared above),
+  // once THIS sign-in's own migration has actually settled — not before.
+  // Keyed on `[state.migration]`, the SAME primitive-string dependency
+  // effect 4 uses, for the SAME reason (that effect's own comment has the
+  // full mechanism): `MIGRATION_STARTED` -> `'running'` -> a single
+  // eventual `'done'`/`'failed'` transition, diffed by VALUE, so this
+  // effect fires at most once per genuine settle. Runs on EITHER `'done'`
+  // OR `'failed'`: a failed migration still leaves the local set (and, by
+  // extension, this dispatch) as the truth (`MIGRATION_FAILED`'s own
+  // reducer-arm comment) — there is no reason to strand the citizen's
+  // resumed save waiting on a migration retry that may never come.
+  // `pendingResumeRef.current` is `null` on every ordinary sign-in (nothing
+  // to do — cheap, correct no-op); it is only ever non-null for the one
+  // sign-in that just consumed a real snapshot.
+  useEffect(() => {
+    if (state.migration !== 'done' && state.migration !== 'failed') return
+    const snapshot = pendingResumeRef.current
+    if (!snapshot) return
+    pendingResumeRef.current = null
+    dispatch({
+      type: 'RESUME_PENDING_SAVE',
+      engineKey: snapshot.engineKey as ServiceKey,
+      serviceLabel: snapshot.serviceLabel,
+      returnScreen: snapshot.returnScreen as ScreenId,
+      answers: snapshot.answers,
+      prepChecks: snapshot.prepChecks,
+      now, newId: newCaseId(),
+    })
+    // `now` is intentionally omitted from the dependency array — same
+    // reasoning as effect 4's own comment above: this render's clock (D6),
+    // read once when the effect actually fires, not a value to re-run for.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- deliberate: `now` is a snapshot, not a re-run trigger; see comment above
+  }, [state.migration])
+
+  // 6. The signed-in push effect — pushes `savedCases` to the server on
   // change, and must NEVER call `saveCases` (that would resurrect the leak
   // the split exists to prevent — design note 9's first guarantee: no case
   // fetched from the account may reach `nm_cases` on the way out).
@@ -844,6 +934,7 @@ export default function App() {
       body = (
         <SaveCaseScreen
           authMethod={state.authMethod} authId={state.authId} authErr={state.authErr} authBusy={state.authBusy}
+          pendingSave={state.pendingSave} answers={state.answers} prepChecks={state.prepChecks}
           now={now} topbar={topbar(true, false)} dispatch={dispatch}
         />
       )

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { initialSession, sessionReducer as r } from './session'
+import { initialSession, sessionReducer as r, parsePendingGoogleSaveSnapshot } from './session'
 import type { SessionState } from './session'
 import type { Casefile } from '../domain/casefile'
 import type { CheckinOption } from '../domain/checkinOptions'
@@ -1062,5 +1062,143 @@ describe('TOGGLE_ACCT / CLOSE_ACCT / SET_SIGN_OUT_CONFIRM (prototype acct-chip 2
     expect(armed.signOutConfirm).toBe(true)
     const disarmed = r(armed, { type: 'SET_SIGN_OUT_CONFIRM', value: false })
     expect(disarmed.signOutConfirm).toBe(false)
+  })
+})
+
+// =============================================================================
+// Task 19 (post-Task-18 fix) — Google's real, full-page OAuth redirect wipes
+// pendingSave/answers/prepChecks out of memory. RESUME_PENDING_SAVE is the
+// new action App.tsx's mount effect dispatches once it reads a sessionStorage
+// snapshot back and confirms a signed-in session; parsePendingGoogleSaveSnapshot
+// is the pure validation that snapshot goes through first. See session.ts's
+// own PENDING_GOOGLE_SAVE_KEY comment for the full design.
+// =============================================================================
+describe('RESUME_PENDING_SAVE (Task 19 fix)', () => {
+  it(
+    'produces the EXACT SAME savedCases entry BEGIN_SAVE\'s signed-in branch would produce from equivalent live ' +
+    'state — field by field, not just "a case exists" — proving the restored answers/prepChecks on the action ' +
+    'payload feed completeSave identically to state.answers/state.prepChecks on a live BEGIN_SAVE',
+    () => {
+      const liveEquivalent = seq(
+        { type: 'SIGNED_IN', user: FIXTURE_USER },
+        { type: 'ANSWER', service: 'passport', key: 'q1', value: 'adverse' },
+        { type: 'ANSWER', service: 'passport', key: 'q2', value: 'informal' },
+        {
+          type: 'BEGIN_SAVE',
+          engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+          now: 1_725_000_000_000, newId: 'same-uuid',
+        },
+      )
+
+      // The post-redirect boot: a freshly-booted session (SIGNED_IN already
+      // dispatched by App.tsx's mount effect — RESUME_PENDING_SAVE never
+      // touches `user` itself) with the restored answers/prepChecks carried
+      // on the ACTION payload, never read off live state (which starts
+      // empty this early — the whole reason BEGIN_SAVE itself cannot be
+      // re-dispatched here, per the brief).
+      const booted = r(initialSession, { type: 'SIGNED_IN', user: FIXTURE_USER })
+      const s = r(booted, {
+        type: 'RESUME_PENDING_SAVE',
+        engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+        answers: { q1: 'adverse', q2: 'informal' }, prepChecks: {},
+        now: 1_725_000_000_000, newId: 'same-uuid',
+      })
+
+      expect(s.savedCases).toEqual(liveEquivalent.savedCases)
+      expect(s.savedCases).toHaveLength(1)
+      expect(s.savedCases[0].id).toBe('same-uuid')
+      expect(s.savedCases[0].engineKey).toBe('passport')
+      expect(s.savedCases[0].outcome).toBe('still_open')
+      expect(s.activeCaseId).toBe(liveEquivalent.activeCaseId)
+      expect(s.workingCase).toBeNull()
+      expect(s.screen).toBe('save-done')
+      expect(s.pendingSave).toEqual({ engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove' })
+      // Beyond what BEGIN_SAVE itself needs to touch (its own state.answers
+      // is already live and correct) — RESUME_PENDING_SAVE restores
+      // state.answers/state.prepChecks too, so "Back to my case" from
+      // save-done re-diagnoses against the SAME answers the save used, not
+      // an empty post-boot answers record.
+      expect(s.answers).toEqual({ q1: 'adverse', q2: 'informal' })
+      expect(s.prepChecks).toEqual({})
+      expect(s.user).toBe(FIXTURE_USER)
+    },
+  )
+
+  it('merges into an existing still-open case of the same engine, exactly like BEGIN_SAVE\'s completeSave call does', () => {
+    const withExisting: SessionState = {
+      ...initialSession,
+      user: FIXTURE_USER,
+      savedCases: [{ ...FIXTURE_CASE, id: 'existing-1', engineKey: 'passport' }],
+    }
+    const s = r(withExisting, {
+      type: 'RESUME_PENDING_SAVE',
+      engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+      answers: { q1: 'adverse' }, prepChecks: {},
+      now: 1_725_000_000_000, newId: 'unused-because-merged',
+    })
+    expect(s.savedCases).toHaveLength(1)
+    expect(s.savedCases[0].id).toBe('existing-1') // merged, not a second row
+    expect(s.activeCaseId).toBe('existing-1')
+  })
+
+  it('does not mutate the reducer (no Date.now()/crypto.randomUUID() call needed — now/newId come from the action)', () => {
+    const s = r(initialSession, {
+      type: 'RESUME_PENDING_SAVE',
+      engineKey: 'sir', serviceLabel: 'SIR', returnScreen: 'sir-nextmove',
+      answers: {}, prepChecks: {},
+      now: 1_725_000_000_000, newId: 'fixed-id-proves-no-internal-mint',
+    })
+    expect(s.savedCases[0].id).toBe('fixed-id-proves-no-internal-mint')
+  })
+})
+
+describe('parsePendingGoogleSaveSnapshot (Task 19 fix — validates a sessionStorage-round-tripped snapshot before it ever reaches RESUME_PENDING_SAVE)', () => {
+  const VALID_RAW = JSON.stringify({
+    engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+    answers: { q1: 'adverse' }, prepChecks: { 0: true },
+  })
+
+  it('parses a well-formed snapshot, field by field', () => {
+    const s = parsePendingGoogleSaveSnapshot(VALID_RAW)
+    expect(s).toEqual({
+      engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+      answers: { q1: 'adverse' }, prepChecks: { 0: true },
+    })
+  })
+
+  it('returns null, not a throw, on malformed JSON', () => {
+    expect(parsePendingGoogleSaveSnapshot('{not valid json')).toBeNull()
+  })
+
+  it('returns null on valid JSON that is not an object (e.g. a bare number or string)', () => {
+    expect(parsePendingGoogleSaveSnapshot('42')).toBeNull()
+    expect(parsePendingGoogleSaveSnapshot('"just a string"')).toBeNull()
+    expect(parsePendingGoogleSaveSnapshot('null')).toBeNull()
+  })
+
+  it('returns null when engineKey is not a real engine — the one check that stops a corrupt snapshot from crashing the resumed diagnose()', () => {
+    const raw = JSON.stringify({
+      engineKey: 'not-a-real-engine', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+      answers: {}, prepChecks: {},
+    })
+    expect(parsePendingGoogleSaveSnapshot(raw)).toBeNull()
+  })
+
+  it('returns null when a required field is missing (serviceLabel absent)', () => {
+    const raw = JSON.stringify({ engineKey: 'passport', returnScreen: 'passport-nextmove', answers: {}, prepChecks: {} })
+    expect(parsePendingGoogleSaveSnapshot(raw)).toBeNull()
+  })
+
+  it('returns null when answers/prepChecks are not objects', () => {
+    const raw1 = JSON.stringify({
+      engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+      answers: 'not an object', prepChecks: {},
+    })
+    const raw2 = JSON.stringify({
+      engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+      answers: {}, prepChecks: 'not an object',
+    })
+    expect(parsePendingGoogleSaveSnapshot(raw1)).toBeNull()
+    expect(parsePendingGoogleSaveSnapshot(raw2)).toBeNull()
   })
 })

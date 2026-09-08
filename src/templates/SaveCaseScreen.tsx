@@ -76,9 +76,23 @@
  *  click on the label focuses the input — same CSS class, same text, same
  *  position, nothing rendered differently. `.auth-err` carries
  *  `role="alert"` (task brief design note 7) so a validation failure the
- *  citizen did not navigate to is announced, not just displayed. */
+ *  citizen did not navigate to is announced, not just displayed.
+ *
+ *  DESIGN NOTE 5 (Task 19, post-Task-18 fix — confirmed live, not
+ *  hypothesized). A real `signInWithGoogle` performs a genuine full-page
+ *  navigation to accounts.google.com and back — the tab actually leaves
+ *  `localhost` and returns as a fresh page load, which resets every
+ *  `useReducer` value. Phone/email never navigate away, so they were never
+ *  at risk; Google alone needed this fix. `handleGoogle` now snapshots
+ *  `pendingSave`/`answers`/`prepChecks` to `sessionStorage`
+ *  (`PENDING_GOOGLE_SAVE_KEY`, session/session.ts — that file's own comment
+ *  has the full design, including why `sessionStorage` rather than this
+ *  codebase's `nm_`-prefixed `localStorage` convention) immediately before
+ *  the redirect; App.tsx's mount effect reads it back and dispatches
+ *  `RESUME_PENDING_SAVE` once a signed-in session actually returns. */
 import type { ReactNode } from 'react'
 import type { SessionAction, SessionState } from '../session/session'
+import { PENDING_GOOGLE_SAVE_KEY } from '../session/session'
 import { normalisePhone, isValidEmail, startPhoneOtp, startEmailOtp, signInWithGoogle, OTP_RESEND_COOLDOWN_MS } from '../session/auth'
 import { Split } from '../ui/Split'
 import { Crumbs } from '../ui/Crumbs'
@@ -93,6 +107,25 @@ export interface SaveCaseScreenProps {
   authId: SessionState['authId']
   authErr: SessionState['authErr']
   authBusy: SessionState['authBusy']
+  /** Task 19 fix. Snapshotted to `sessionStorage` (`PENDING_GOOGLE_SAVE_KEY`,
+   *  session/session.ts) immediately before a Google redirect — see
+   *  `handleGoogle` below and App.tsx's mount effect (the read/resume site).
+   *  App.tsx always supplies the real, live value. Optional (unlike
+   *  `authMethod`/`authId`/`authErr`/`authBusy`/`now` above, which are not):
+   *  screenCopy.test.tsx's guardrail-scan harness mounts this screen
+   *  statically, pre-dating this task, without wiring a save flow at all —
+   *  making this required would force an unrelated file outside this task's
+   *  named scope to change for a purely mechanical reason. Defaults to
+   *  `null` (handleGoogle already treats a null/missing pendingSave as
+   *  "nothing to snapshot," matching the one real route to this screen —
+   *  `BEGIN_SAVE`'s signed-out branch — which always sets it). */
+  pendingSave?: SessionState['pendingSave']
+  /** Task 19 fix. The other half of the same sessionStorage snapshot —
+   *  `completeSave` (session/cases.ts) has nothing to diagnose or save
+   *  without these. Optional for the same reason as `pendingSave` above;
+   *  defaults to `{}`. */
+  answers?: SessionState['answers']
+  prepChecks?: SessionState['prepChecks']
   /** Task 12 addition (design note 6): stamps `AUTH_ID_SUBMITTED`'s new
    *  `otpCooldownUntil` field (`now + OTP_RESEND_COOLDOWN_MS`) — the SAME
    *  D6 injected-clock convention every other `now`-bearing dispatch in
@@ -107,7 +140,9 @@ export interface SaveCaseScreenProps {
   dispatch?: (action: SessionAction) => void
 }
 
-export function SaveCaseScreen({ authMethod, authId, authErr, authBusy, now, topbar, dispatch }: SaveCaseScreenProps) {
+export function SaveCaseScreen({
+  authMethod, authId, authErr, authBusy, pendingSave = null, answers = {}, prepChecks = {}, now, topbar, dispatch,
+}: SaveCaseScreenProps) {
   const isPhone = authMethod === 'phone'
 
   const handleSend = async () => {
@@ -156,6 +191,32 @@ export function SaveCaseScreen({ authMethod, authId, authErr, authBusy, now, top
   const handleGoogle = async () => {
     if (authBusy) return
     dispatch?.({ type: 'SET_AUTH_BUSY', value: true })
+    // Task 19 fix: a real signInWithGoogle performs a full-page navigation
+    // away and back (design note 3 above already established "no further
+    // dispatch here" on success, because the page reloads) — every
+    // in-memory value, including pendingSave/answers/prepChecks, is gone by
+    // the time it returns. Snapshot them to sessionStorage right before
+    // starting the redirect so App.tsx's mount effect can resume the save
+    // once a signed-in session comes back (session/session.ts's
+    // PENDING_GOOGLE_SAVE_KEY comment has the full design). Only written
+    // when pendingSave exists — see this prop's own doc comment above for
+    // why this stays defensive rather than assumed. Fails soft on a
+    // throwing/full/absent store, the same discipline caseStore.ts's own
+    // `store.set` uses: losing the snapshot here reproduces the SAME
+    // pre-existing bug this task fixes, not a new failure mode.
+    if (pendingSave) {
+      try {
+        sessionStorage.setItem(PENDING_GOOGLE_SAVE_KEY, JSON.stringify({
+          engineKey: pendingSave.engineKey,
+          serviceLabel: pendingSave.serviceLabel,
+          returnScreen: pendingSave.returnScreen,
+          answers,
+          prepChecks,
+        }))
+      } catch {
+        // See the comment above — best-effort only.
+      }
+    }
     const result = await signInWithGoogle(window.location.origin)
     if (!result.ok) {
       dispatch?.({ type: 'SET_AUTH_ERR', error: result.error })

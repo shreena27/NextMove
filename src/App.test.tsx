@@ -38,6 +38,7 @@ import * as caseStoreModule from './session/caseStore'
 import { UI } from './screens/screenCopy'
 import { PREP } from './playbooks/prep'
 import type { SessionState, SessionAction } from './session/session'
+import { PENDING_GOOGLE_SAVE_KEY } from './session/session'
 
 // Design note 3's no-plan guard (design/nextmove-v1-prototype.html 3749,
 // ported as App.tsx's `RestartToHome`) is reachable only via a direct
@@ -97,6 +98,11 @@ afterEach(() => {
   // REAL localStorage is shared across every `it()` in this file, so a case
   // saved by one test would otherwise leak into the next `render(<App/>)`.
   localStorage.clear()
+  // Task 19 fix: same reasoning as localStorage.clear() above — jsdom's
+  // REAL sessionStorage is shared across every it() in this file, and a
+  // pending-Google-save snapshot written by one test must not leak into
+  // the next.
+  sessionStorage.clear()
   // Task 8: a `?code=` test rewrites the address bar; every other test
   // expects to boot at the bare origin.
   window.history.replaceState(null, '', '/')
@@ -1404,6 +1410,129 @@ describe('C7 Task 8: the auth lifecycle', () => {
 
         expect(screen.getByText(UI.casefile.phaseDriftKicker)).toBeInTheDocument()
         expect(screen.getByText(UI.casefile.phaseDriftTitle)).toBeInTheDocument()
+      },
+    )
+  })
+
+  // =============================================================================
+  // Task 19 (post-Task-18 fix) — Google sign-in loses a pending save across
+  // the REAL OAuth redirect. Confirmed live: signInWithGoogle performs a
+  // genuine full-page navigation, resetting every in-memory value including
+  // pendingSave/answers/prepChecks. The fix snapshots those to sessionStorage
+  // (PENDING_GOOGLE_SAVE_KEY) right before the redirect and resumes them on
+  // the next mount via a new RESUME_PENDING_SAVE action, once a signed-in
+  // session actually comes back.
+  // =============================================================================
+  describe('Task 19 fix: Google sign-in resumes a pending save that survives the real OAuth redirect', () => {
+    it(
+      'reproduces the live bug and proves the fix: a sessionStorage snapshot written right before a Google ' +
+      'redirect resumes into a real saved case once a signed-in Google session comes back on the next boot — ' +
+      'without the fix, RESUME_PENDING_SAVE never dispatches and savedCases stays empty, exactly what was found ' +
+      'live (localStorage.getItem(\'nm_cases\') === null, no case, "0 open")',
+      async () => {
+        sessionStorage.setItem(PENDING_GOOGLE_SAVE_KEY, JSON.stringify({
+          engineKey: 'passport',
+          serviceLabel: UI.serviceLabel.passport,
+          returnScreen: 'passport-nextmove',
+          answers: { q1: 'adverse', q2: 'informal' },
+          prepChecks: {},
+        }))
+        withSession({ app_metadata: { provider: 'google' }, user_metadata: { full_name: 'Ananya' } })
+        selectSpy.mockResolvedValueOnce({ data: [], error: null })
+
+        render(<App />)
+
+        // The discriminating assertion: without the fix this dispatch never
+        // happens at all — no mock, no timing coincidence, the real action
+        // this fix adds either fires or it doesn't. `waitFor` times out
+        // (not merely returns false) against the unfixed code, which is
+        // exactly the RED this task's TDD discipline requires.
+        await waitFor(() => expect(dispatchedActions.current.some(a => a.type === 'RESUME_PENDING_SAVE')).toBe(true))
+        expect(await screen.findByRole('heading', { name: UI.saveDone.headline })).toBeInTheDocument()
+        // Cleared once the resume attempt fires — must not replay on a
+        // later boot in the same tab.
+        expect(sessionStorage.getItem(PENDING_GOOGLE_SAVE_KEY)).toBeNull()
+
+        await userEvent.click(screen.getByRole('button', { name: UI.saveDone.goHome }))
+        expect(document.querySelectorAll('.saved-card')).toHaveLength(1)
+        // Signed in: the case lives in savedCases/the server, never
+        // nm_cases — same assertion shape the existing Google flow test
+        // above uses.
+        expect(localStorage.getItem('nm_cases')).toBeNull()
+      },
+    )
+
+    it(
+      'Task 19 regression pin — a normal boot with no pending-Google-save snapshot in sessionStorage dispatches ' +
+      'no RESUME_PENDING_SAVE at all (additive-only: this fix must not change any existing boot behaviour)',
+      async () => {
+        withSession({ app_metadata: { provider: 'google' }, user_metadata: { full_name: 'Ananya' } })
+        selectSpy.mockResolvedValueOnce({ data: [], error: null })
+
+        render(<App />)
+        await waitFor(() => expect(dispatchedActions.current.some(a => a.type === 'ADOPT_CASES')).toBe(true))
+
+        expect(dispatchedActions.current.some(a => a.type === 'RESUME_PENDING_SAVE')).toBe(false)
+        expect(document.querySelectorAll('.saved-card')).toHaveLength(0)
+      },
+    )
+
+    it(
+      'a corrupt sessionStorage snapshot does not throw, resumes nothing, and is still cleared so it cannot ' +
+      'replay on a later boot',
+      async () => {
+        sessionStorage.setItem(PENDING_GOOGLE_SAVE_KEY, '{not valid json')
+        withSession({ app_metadata: { provider: 'google' } })
+        selectSpy.mockResolvedValueOnce({ data: [], error: null })
+
+        render(<App />)
+        await waitFor(() => expect(dispatchedActions.current.some(a => a.type === 'ADOPT_CASES')).toBe(true))
+
+        expect(dispatchedActions.current.some(a => a.type === 'RESUME_PENDING_SAVE')).toBe(false)
+        expect(document.querySelectorAll('.saved-card')).toHaveLength(0)
+        expect(sessionStorage.getItem(PENDING_GOOGLE_SAVE_KEY)).toBeNull()
+        // Nothing crashed — Home is fully rendered, not stuck.
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+      },
+    )
+
+    it(
+      'the phone save-flow is provably untouched by this fix — rerun (not just trusted) unmodified: phone -> OTP ' +
+      '-> name -> done still lands the case in savedCases with no sessionStorage involvement at all',
+      async () => {
+        render(<App />)
+        await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+        await userEvent.click(screen.getByRole('button', { name: /No, still waiting on it/ }))
+        await userEvent.click(screen.getByRole('button', { name: "I haven't heard anything about police verification yet" }))
+        await userEvent.click(screen.getByRole('button', { name: /^No, not yet/ }))
+        await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+        await userEvent.click(screen.getByRole('button', { name: UI.saveControl.save }))
+
+        await userEvent.type(screen.getByLabelText(UI.saveCase.fieldLabelMobile), '9876543210')
+        await userEvent.click(screen.getByRole('button', { name: UI.saveCase.send }))
+        expect(mockClient.auth.signInWithOtp).toHaveBeenCalledWith({ phone: '+919876543210' })
+        expect(await screen.findByRole('heading', { name: UI.saveOtp.headline })).toBeInTheDocument()
+
+        // The Google-only mechanism this task adds never fires for phone.
+        expect(sessionStorage.getItem(PENDING_GOOGLE_SAVE_KEY)).toBeNull()
+
+        const supabaseUser = makeSupabaseUser({ id: 'task19-phone-1', phone: '919876543210' })
+        mockClient.auth.verifyOtp.mockResolvedValueOnce({ data: { user: supabaseUser }, error: null })
+        await userEvent.type(screen.getByLabelText(UI.saveOtp.fieldLabel), '123456')
+        await userEvent.click(screen.getByRole('button', { name: UI.saveOtp.verify }))
+        expect(await screen.findByRole('heading', { name: UI.saveName.headline })).toBeInTheDocument()
+
+        mockClient.auth.getSession.mockResolvedValue({ data: { session: { user: supabaseUser } }, error: null })
+        mockClient.emitAuthEvent('SIGNED_IN', { user: supabaseUser })
+        await waitFor(() => expect(dispatchedActions.current.some(a => a.type === 'ADOPT_CASES')).toBe(true))
+
+        await userEvent.click(screen.getByRole('button', { name: UI.saveName.switchMidSave }))
+        expect(await screen.findByRole('heading', { name: UI.saveDone.headline })).toBeInTheDocument()
+        expect(dispatchedActions.current.some(a => a.type === 'RESUME_PENDING_SAVE')).toBe(false)
+        expect(sessionStorage.getItem(PENDING_GOOGLE_SAVE_KEY)).toBeNull()
+
+        await userEvent.click(screen.getByRole('button', { name: UI.saveDone.goHome }))
+        expect(document.querySelectorAll('.saved-card')).toHaveLength(1)
       },
     )
   })

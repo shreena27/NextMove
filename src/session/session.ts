@@ -247,6 +247,78 @@ export const initialSession: SessionState = {
   authBusy: false, otpCooldownUntil: null, migration: 'idle',
 }
 
+// =============================================================================
+// Task 19 (post-Task-18 fix) — Google sign-in loses a pending save across the
+// REAL OAuth redirect. Confirmed live (not hypothesized): signInWithOAuth
+// (session/auth.ts) performs a genuine full-page navigation to
+// accounts.google.com and back — the browser tab actually leaves the app and
+// returns as a fresh page load, which resets every `useReducer` value,
+// including `pendingSave`/`answers`/`prepChecks`. Phone/email never hit this:
+// their OTP calls never navigate away, so the citizen stays on the same page
+// the whole time and nothing in memory is ever at risk.
+//
+// The fix: SaveCaseScreen's handleGoogle snapshots what completeSave needs to
+// `sessionStorage` (PENDING_GOOGLE_SAVE_KEY below) immediately before starting
+// the redirect. App.tsx's mount effect reads it back — once, and only once a
+// signed-in session actually comes back — parses it (below), and dispatches
+// RESUME_PENDING_SAVE (in the SessionAction union below) to finish the save.
+//
+// `sessionStorage`, not caseStore.ts's `nm_`-prefixed `localStorage`
+// convention: this is a short-lived artifact of ONE in-flight redirect, not
+// durable app state like `nm_cases`/`nm_user` — it must not survive to a
+// later, unrelated session/tab the way those do. Flagged to the reviewer as a
+// real decision, not a foregone one.
+// =============================================================================
+export const PENDING_GOOGLE_SAVE_KEY = 'nm_pending_google_save'
+
+/** What SaveCaseScreen's handleGoogle writes, and what App.tsx's mount effect
+ *  reads back via `parsePendingGoogleSaveSnapshot` below. `engineKey` and
+ *  `returnScreen` are plain strings, not `ServiceKey`/`ScreenId`: this is
+ *  untrusted round-tripped JSON (sessionStorage can be hand-edited, or hold a
+ *  snapshot written by an older build), not a same-module value, so it is
+ *  VALIDATED below rather than assumed to already be one of those literal
+ *  unions — the same reasoning `CiFragment.navigateTo` (session/cases.ts)
+ *  documents for staying a plain string. */
+export interface PendingGoogleSaveSnapshot {
+  engineKey: string
+  serviceLabel: string
+  returnScreen: string
+  answers: AnswerRecord
+  prepChecks: Record<number, boolean>
+}
+
+/** Parses a stored snapshot; `null` on anything that is not exactly the
+ *  expected shape — missing key, corrupt JSON, a hand-edited value, or an
+ *  `engineKey` this build no longer recognises. The `engineKey in ENGINES`
+ *  check is not shape-checking for its own sake: `ENGINES` is the SAME
+ *  registry `diagnose` itself indexes by (session/cases.ts's `completeSave`),
+ *  so this is the one check that actually stops a corrupt snapshot from
+ *  crashing the resumed diagnosis rather than merely failing to resume it.
+ *  App.tsx's mount effect is the only caller — read once, act once (the same
+ *  discipline caseStore.ts's own `nm_case` -> `nm_cases` migration uses): the
+ *  key is cleared immediately after being read, before this function's
+ *  result is ever dispatched, so a snapshot that fails to parse can never
+ *  replay on a later boot. Pure — no storage access, no throw, matching every
+ *  other pure fragment-returning function in session/cases.ts. */
+export function parsePendingGoogleSaveSnapshot(raw: string): PendingGoogleSaveSnapshot | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const p = parsed as Record<string, unknown>
+  if (typeof p.engineKey !== 'string' || !(p.engineKey in ENGINES)) return null
+  if (typeof p.serviceLabel !== 'string' || typeof p.returnScreen !== 'string') return null
+  if (!p.answers || typeof p.answers !== 'object') return null
+  if (!p.prepChecks || typeof p.prepChecks !== 'object') return null
+  return {
+    engineKey: p.engineKey, serviceLabel: p.serviceLabel, returnScreen: p.returnScreen,
+    answers: p.answers as AnswerRecord, prepChecks: p.prepChecks as Record<number, boolean>,
+  }
+}
+
 export type SessionAction =
   | { type: 'NAVIGATE'; screen: ScreenId; replace?: boolean }
   | { type: 'BACK' }
@@ -270,6 +342,20 @@ export type SessionAction =
   // id itself. See cases.ts's `newCaseId()` doc comment for the full
   // reasoning (UUID vs. the old `'c' + now`).
   | { type: 'BEGIN_SAVE'; engineKey: ServiceKey; serviceLabel: string; returnScreen: ScreenId; now: number; newId: string }
+  // Task 19 (post-Task-18 fix) — completes a save that was in flight when a
+  // real Google OAuth redirect wiped state.pendingSave/answers/prepChecks
+  // out of memory (see PENDING_GOOGLE_SAVE_KEY's own comment above; App.tsx's
+  // mount effect is the one dispatch site). Deliberately NOT a re-dispatch of
+  // BEGIN_SAVE: that action's signed-in branch reads answers/prepChecks off
+  // LIVE state, which does not exist yet this early in the reducer's life —
+  // this action carries the RESTORED answers/prepChecks on its own payload
+  // instead, the one real behavioural difference from BEGIN_SAVE this fix
+  // needs. `now`/`newId` are dispatch-site-injected (App.tsx's mount effect),
+  // same D4/D6 convention as BEGIN_SAVE's own — never minted in the reducer.
+  | {
+      type: 'RESUME_PENDING_SAVE'; engineKey: ServiceKey; serviceLabel: string; returnScreen: ScreenId
+      answers: AnswerRecord; prepChecks: Record<number, boolean>; now: number; newId: string
+    }
   // The check-in interaction state machine (Task 6; design notes 2-10).
   // Every one of these six is a thin arm over its matching cases.ts pure
   // function, run through applyCiFragment below.
@@ -509,6 +595,43 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         // pendingSave is set even though the save completes immediately —
         // SaveDoneScreen's "Back to my case" button reads
         // pendingSave.returnScreen (prototype 3895; design note 9).
+        pendingSave,
+        history: [...s.history, s.screen], screen: 'save-done',
+        trustOpen: false, restartConfirm: false, removeConfirm: null,
+        authErr: null, acctOpen: false,
+      }
+    }
+    case 'RESUME_PENDING_SAVE': {
+      // Task 19 fix. Mirrors BEGIN_SAVE's signed-in branch immediately
+      // above — same completeSave call, same pendingSave shape, same
+      // navigation to 'save-done' — except answers/prepChecks come from
+      // the ACTION (the restored sessionStorage snapshot), never from live
+      // state: state.answers/state.prepChecks are still whatever a
+      // freshly-booted session starts at (initialSession's `{}`) this
+      // early in the mount effect, not the citizen's actual in-progress
+      // answers. `workingCase: null`, not `s.workingCase`, per the task
+      // brief's own point 1: a freshly-booted state.workingCase always
+      // starts null (initialSession), so completeSave's internal
+      // `state.workingCase && state.workingCase.engineKey === ...`
+      // derivation would resolve to null here regardless — asserted
+      // directly rather than merely assumed.
+      const pendingSave = { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen }
+      const fragment = completeSave(
+        { savedCases: s.savedCases, workingCase: null, answers: a.answers, prepChecks: a.prepChecks },
+        { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen, now: a.now, newId: a.newId },
+      )
+      return {
+        ...s, ...fragment,
+        // Beyond what completeSave's own fragment touches (savedCases/
+        // activeCaseId/workingCase): also restore answers/prepChecks onto
+        // top-level session state, which BEGIN_SAVE's own arm never needs
+        // to do (its state.answers is already live and correct). Without
+        // this, a citizen who taps "Back to my case" from save-done
+        // (SaveDoneScreen, NAVIGATE to pendingSave.returnScreen) would land
+        // on a screen that re-diagnoses against an EMPTY post-boot answers
+        // record instead of the answers the save just used.
+        answers: a.answers,
+        prepChecks: a.prepChecks,
         pendingSave,
         history: [...s.history, s.screen], screen: 'save-done',
         trustOpen: false, restartConfirm: false, removeConfirm: null,
