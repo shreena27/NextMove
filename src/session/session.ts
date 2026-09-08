@@ -302,9 +302,13 @@ export interface SessionState {
   interp: ActiveInterpretation | null
   /** Per-question "Change" reveal state, keyed by `questionId` (prototype
    *  `S.interpChangeOpen`, 1949; the per-question reveal, 3076). Reset to
-   *  `{}` by `INTERPRETATION_DONE` in the SAME transition that replaces
-   *  `interp` — a reveal left open against the old mapping list must not
-   *  survive onto the new one (design note 8). */
+   *  `{}` by `INTERPRETATION_DONE` AND `INTERPRETATION_FAILED`, both in the
+   *  SAME transition that replaces `interp` — a reveal left open against
+   *  the old mapping list must not survive onto the new one (design note
+   *  8), and that reasoning applies identically whether the new `interp`
+   *  is a real result or a synthesised unplaceable one (fix round 1,
+   *  Finding 1). Also reset by `INTERP_REPICK` for the single question
+   *  just picked (Finding 4) — see that arm's own comment. */
   interpChangeOpen: Record<string, boolean>
   /** The CONFIRMED facts, which outlive the interpretation and belong to
    *  the case (prototype `S.caseFacts`, 1949). Cleared by every ANSWER
@@ -713,18 +717,6 @@ function applyCiFragment(s: SessionState, fragment: CiFragment): SessionState {
     }
   }
   return { ...s, ...rest }
-}
-
-// The human-readable service label per engine (prototype's own SERVICE_SQ
-// keys / DESCRIBE_CTX's `service` field, 1751-1774) — only needed as a
-// FALLBACK by INTERPRETATION_FAILED below, for the defensive path where
-// `s.screen` is not itself a DESCRIBE_CHAINS-covered entry screen (should
-// not happen in practice; see that arm's own comment). Every real
-// DESCRIBE_CHAINS entry already carries the exact same label per engine, so
-// this is not a second, driftable source of truth for the ordinary path —
-// only the corner case this reducer must stay TOTAL against.
-const DESCRIBE_SERVICE_LABEL: Record<ServiceKey, string> = {
-  passport: 'Passport', voter: 'Voter Services', sir: 'SIR',
 }
 
 export function sessionReducer(s: SessionState, a: SessionAction): SessionState {
@@ -1220,6 +1212,30 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         // set to apply here at all).
         return { ...s, reading: false, quotaExhausted: true, describeOpen: false, interp: null }
       }
+      // Resolve the chain/engine for the CURRENT screen ONCE, up front —
+      // fix round 1, Finding 3. A prior draft defaulted a missing engine
+      // inline (`DESCRIBE_CHAINS[s.screen]?.engine ?? 'passport'`), which
+      // an independent review correctly flagged as NOT a safe default: it
+      // would write `engine: 'passport'` next to `ctxScreen: s.screen`, an
+      // INTERNALLY INCONSISTENT pair. Task 14's render site resolves the
+      // chain off `ctxScreen`, so a fallback `engine` buys nothing there —
+      // and `engine` is not inert regardless: it feeds `gateFacts(engine,
+      // text, raw.facts)` unconditionally inside `gateInterpretation`
+      // below, so a wrong engine would run one service's fact-extraction
+      // rules over another service's text. `s.screen` not being a real
+      // describe entry screen should be unreachable (DescribeBlock only
+      // ever renders, and only ever dispatches from, a screen
+      // DESCRIBE_CHAINS covers) — but rather than synthesise an
+      // inconsistent value for that case (a declared guardrail without an
+      // executable test is a defect, and an inconsistent-but-tested value
+      // is not better), this arm takes the SAME no-navigate shape the
+      // 'quota' branch above already uses: `reading` clears, the describe
+      // box closes, `interp` stays `null`, and the citizen is left on
+      // their own question screen — the path that always works — instead
+      // of being routed to a confirm panel built from a broken value. This
+      // removes the bad branch rather than merely testing it.
+      const entry = DESCRIBE_CHAINS[s.screen as DescribeEntryScreenId]
+      if (!entry) return { ...s, reading: false, describeOpen: false, interp: null }
       // FR-AI-05: every other failure lands on the "We couldn't safely
       // place this" panel with the citizen's text preserved — fail CLOSED,
       // not fail-stuck. The synthesised interp is routed through the SAME
@@ -1234,19 +1250,30 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       // facts straight from the citizen's own text regardless of the
       // failed provider call (interpretFacts.ts's own baseline extraction
       // runs off `text` alone) — exactly what the unplaceable panel's fact
-      // chips need. `engine` falls back to 'passport' only if `s.screen`
-      // is somehow not a real describe entry screen (should not happen —
-      // DescribeBlock only ever renders, and only ever dispatches from, a
-      // screen DESCRIBE_CHAINS covers) — kept TOTAL anyway, matching this
-      // chunk's own D16/I2 discipline: a reducer must never throw or leave
-      // `reading` stuck.
-      const engine: ServiceKey = DESCRIBE_CHAINS[s.screen as DescribeEntryScreenId]?.engine ?? 'passport'
+      // chips need. `service` comes straight off the resolved `entry`
+      // (`DescribeChain.service`) — the same real value every ordinary
+      // DESCRIBE_CHAINS entry already carries, not a second, driftable
+      // source of truth.
       const gated = gateInterpretation(
-        [], engine, s.answers, s.describeText, { mappings: [], facts: [] }, 0, 'none — interpretation failed',
+        [], entry.engine, s.answers, s.describeText, { mappings: [], facts: [] }, 0, 'none — interpretation failed',
       )
       return {
         ...s, reading: false,
-        interp: { ...gated, ctxScreen: s.screen, engine, service: DESCRIBE_SERVICE_LABEL[engine], text: s.describeText },
+        // interpChangeOpen/factEditIdx reset in the SAME transition, for
+        // the SAME reason INTERPRETATION_DONE already resets them (design
+        // note 8) — fix round 1, Finding 1. `interp` is replaced wholesale
+        // here too (a brand-new, empty-mappings unplaceable value), so a
+        // reveal or an armed fact-edit left open against the OLD
+        // mapping/fact list must not survive onto this new one. Concrete
+        // reachable path this closes: confirm screen -> SET_FACT_EDIT opens
+        // edit mode on fact chip 0 -> BACK ("I'll answer myself instead",
+        // which clears neither field) -> the citizen edits the text and
+        // re-runs -> it fails again. Without this clear, `factEditIdx: 0`
+        // would still be armed and pre-seeded with a value belonging to a
+        // fact that no longer exists on the new (different) unplaceable
+        // panel.
+        interpChangeOpen: {}, factEditIdx: null,
+        interp: { ...gated, ctxScreen: s.screen, engine: entry.engine, service: entry.service, text: s.describeText },
         history: [...s.history, s.screen], screen: 'interp-confirm',
         trustOpen: false, restartConfirm: false, removeConfirm: null, authErr: null, acctOpen: false,
       }
@@ -1267,7 +1294,34 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       if (!s.interp) return s
       const chain = DESCRIBE_CHAINS[s.interp.ctxScreen as DescribeEntryScreenId]?.chain ?? []
       const gated = repick(s.interp, a.questionId, a.value, chain)
-      return { ...s, interp: { ...s.interp, mappings: gated.mappings, discarded: gated.discarded } }
+      // Also closes the reveal for the question just picked — fix round 1,
+      // Finding 4, a judgment call. The independent review found a real
+      // plan/implementation mismatch: the locked prototype's own
+      // `interpPick` closes the reveal as part of the SAME transition
+      // (design/nextmove-v1-prototype.html 2447), and the wider plan's own
+      // Task 12 design note 8 already asserts this arm does exactly that —
+      // but this task's original brief never listed the requirement, so
+      // the arm as first built did not do it. Resolved HERE (the arm
+      // closes its own reveal) rather than by pushing a second,
+      // separately-dispatched action onto Task 12's UI code, because this
+      // codebase already has an established "one user action, one atomic
+      // transition" pattern for exactly this shape of problem —
+      // INTERPRETATION_DONE above (design note 8) assigns the new `interp`
+      // and navigates in the SAME transition specifically so a reveal
+      // opened against a stale value cannot survive the gap between two
+      // separate dispatches. A re-pick is the same shape: the citizen
+      // closes the reveal BY picking a value from it, so requiring a
+      // caller to remember a follow-up `TOGGLE_INTERP_CHANGE` dispatch
+      // would both misrepresent a single user gesture as two actions and
+      // reintroduce the "caller forgets the second dispatch" hazard this
+      // pattern exists to avoid. This also means the wider plan's Task 12
+      // design note was correct as written and needs no correction — this
+      // arm now matches it.
+      return {
+        ...s,
+        interp: { ...s.interp, mappings: gated.mappings, discarded: gated.discarded },
+        interpChangeOpen: { ...s.interpChangeOpen, [a.questionId]: false },
+      }
     }
     case 'TOGGLE_INTERP_CHANGE':
       // The per-question reveal (prototype 3076). D11's persistent control:

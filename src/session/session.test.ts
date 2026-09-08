@@ -1156,6 +1156,35 @@ describe('Every other navigating arm applies the SAME authErr/acctOpen clears as
       name: "BACK to a non-Home screen — deliberate divergence from the prototype's back(), matching C3's existing restartConfirm divergence",
       run: () => r(withStaleAuthUi({ screen: 'passport-q2', history: ['home', 'passport-q1'] }), { type: 'BACK' }),
     },
+    {
+      // Fix round 1, Finding 2: C8's INTERPRETATION_DONE/INTERPRETATION_FAILED
+      // are new navigating arms and had not joined this shared regression
+      // pin — the exact family of clears this describe block exists to
+      // guard, per its own name ("this exact family of clears was missed
+      // once already"). INTERPRETATION_DONE also has its own bespoke
+      // field-by-field test covering all five nav clears (see the
+      // INTERPRETATION_DONE describe block below); this entry is the
+      // regression pin, not a replacement for that.
+      name: 'INTERPRETATION_DONE (C8)',
+      run: () => r(
+        withStaleAuthUi({ screen: 'passport-q1', history: ['home'] }),
+        { type: 'INTERPRETATION_DONE', interp: FIXTURE_INTERP },
+      ),
+    },
+    {
+      // Fix round 1, Finding 2: the non-quota branch of INTERPRETATION_FAILED
+      // navigates too, and had zero coverage of the nav clear set it applies
+      // (session.ts's own `trustOpen`/`restartConfirm`/`removeConfirm`/
+      // `authErr`/`acctOpen` clears). `screen: 'passport-q1'` is a real
+      // DESCRIBE_CHAINS-covered entry screen, so this exercises the
+      // navigating branch, not the no-entry no-navigate branch (Finding 3)
+      // or the 'quota' no-navigate branch.
+      name: 'INTERPRETATION_FAILED (C8, non-quota)',
+      run: () => r(
+        withStaleAuthUi({ screen: 'passport-q1', history: ['home'], describeText: 'they rejected my application' }),
+        { type: 'INTERPRETATION_FAILED', reason: 'failed' },
+      ),
+    },
   ]
 
   it.each(cases)('$name clears authErr and acctOpen', ({ run }) => {
@@ -1485,6 +1514,23 @@ describe('INTERPRETATION_FAILED (FR-AI-05) — every failure lands on the "We co
     ...extra,
   })
 
+  it(
+    'fix round 1, Finding 2: navigating (non-quota) applies the SAME full nav clear set as INTERPRETATION_DONE — ' +
+    'trustOpen/restartConfirm/removeConfirm/authErr/acctOpen — field by field; INTERPRETATION_DONE already has a ' +
+    'bespoke test for this, INTERPRETATION_FAILED previously had none',
+    () => {
+      const s = r(
+        dirty({ trustOpen: true, restartConfirm: true, removeConfirm: 'c1', authErr: 'stale error', acctOpen: true }),
+        { type: 'INTERPRETATION_FAILED', reason: 'failed' },
+      )
+      expect(s.trustOpen).toBe(false)
+      expect(s.restartConfirm).toBe(false)
+      expect(s.removeConfirm).toBeNull()
+      expect(s.authErr).toBeNull()
+      expect(s.acctOpen).toBe(false)
+    },
+  )
+
   it.each([
     ['failed'], ['no-provider'], ['no-chain'],
   ] as const)(
@@ -1511,6 +1557,60 @@ describe('INTERPRETATION_FAILED (FR-AI-05) — every failure lands on the "We co
       expect(s.describeOpen).toBe(false)
       expect(s.interp).toBeNull()
       expect(s.describeText).toBe('I went to the passport office and they rejected my application.')
+    },
+  )
+
+  it(
+    'fix round 1, Finding 3: when s.screen is somehow not a real describe entry screen, does NOT synthesise an ' +
+    'inconsistent interp (a wrong engine paired with an unrelated ctxScreen) — it takes the same no-navigate shape ' +
+    'the \'quota\' reason uses instead, field by field',
+    () => {
+      expect.assertions(5)
+      const s = r(dirty({ screen: 'home' }), { type: 'INTERPRETATION_FAILED', reason: 'failed' })
+      expect(s.screen).toBe('home')
+      expect(s.reading).toBe(false)
+      expect(s.describeOpen).toBe(false)
+      expect(s.interp).toBeNull()
+      expect(s.describeText).toBe('I went to the passport office and they rejected my application.')
+    },
+  )
+
+  it(
+    'fix round 1, Finding 1: replacing interp wholesale ALSO clears interpChangeOpen/factEditIdx, matching what ' +
+    'INTERPRETATION_DONE already correctly does (design note 8) — a reveal or an armed fact-edit left open against ' +
+    'the OLD interp must not survive onto the new (synthesised, unplaceable) one',
+    () => {
+      const s = r(
+        dirty({ interp: FIXTURE_INTERP, interpChangeOpen: { q1: true }, factEditIdx: 0, factEditVal: 'stale value' }),
+        { type: 'INTERPRETATION_FAILED', reason: 'failed' },
+      )
+      expect(s.interpChangeOpen).toEqual({})
+      expect(s.factEditIdx).toBeNull()
+    },
+  )
+
+  it(
+    'fix round 1, Finding 1 — the concrete reachable path from the review: confirm screen -> SET_FACT_EDIT opens ' +
+    'edit mode on fact chip 0 -> BACK ("I\'ll answer the questions myself instead", which clears neither field) -> ' +
+    'the citizen edits the text and re-runs -> it fails again; the stale factEditIdx/interpChangeOpen must not ' +
+    'survive onto the new unplaceable panel',
+    () => {
+      const onConfirmScreen: SessionState = {
+        ...initialSession, screen: 'interp-confirm', history: ['home', 'passport-q1'],
+        describeText: 'they rejected my application', interp: FIXTURE_INTERP,
+      }
+      const editOpen = r(onConfirmScreen, { type: 'SET_FACT_EDIT', index: 0 })
+      expect(editOpen.factEditIdx).toBe(0)
+      expect(editOpen.factEditVal).toBe(FIXTURE_FACT.value)
+      const backOut = r(editOpen, { type: 'BACK' })
+      // BACK clears neither factEditIdx nor interpChangeOpen — that gap is
+      // exactly what this finding is about; the fix is in the FAILED arm,
+      // not here.
+      expect(backOut.factEditIdx).toBe(0)
+      const retyped = r(backOut, { type: 'SET_DESCRIBE_TEXT', text: 'a completely different story' })
+      const s = r(retyped, { type: 'INTERPRETATION_FAILED', reason: 'failed' })
+      expect(s.factEditIdx).toBeNull()
+      expect(s.interpChangeOpen).toEqual({})
     },
   )
 })
@@ -1578,6 +1678,21 @@ describe('INTERP_REPICK — thin arm over D4\'s pure repick', () => {
     const s = r(initialSession, { type: 'INTERP_REPICK', questionId: 'q1', value: 'adverse' })
     expect(s).toEqual(initialSession)
   })
+
+  it(
+    'fix round 1, Finding 4: also closes the reveal for the question just picked, matching the locked prototype\'s ' +
+    'own interpPick and the wider plan\'s Task 12 design note — one user action (picking a value FROM the open ' +
+    'reveal), one atomic transition, leaving OTHER questions\' reveal state untouched',
+    () => {
+      const dirty: SessionState = {
+        ...initialSession,
+        interp: FIXTURE_INTERP,
+        interpChangeOpen: { q1: true, q2: true },
+      }
+      const s = r(dirty, { type: 'INTERP_REPICK', questionId: 'q1', value: 'no_contact' })
+      expect(s.interpChangeOpen).toEqual({ q1: false, q2: true })
+    },
+  )
 })
 
 describe('TOGGLE_INTERP_CHANGE — the per-question reveal (prototype 3076, D11\'s persistent control)', () => {
