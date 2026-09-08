@@ -1497,6 +1497,63 @@ describe('C7 Task 8: the auth lifecycle', () => {
     )
 
     it(
+      'fix round 1, Finding 1: the migration genuinely SETTLES (ADOPT_CASES reaches the reducer) BEFORE the mount ' +
+      'effect\'s own `getCurrentUser()` continuation ever runs — the real-browser-expected ordering the reviewer ' +
+      'flagged (gotrue notifies onAuthStateChange subscribers as part of the SAME initialization getSession() ' +
+      'awaits) — and the resumed save must still survive it: pre-fix, effect 5 fires once migration settles, ' +
+      'reads a still-null pendingResumeRef, and never re-runs (keyed only on state.migration, which does not ' +
+      'change value again) — the resumed save is silently lost, in a narrower window than the already-fixed ' +
+      '(mount-effect-vs-onAuthChange) race',
+      async () => {
+        sessionStorage.setItem(PENDING_GOOGLE_SAVE_KEY, JSON.stringify({
+          engineKey: 'passport',
+          serviceLabel: UI.serviceLabel.passport,
+          returnScreen: 'passport-nextmove',
+          answers: { q1: 'adverse', q2: 'informal' },
+          prepChecks: {},
+        }))
+        const user = makeSupabaseUser({ app_metadata: { provider: 'google' }, user_metadata: { full_name: 'Ananya' } })
+        // Delay ONLY the mount effect's own getCurrentUser() call (the
+        // FIRST getSession() invocation, made synchronously as soon as
+        // effect 2 runs) — migration's own fetchRemoteCases/pushCases
+        // (caseSync.ts) call getSession() too and must resolve normally, so
+        // the migration can genuinely settle to 'done' WHILE the mount
+        // effect's own continuation is still stuck, reproducing the exact
+        // ordering the reviewer describes rather than merely hoping for it.
+        let releaseMountGetSession: (v: unknown) => void = () => {}
+        mockClient.auth.getSession.mockImplementationOnce(
+          () => new Promise(resolve => { releaseMountGetSession = resolve }),
+        )
+        mockClient.auth.getSession.mockResolvedValue({ data: { session: { user } }, error: null })
+        selectSpy.mockResolvedValueOnce({ data: [], error: null })
+
+        render(<App />)
+        // Fires synchronously via onAuthChange (effect 3) — independent of
+        // the mount effect's own still-pending getCurrentUser() call above.
+        // Same emission technique as the double-fire test (c) above (this
+        // file's own established pattern), but here the mount effect's OWN
+        // continuation is held open rather than merely racing it.
+        mockClient.emitAuthEvent('SIGNED_IN', { user })
+
+        // The migration genuinely settles — ADOPT_CASES reaches the
+        // reducer — while the mount effect's own getCurrentUser() is still
+        // unresolved.
+        await waitFor(() => expect(dispatchedActions.current.some(a => a.type === 'ADOPT_CASES')).toBe(true))
+
+        // Only now does the mount effect's own getSession() resolve.
+        releaseMountGetSession({ data: { session: { user } }, error: null })
+
+        await waitFor(() => expect(dispatchedActions.current.some(a => a.type === 'RESUME_PENDING_SAVE')).toBe(true))
+        expect(await screen.findByRole('heading', { name: UI.saveDone.headline })).toBeInTheDocument()
+        expect(sessionStorage.getItem(PENDING_GOOGLE_SAVE_KEY)).toBeNull()
+
+        await userEvent.click(screen.getByRole('button', { name: UI.saveDone.goHome }))
+        expect(document.querySelectorAll('.saved-card')).toHaveLength(1)
+        expect(localStorage.getItem('nm_cases')).toBeNull()
+      },
+    )
+
+    it(
       'the phone save-flow is provably untouched by this fix — rerun (not just trusted) unmodified: phone -> OTP ' +
       '-> name -> done still lands the case in savedCases with no sessionStorage involvement at all',
       async () => {

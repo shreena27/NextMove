@@ -1184,6 +1184,19 @@ describe('parsePendingGoogleSaveSnapshot (Task 19 fix — validates a sessionSto
     expect(parsePendingGoogleSaveSnapshot(raw)).toBeNull()
   })
 
+  it(
+    'fix round 1, Finding 2: returns null when returnScreen is not a real ScreenId — a bogus/renamed/removed ' +
+    'screen id must not reach App.tsx\'s `as ScreenId` cast and crash the router\'s exhaustiveness-checked ' +
+    '`default` arm (a plain `throw`, with no error boundary anywhere in src/)',
+    () => {
+      const raw = JSON.stringify({
+        engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'not-a-real-screen',
+        answers: {}, prepChecks: {},
+      })
+      expect(parsePendingGoogleSaveSnapshot(raw)).toBeNull()
+    },
+  )
+
   it('returns null when a required field is missing (serviceLabel absent)', () => {
     const raw = JSON.stringify({ engineKey: 'passport', returnScreen: 'passport-nextmove', answers: {}, prepChecks: {} })
     expect(parsePendingGoogleSaveSnapshot(raw)).toBeNull()

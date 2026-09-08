@@ -179,6 +179,25 @@ export default function App() {
   // and the Task 19 integration test's own "Go home -> `.saved-card`"
   // assertion failed — the case existed for exactly one render, then
   // vanished under `ADOPT_CASES`.
+  //
+  // Fix round 1, Finding 1: this ref is now populated SYNCHRONOUSLY, as the
+  // very first thing effect 2 does (before that effect's own `await
+  // getCurrentUser()`), rather than inside effect 2's async continuation —
+  // see effect 2's own comment for why that used to leave a real (if
+  // narrow) ordering hazard: effect 3's `onAuthChange` `SIGNED_IN` handler
+  // could dispatch `MIGRATION_STARTED` and let the migration settle to
+  // `'done'`/`'failed'` — firing this effect once, against a still-null ref
+  // — before effect 2's OWN continuation ever got around to populating it,
+  // permanently losing the resumed save (effect 5 is keyed only on
+  // `state.migration`, which never changes value again). Populating the ref
+  // synchronously, before effect 3 has even registered its subscription,
+  // removes the race entirely rather than narrowing it: nothing that can
+  // dispatch `MIGRATION_STARTED` — not effect 2's own continuation, not
+  // effect 3's handler, not a real supabase-js notification, which cannot
+  // fire before its listener exists — can run before this ref is already
+  // set. See the "fix round 1, Finding 1" test in App.test.tsx for the
+  // reproduction (RED against the old, async-continuation-only read) and
+  // the fix (GREEN here).
   const pendingResumeRef = useRef<PendingGoogleSaveSnapshot | null>(null)
 
   // 2. The mount effect: resolves whatever session supabase-js already
@@ -207,30 +226,56 @@ export default function App() {
   // a later boot. A successfully parsed snapshot is stashed on
   // `pendingResumeRef` (declared above), NOT dispatched here — see that
   // ref's own comment for why the actual `RESUME_PENDING_SAVE` dispatch has
-  // to wait for effect 5. Only checked inside the `result.ok && result.user`
-  // branch — a snapshot written but never followed by an actual successful
-  // sign-in (the citizen cancelled at Google, or closed the tab) is left
-  // standing rather than guessed at; `sessionStorage` does not outlive the
-  // tab either way, so nothing leaks to a later session.
+  // to wait for effect 5.
+  //
+  // Fix round 1, Finding 1: this read is now the VERY FIRST thing this
+  // effect does — synchronous, before the `await getCurrentUser()` below
+  // ever yields to the microtask queue — rather than living inside that
+  // async continuation, gated on `result.ok && result.user`. That gate is
+  // what created the ordering hazard: it forced the read to wait on a
+  // promise, during which effect 3 (declared next) could already have
+  // registered its `onAuthChange` subscription and had it fire — on a real
+  // OAuth return, gotrue notifies subscribers as part of the SAME
+  // initialization `getSession()` awaits, so effect 3 firing FIRST is the
+  // ordering to expect, not an exotic one — settling the migration to
+  // `'done'`/`'failed'` before this line ever ran, and permanently losing
+  // the snapshot (`pendingResumeRef`'s own comment has the full mechanism;
+  // App.test.tsx's "fix round 1, Finding 1" test is the reproduction).
+  // Reading synchronously here removes that dependency entirely: effects
+  // commit synchronously, in declaration order, within the SAME mount, so
+  // nothing that can ever dispatch `MIGRATION_STARTED` — not this effect's
+  // own async continuation below, not effect 3's handler, not a real
+  // supabase-js notification (which cannot fire before its listener
+  // exists) — can run before this line does. One consequence, deliberately
+  // accepted: the key is now cleared regardless of whether a signed-in
+  // session actually comes back (previously only cleared inside
+  // `result.ok && result.user`) — a snapshot written but never followed by
+  // a successful sign-in (the citizen cancelled at Google, or closed the
+  // tab) is discarded here rather than left standing, since this effect
+  // only ever runs once per mount and nothing else in the app ever reads
+  // this key; `sessionStorage` not outliving the tab already made "left
+  // standing" harmless, so discarding it immediately is no less safe and
+  // closes the ordering hazard outright rather than merely narrowing it.
   useEffect(() => {
+    try {
+      const rawSnapshot = sessionStorage.getItem(PENDING_GOOGLE_SAVE_KEY)
+      if (rawSnapshot !== null) {
+        sessionStorage.removeItem(PENDING_GOOGLE_SAVE_KEY)
+        pendingResumeRef.current = parsePendingGoogleSaveSnapshot(rawSnapshot)
+      }
+    } catch {
+      // Storage absent, full, or disabled — same fail-soft discipline as
+      // caseStore.ts's own store.get/store.del. The redirect already
+      // completed; a lost resume here is the SAME pre-existing bug this
+      // task fixes, not a new failure mode.
+    }
+
     let cancelled = false
     void (async () => {
       const result = await getCurrentUser()
       if (!cancelled && result.ok && result.user) {
         dispatch({ type: 'SIGNED_IN', user: result.user })
         dispatch({ type: 'MIGRATION_STARTED' })
-        try {
-          const rawSnapshot = sessionStorage.getItem(PENDING_GOOGLE_SAVE_KEY)
-          if (rawSnapshot !== null) {
-            sessionStorage.removeItem(PENDING_GOOGLE_SAVE_KEY)
-            pendingResumeRef.current = parsePendingGoogleSaveSnapshot(rawSnapshot)
-          }
-        } catch {
-          // Storage absent, full, or disabled — same fail-soft discipline as
-          // caseStore.ts's own store.get/store.del. The redirect already
-          // completed; a lost resume here is the SAME pre-existing bug this
-          // task fixes, not a new failure mode.
-        }
       }
       if (window.location.search.includes('code=')) {
         history.replaceState(null, '', window.location.pathname)

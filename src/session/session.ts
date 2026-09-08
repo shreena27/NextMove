@@ -287,13 +287,56 @@ export interface PendingGoogleSaveSnapshot {
   prepChecks: Record<number, boolean>
 }
 
+// Fix round 1, Finding 2: a runtime set of every valid ScreenId, checked the
+// SAME way `engineKey` is checked against `ENGINES` just below. `ScreenId`
+// (this file, above) is a compile-time-only union — it has no runtime
+// representation on its own — so a snapshot's `returnScreen` cannot be
+// checked against it directly the way `engineKey in ENGINES` checks against
+// a real object. `Record<ScreenId, true>` is what keeps this list a real
+// validator rather than a second, driftable source of truth: TypeScript
+// requires EVERY `ScreenId` member as a key (missing one is a compile
+// error) and rejects any key that is not one (a typo is also a compile
+// error), so this can only ever be exactly the union, by construction —
+// there is no way for it to silently fall out of sync the way a hand-
+// maintained array or a comment could. Before adding this, the codebase had
+// no existing runtime list/set of screen ids to reuse (App.tsx's router is a
+// `switch` on `state.screen`, not an enumerable list; the closest thing,
+// its `default: const _never: never = state.screen` exhaustiveness check,
+// only fires for a screen id the TYPE SYSTEM already believes is
+// unreachable — no help against a plain `string` read back from
+// `sessionStorage`).
+const SCREEN_IDS: Record<ScreenId, true> = {
+  'home': true, 'other-services': true,
+  'passport-guardrail': true, 'passport-outofscope': true, 'passport-q1': true, 'passport-q2': true,
+  'passport-recovery': true, 'passport-recovery-paste': true, 'passport-recovery-show': true,
+  'passport-diagnosis': true, 'passport-nextmove': true, 'passport-prepare': true,
+  'voter-entry': true, 'voter-q1': true, 'voter-q2': true,
+  'voter-diagnosis': true, 'voter-nextmove': true, 'voter-prepare': true,
+  'sir-state': true, 'sir-unsupported': true, 'sir-reverifying': true,
+  'sir-q1': true, 'sir-diagnosis': true, 'sir-nextmove': true, 'sir-prepare': true,
+  'checkin': true, 'dead-end': true, 'case-closed': true, 'save-done': true,
+  'save-case': true, 'save-otp': true, 'save-name': true,
+}
+
 /** Parses a stored snapshot; `null` on anything that is not exactly the
- *  expected shape — missing key, corrupt JSON, a hand-edited value, or an
- *  `engineKey` this build no longer recognises. The `engineKey in ENGINES`
- *  check is not shape-checking for its own sake: `ENGINES` is the SAME
- *  registry `diagnose` itself indexes by (session/cases.ts's `completeSave`),
- *  so this is the one check that actually stops a corrupt snapshot from
- *  crashing the resumed diagnosis rather than merely failing to resume it.
+ *  expected shape — missing key, corrupt JSON, a hand-edited value, an
+ *  `engineKey` this build no longer recognises, or (fix round 1, Finding 2)
+ *  a `returnScreen` that is not a real, currently-routable screen id. Both
+ *  the `engineKey in ENGINES` check and the `returnScreen in SCREEN_IDS`
+ *  check below exist for the SAME reason, against the SAME class of hazard:
+ *  `ENGINES` is the registry `diagnose` itself indexes by (session/cases.ts's
+ *  `completeSave`), and `SCREEN_IDS` (above) is every id App.tsx's router
+ *  switch actually handles — so together they are what stops a corrupt
+ *  snapshot from crashing the resumed diagnosis OR the resumed navigation,
+ *  rather than merely failing to resume it. This is not only a tampering
+ *  concern: the snapshot is written by the build that starts the redirect
+ *  and read by whatever build the tab loads on return, so a deploy landing
+ *  in that window that renames or removes a screen id produces a
+ *  perfectly-valid-JSON snapshot the new build's parser must still reject.
+ *  Before this check existed, `engineKey` was protected and `returnScreen`
+ *  was not — `App.tsx` cast it `as ScreenId` on trust, and a bogus value
+ *  reached the router's exhaustiveness-checked `default` arm, which
+ *  `throw`s with no error boundary anywhere in `src/`: a blank page.
  *  App.tsx's mount effect is the only caller — read once, act once (the same
  *  discipline caseStore.ts's own `nm_case` -> `nm_cases` migration uses): the
  *  key is cleared immediately after being read, before this function's
@@ -310,7 +353,8 @@ export function parsePendingGoogleSaveSnapshot(raw: string): PendingGoogleSaveSn
   if (!parsed || typeof parsed !== 'object') return null
   const p = parsed as Record<string, unknown>
   if (typeof p.engineKey !== 'string' || !(p.engineKey in ENGINES)) return null
-  if (typeof p.serviceLabel !== 'string' || typeof p.returnScreen !== 'string') return null
+  if (typeof p.serviceLabel !== 'string') return null
+  if (typeof p.returnScreen !== 'string' || !(p.returnScreen in SCREEN_IDS)) return null
   if (!p.answers || typeof p.answers !== 'object') return null
   if (!p.prepChecks || typeof p.prepChecks !== 'object') return null
   return {
