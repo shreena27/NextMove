@@ -105,7 +105,6 @@ import { UI } from '../screens/screenCopy'
  *  components sharing it. Adding `export` here changes nothing about this
  *  file's own callers below; they are unaffected by a function also being
  *  visible to another module. */
-// oxlint-disable-next-line react/only-export-components -- deliberate: a plain helper, not a component, exported for UnplaceablePanel.tsx's reuse (see doc comment above); Crumbs.tsx/serviceSquare.ts's own "move it to its own file" precedent is the wrong fix here specifically, since labelsFor's SIR branch is tightly coupled to InterpConfirmScreen's own six-source switch and splitting it out would separate the export from the six-lookups reasoning it exists to protect
 export function labelsFor(questionId: string, answers: AnswerRecord): Record<string, string> {
   switch (questionId) {
     case 'q1': return PASSPORT_Q1_LABELS

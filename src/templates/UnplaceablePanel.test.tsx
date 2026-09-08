@@ -18,6 +18,7 @@ import {
   sessionReducer, initialSession, type SessionState, type ActiveInterpretation,
 } from '../session/session'
 import { PASSPORT_Q1_LABELS, PASSPORT_Q2_LABELS, VOTER_ENTRY_LABELS } from '../screens/labels'
+import { SIR_Q1_OPTIONS_FOR } from '../playbooks/sirPlaybook'
 
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -180,6 +181,48 @@ describe('the offered question (design note 2)', () => {
     expect(opts).toHaveLength(2)
     expect(opts.some(o => o.includes(VOTER_ENTRY_LABELS.applied))).toBe(true)
     expect(opts.some(o => o.includes(VOTER_ENTRY_LABELS.sir))).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fix round 1, Important finding (task-14 fix-round-1.md). Every test above
+// renders a passport/voter chain, where `resolveOptionValues` degenerates to
+// "return the array" and `labelsFor` never touches its `answers` argument —
+// so neither reuse export (this file's own header note, "REUSE, NOT A
+// SECOND IMPLEMENTATION") is actually exercised anywhere above. sir-q1 is
+// the ONE chain whose `optionValues` is a FUNCTION of the known answers
+// (interpret.ts's `DESCRIBE_CHAINS['sir-q1']`), and the ONE case where
+// `labelsFor`'s SIR branch genuinely reads its `answers` argument (via
+// `optionsForPhase`, sirConfig.ts). The reviewer proved this gap with two
+// mutations that both left the full suite green: (1) replacing the
+// `resolveOptionValues(q0, state.answers)` call with a naive
+// `Array.isArray(q0.optionValues) ? q0.optionValues : []` — sir-q1's
+// `optionValues` is a function, so this silently renders ZERO options on
+// the one screen whose lede promises "pick the closest option yourself";
+// (2) dropping the phase argument (`labelsFor(q0.questionId, {})`) — with
+// no `sirState` to resolve, `SIR_STATES[undefined]` is `undefined`,
+// `labelsFor` returns `{}`, and `labels[v] ?? v` falls back to raw enum
+// values (`roll_absent` etc.) rendering to the citizen instead of real
+// labels. One render below exercises both exports together, since sir-q1
+// is the only chain where both hazards are live at once.
+describe('the SIR reuse path — resolveOptionValues and labelsFor are load-bearing here (fix round 1)', () => {
+  it('renders sir-q1\'s real phase-derived option values and labels for a real configured state (delhi, claims_notice phase) — never an empty list, never the raw enum values', () => {
+    const interp = makeInterp({ ctxScreen: 'sir-q1', engine: 'sir', service: UI.serviceLabel.sir })
+    const { container } = render(
+      <UnplaceablePanel state={{ ...initialSession, interp, answers: { sirState: 'delhi' } }} dispatch={vi.fn()} />,
+    )
+    expect(container.querySelector('.read-q')?.textContent).toBe(UI.interp.qLabel.sirQ1)
+    const opts = [...container.querySelectorAll('.ropt')].map(o => o.textContent ?? '')
+    const phaseOptions = SIR_Q1_OPTIONS_FOR.claims_notice
+    // resolveOptionValues (Gap 2): the FULL phase-derived value set renders
+    // — catches mutation (1) above, which would leave this empty.
+    expect(opts).toHaveLength(Object.keys(phaseOptions).length)
+    for (const [value, label] of Object.entries(phaseOptions)) {
+      // labelsFor (Gap 1): the REAL, phase-resolved label renders, and the
+      // raw enum value never does — catches mutation (2) above.
+      expect(opts.some(o => o === label)).toBe(true)
+      expect(opts.some(o => o === value)).toBe(false)
+    }
   })
 })
 
