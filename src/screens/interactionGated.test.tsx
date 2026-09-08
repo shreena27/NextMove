@@ -41,10 +41,13 @@
 // from the failure alone.
 //
 // UPDATED (Task 13): `ui:facts.editLabel`/`ui:facts.saveLabel` are now
-// closed (`ControlledFactChips` below). Exactly ONE entry remains
-// genuinely red: `ui:prepare.hintFilledUnreviewed`, owed to Task 15 — see
-// the comment above the strict-equality assertion itself for the current
-// state.
+// closed (`ControlledFactChips` below).
+//
+// UPDATED (Task 15): `ui:prepare.hintFilledUnreviewed` is now ALSO closed
+// (the `'ui:prepare.hintFilledUnreviewed'` entry above, via a synthetic
+// one-bracket `PrepPlan` + a matching fact — see that entry's own comment
+// for why no click is needed). Every entry `INTERACTION_GATED` names now has
+// real covering interaction coverage; none remain gapped.
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { useReducer, useState } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
@@ -52,7 +55,7 @@ import userEvent from '@testing-library/user-event'
 import { PrepareScreen, type PrepareScreenProps } from '../templates/PrepareScreen'
 import { DescribeBlock } from '../templates/DescribeBlock'
 import { FactChips } from '../templates/FactChips'
-import { PREP } from '../playbooks/prep'
+import { PREP, type PrepPlan } from '../playbooks/prep'
 import { diagnose } from '../domain/engine'
 import { passportEngine } from '../playbooks/engines'
 import { UI } from './screenCopy'
@@ -76,18 +79,34 @@ afterEach(() => {
 const escalate = diagnose(passportEngine, { q1: 'adverse', q2: 'formal_grievance' }) // state-5b
 const clarifyD = diagnose(passportEngine, { q1: 'adverse', q2: 'no_followup' }) // state-4
 
+// UPDATED (Task 15): `caseFacts`/`fillsReviewed`/`onToggleFillsReviewed` are
+// now ALSO required, fully-controlled props — same treatment
+// PrepareScreen.test.tsx's own re-declared `ControlledPrepareScreen` gets:
+// `fillsReviewed` internally toggleable (standing in for the reducer),
+// `caseFacts` an optional pass-through defaulting to `[]` so every
+// pre-existing call in THIS file (none of which touch the fills mechanism)
+// stays unchanged.
 function ControlledPrepareScreen(
-  props: Omit<PrepareScreenProps, 'prepChecks' | 'prepDraft' | 'onTogglePrepStep' | 'onSetPrepDraft'>,
+  props: Omit<
+    PrepareScreenProps,
+    'prepChecks' | 'prepDraft' | 'onTogglePrepStep' | 'onSetPrepDraft' |
+    'fillsReviewed' | 'onToggleFillsReviewed' | 'caseFacts'
+  > & { caseFacts?: Fact[] },
 ) {
+  const { caseFacts = [], ...rest } = props
   const [prepChecks, setPrepChecks] = useState<Record<number, boolean>>({})
   const [prepDraft, setPrepDraft] = useState<string | null>(null)
+  const [fillsReviewed, setFillsReviewed] = useState(false)
   return (
     <PrepareScreen
-      {...props}
+      {...rest}
+      caseFacts={caseFacts}
       prepChecks={prepChecks}
       prepDraft={prepDraft}
       onTogglePrepStep={i => setPrepChecks(prev => ({ ...prev, [i]: !prev[i] }))}
       onSetPrepDraft={setPrepDraft}
+      fillsReviewed={fillsReviewed}
+      onToggleFillsReviewed={() => setFillsReviewed(v => !v)}
     />
   )
 }
@@ -96,6 +115,17 @@ const tickAll = async (n: number) => {
   const ticks = screen.getAllByRole('button', { pressed: false }).filter(b => b.classList.contains('pstep-tick'))
   expect(ticks).toHaveLength(n)
   for (const t of ticks) await userEvent.click(t)
+}
+
+// Task 15's own fixture — a synthetic plan whose ONLY bracket is fully
+// covered by the one fact below, the shape `ui:prepare.hintFilledUnreviewed`
+// needs and "no shipped PREP plan currently produces unassisted"
+// (interactionGated.ts's own comment on this entry). Re-declared here, not
+// imported from PrepareScreen.test.tsx (this file's own "own its own
+// fixtures" convention, header comment above).
+const FULLY_FILLABLE_PREP: PrepPlan = { draft: 'Reference number: [ARN]. Nothing else needed.', steps: ['Step A'] }
+const FILLING_FACT: Fact = {
+  kind: 'reference_number', refType: 'arn', label: 'ARN', value: 'AB123456789', fills: '[ARN]',
 }
 
 /** A real `useReducer(sessionReducer, ...)` harness, the SAME shape
@@ -209,6 +239,26 @@ describe('INTERACTION_GATED coverage — the SCREEN_COPY strings no static mount
         ).toBeInTheDocument()
         unmount()
       },
+      // C8 (Task 15) — closes the last entry this module's own header
+      // comment names as owed. Gated for the reason interactionGated.ts's
+      // own comment states: a draft whose blanks are ALL fact-filled is a
+      // shape no shipped PREP plan produces unassisted, so a synthetic
+      // one-bracket plan stands in. No CLICK is needed — `fillsReviewed`
+      // starts `false` on a fresh mount (ControlledPrepareScreen's own
+      // internal `useState`, standing in for the reducer's `initialSession`
+      // default) — this is a data-shape gate, the same category
+      // `ui:prepare.hintReady`'s own covering assertion above already is
+      // ("a plain edit, not a click").
+      'ui:prepare.hintFilledUnreviewed': async () => {
+        const { unmount } = render(
+          <ControlledPrepareScreen
+            serviceLabel="Passport" engineKey="passport" d={escalate} prep={FULLY_FILLABLE_PREP}
+            caseFacts={[FILLING_FACT]}
+          />,
+        )
+        expect(document.querySelector('.prep-hint')).toHaveTextContent(UI.prepare.hintFilledUnreviewed)
+        unmount()
+      },
       // C8 (Task 11) — the two entries Task 10 pre-registered anticipating
       // this task. Both need `VITE_DESCRIBE_IT` stubbed 'on' (the feature
       // ships off by default) and a REAL `sessionReducer` round trip, not a
@@ -263,11 +313,6 @@ describe('INTERACTION_GATED coverage — the SCREEN_COPY strings no static mount
       },
     }
 
-    // `ui:prepare.hintFilledUnreviewed` (Task 15) — not this task's
-    // component to build. Named here in prose (fix round 1, Finding I-4 —
-    // NOT as a filter the assertion below consults), so a reader sees
-    // exactly what remains without re-deriving it from a failing assertion.
-    //
     // The forcing function is STRICT equality, no exclusion filter — the
     // reviewer's ruling after mutation-testing both an earlier exclusion-
     // list version of this check and this strict one. The exclusion-list
@@ -285,9 +330,12 @@ describe('INTERACTION_GATED coverage — the SCREEN_COPY strings no static mount
     //
     // UPDATED (Task 13): `ui:facts.editLabel`/`ui:facts.saveLabel` are now
     // closed, via `ControlledFactChips` above — a real `SET_FACT_EDIT`
-    // click, then both labels read off the same now-open chip. ONE entry
-    // remains genuinely red: `ui:prepare.hintFilledUnreviewed`, owed to
-    // Task 15, closing when it builds its covering interaction.
+    // click, then both labels read off the same now-open chip.
+    //
+    // UPDATED (Task 15): `ui:prepare.hintFilledUnreviewed` is now ALSO
+    // closed, via the `'ui:prepare.hintFilledUnreviewed'` entry above. Every
+    // name `INTERACTION_GATED` lists now has a real covering function;
+    // nothing remains gapped.
     expect(Object.keys(assertions).sort()).toEqual([...INTERACTION_GATED].sort())
 
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')

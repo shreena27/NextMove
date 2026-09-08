@@ -28,7 +28,7 @@ import { fmtDay, fmtRemind } from '../ui/dates'
 import * as LABELS from './labels'
 import { SCREEN_COPY, UI, PASSPORT_COPY, VOTER_COPY, SIR_COPY, type CopyLocation } from './screenCopy'
 import { INTERACTION_GATED } from './interactionGated'
-import type { DescribeEntryScreenId } from '../domain/interpret'
+import type { DescribeEntryScreenId, Fact } from '../domain/interpret'
 import { Home } from './Home'
 import { OtherServices } from './OtherServices'
 import { PassportGuardrail, PassportOutOfScope, PassportQ1, PassportQ2 } from './passport/PassportScreens'
@@ -673,13 +673,21 @@ const casefileBaseProps = {
   freshDegraded: false, freshChangedOn: null,
 }
 
-// PrepareScreen's four now-required controlled props (Task 13's ADDED
-// REQUIREMENT — the local-state fallback is gone). Both `UiChrome()` mounts
-// below are purely presentational (no tick/draft interaction happens in
-// this sweep), so trivial, static values are enough — no stateful wrapper
-// needed here, unlike PrepareScreen.test.tsx's own behavioural tests.
+// PrepareScreen's now-required controlled props (Task 13's ADDED
+// REQUIREMENT — the local-state fallback is gone — extended by Task 15 with
+// `caseFacts`/`fillsReviewed`/`onToggleFillsReviewed`). Both `UiChrome()`
+// mounts below are purely presentational (no tick/draft interaction happens
+// in this sweep), so trivial, static values are enough — no stateful
+// wrapper needed here, unlike PrepareScreen.test.tsx's own behavioural
+// tests. `caseFacts` defaults to `[]` at the call site that doesn't need
+// one; the state-5a mount below overrides it with a real, matching fact so
+// `ui:prepare.fillListKey`/`fillReviewLabel` reach the static coverage
+// sweep too (`ui:prepare.hintFilledUnreviewed` stays interaction-gated —
+// see interactionGated.ts's own comment on why a static PREP plan can't
+// produce it).
 const prepareControlledProps = {
   prepChecks: {}, prepDraft: null, onTogglePrepStep: noop, onSetPrepDraft: noop,
+  caseFacts: [] as Fact[], fillsReviewed: false, onToggleFillsReviewed: noop,
 }
 
 /** The one PrepareScreen mount that genuinely edits the draft (the
@@ -687,11 +695,15 @@ const prepareControlledProps = {
  *  Copy clicks) needs REAL backing state for `prepDraft` — the same small
  *  stateful wrapper PrepareScreen.test.tsx's own `ControlledPrepareScreen`
  *  uses, standing in for the session reducer. `prepChecks`/its toggle are
- *  static here (this mount never ticks a step). */
+ *  static here (this mount never ticks a step), and so is `caseFacts`/
+ *  `fillsReviewed` (this mount is not about the fills mechanism). */
 function DraftEditablePrepareScreen(props: { serviceLabel: string; engineKey: 'passport'; d: Diagnosis; prep: PrepPlan }) {
   const [prepDraft, setPrepDraft] = useState<string | null>(null)
   return (
-    <PrepareScreen {...props} prepChecks={{}} onTogglePrepStep={noop} prepDraft={prepDraft} onSetPrepDraft={setPrepDraft} />
+    <PrepareScreen
+      {...props} prepChecks={{}} onTogglePrepStep={noop} prepDraft={prepDraft} onSetPrepDraft={setPrepDraft}
+      caseFacts={[]} fillsReviewed={false} onToggleFillsReviewed={noop}
+    />
   )
 }
 
@@ -885,10 +897,26 @@ function UiChrome() {
           needed) and visit-bearing/draft-less (s-notice — visitTitle,
           visitCarry, visitExpect, visitThen, visitNote). Together the pair
           this file's coverage sweep and CAPTION_TEMPLATES carve-out rely
-          on (design notes 4 and 5). */}
+          on (design notes 4 and 5).
+          Task 15: the state-5a mount ALSO carries a real ARN fact whose
+          bracket (`[File Number / ARN]`) is genuinely present in state-5a's
+          own draft (prep.ts) — filling it statically reaches
+          `ui:prepare.fillListKey`/`fillReviewLabel` at first render, no
+          interaction needed, the same "real data, not a toy fixture"
+          reasoning this file's mounts already follow throughout. state-5a
+          carries OTHER brackets too (`[date you applied]`, `[date]`,
+          `[call / visit / portal message]`, `[Your name]`, `[Your contact
+          number and email]`), so this fact alone can never zero out
+          `liveBlanks` — `ui:prepare.hintFilledUnreviewed` genuinely stays
+          unreachable by any static PREP plan, exactly as
+          interactionGated.ts's own comment on that entry says, and stays
+          covered instead by interactionGated.test.tsx's synthetic plan. */}
       <PrepareScreen
         serviceLabel="X" engineKey="passport" d={helplineDiagnosis} prep={PREP['state-5a']}
         topbar={topbar(true, true)} {...prepareControlledProps}
+        caseFacts={[
+          { kind: 'reference_number', refType: 'arn', label: 'ARN', value: '123456789012', fills: '[File Number / ARN]' },
+        ]}
       />
       <PrepareScreen
         serviceLabel="X" engineKey="sir" d={noticeDiagnosis} prep={PREP['s-notice']}

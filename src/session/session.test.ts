@@ -1104,6 +1104,29 @@ describe('TOGGLE_PREP_STEP / SET_PREP_DRAFT — PrepareScreen\'s tick/draft stat
   })
 })
 
+describe('TOGGLE_FILLS_REVIEWED — the fills-review acknowledgment toggle (Task 15, FR-AI-04)', () => {
+  it('flips fillsReviewed from false to true', () => {
+    const before: SessionState = { ...initialSession, fillsReviewed: false }
+    const s = r(before, { type: 'TOGGLE_FILLS_REVIEWED' })
+    expect(s.fillsReviewed).toBe(true)
+  })
+
+  it('flips fillsReviewed from true back to false — the acknowledgment is reversible (a citizen who ticks it and spots a wrong value can untick it)', () => {
+    const before: SessionState = { ...initialSession, fillsReviewed: true }
+    const s = r(before, { type: 'TOGGLE_FILLS_REVIEWED' })
+    expect(s.fillsReviewed).toBe(false)
+  })
+
+  it('is a plain boolean flip — every other field is untouched, no case re-snapshot (unlike TOGGLE_PREP_STEP, this action carries no `now` and touches no case data)', () => {
+    const before: SessionState = {
+      ...initialSession, fillsReviewed: false, prepChecks: { 0: true }, prepDraft: 'in progress',
+      caseFacts: [FIXTURE_FACT], answers: { q1: 'adverse' },
+    }
+    const s = r(before, { type: 'TOGGLE_FILLS_REVIEWED' })
+    expect(s).toEqual({ ...before, fillsReviewed: true })
+  })
+})
+
 describe('PHASE_DRIFT_RECHECK — the phase-drift interstitial\'s own CTA (Task 13, design note 2)', () => {
   it('clears phaseDrift and navigates to sir-q1, with the same nav()-style clears every other navigating action applies', () => {
     const dirty: SessionState = {

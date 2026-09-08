@@ -126,6 +126,40 @@ export interface Fact {
   edited?: true
 }
 
+/** Task 15 (FR-AI-04/AC-AI-4) — transcribed from the prototype's own
+ *  `fillDraft` (design/nextmove-v1-prototype.html:3704-3713). Belongs here,
+ *  not in `PrepareScreen`: it is a pure function of a draft template and a
+ *  fact list, with no rendering or session concern of its own.
+ *
+ *  For each fact whose `fills` is non-null AND whose bracket string is
+ *  present in `base`, replaces EVERY occurrence of that bracket with the
+ *  fact's value (`.split(fills).join(value)`, never `.replace()`, which
+ *  would silently leave every occurrence past the first still bracketed —
+ *  a real regression, not a style choice, since `[File Number / ARN]`
+ *  repeats inside a single draft) and records `{label, value}` in the
+ *  returned fill list, in fact order.
+ *
+ *  A fact with `fills: null`, or whose bracket is not a substring of
+ *  `base`, fills nothing and is NOT recorded — silently and correctly
+ *  (FR-AI-04's "unrecognized numbers fill nothing" as a data property, the
+ *  `Fact.fills` doc comment above). Never throws.
+ *
+ *  Pure: mutates neither `base` nor `facts`. Called once per render by
+ *  `PrepareScreen`, off `prep.draft` and `caseFacts` — never cached in
+ *  session state (Task 15 brief design note 2: `prepFills` is not, and must
+ *  never become, a `SessionState` field). */
+export function fillDraft(base: string, facts: Fact[]): { text: string; fills: { label: string; value: string }[] } {
+  let text = base
+  const fills: { label: string; value: string }[] = []
+  for (const f of facts) {
+    if (f.fills && text.includes(f.fills)) {
+      text = text.split(f.fills).join(f.value)
+      fills.push({ label: f.label, value: f.value })
+    }
+  }
+  return { text, fills }
+}
+
 /** The whole of what any provider ever sees — scope exclusion 4 made
  *  structural. No diagnosis, no rule, no source, no `whatToDo`, no answers
  *  already given — only which questions are *offered*, which is the branch

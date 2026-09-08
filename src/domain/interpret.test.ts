@@ -12,6 +12,7 @@ import {
   editFact,
   removeFact,
   unplaceablePickPlan,
+  fillDraft,
 } from './interpret'
 
 describe('DESCRIBE_CHAINS', () => {
@@ -287,6 +288,70 @@ describe('editFact / removeFact (D4)', () => {
     expect(result).not.toBe(facts)
     expect(result).toEqual([facts[1]])
     expect(facts).toHaveLength(2) // original untouched
+  })
+})
+
+describe('fillDraft (Task 15, transcribed from the prototype\'s own fillDraft, 3704-3713)', () => {
+  const base = 'Ref [ARN] and again [ARN], plus [Other Bracket].'
+
+  it('replaces EVERY occurrence of a matching bracket, not just the first (.split().join(), never .replace())', () => {
+    const facts: Fact[] = [
+      { kind: 'reference_number', refType: 'arn', label: 'ARN', value: '123456789012', fills: '[ARN]' },
+    ]
+    const result = fillDraft(base, facts)
+    expect(result.text).toBe('Ref 123456789012 and again 123456789012, plus [Other Bracket].')
+    expect(result.fills).toEqual([{ label: 'ARN', value: '123456789012' }])
+  })
+
+  it('returns the base unchanged and an empty fill list when no fact matches', () => {
+    const facts: Fact[] = [
+      { kind: 'date', refType: 'date_applied', label: 'Applied', value: '12 March 2026', fills: '[date you applied]' },
+    ]
+    const result = fillDraft(base, facts)
+    expect(result.text).toBe(base)
+    expect(result.fills).toEqual([])
+  })
+
+  it('ignores a fact whose fills is null — never recorded, never an error', () => {
+    const facts: Fact[] = [
+      { kind: 'note', refType: 'unknown', label: 'A number you mentioned', value: '999888777666', fills: null },
+    ]
+    const result = fillDraft(base, facts)
+    expect(result.text).toBe(base)
+    expect(result.fills).toEqual([])
+  })
+
+  it('ignores a fact whose bracket is absent from this draft — silently and correctly, not an error (FR-AI-04)', () => {
+    const facts: Fact[] = [
+      { kind: 'reference_number', refType: 'grievance_no', label: 'File Number', value: '555', fills: '[File Number / ARN]' },
+    ]
+    expect(() => fillDraft(base, facts)).not.toThrow()
+    const result = fillDraft(base, facts)
+    expect(result.text).toBe(base)
+    expect(result.fills).toEqual([])
+  })
+
+  it('is pure — mutates neither base nor facts', () => {
+    const facts: Fact[] = [
+      { kind: 'reference_number', refType: 'arn', label: 'ARN', value: '123456789012', fills: '[ARN]' },
+    ]
+    const frozenFacts = [...facts]
+    fillDraft(base, facts)
+    expect(base).toBe('Ref [ARN] and again [ARN], plus [Other Bracket].')
+    expect(facts).toEqual(frozenFacts)
+  })
+
+  it('multiple facts fill in fact order, each recorded once', () => {
+    const facts: Fact[] = [
+      { kind: 'reference_number', refType: 'arn', label: 'ARN', value: '123456789012', fills: '[ARN]' },
+      { kind: 'note', refType: 'unknown', label: 'Other', value: 'a value', fills: '[Other Bracket]' },
+    ]
+    const result = fillDraft(base, facts)
+    expect(result.text).toBe('Ref 123456789012 and again 123456789012, plus a value.')
+    expect(result.fills).toEqual([
+      { label: 'ARN', value: '123456789012' },
+      { label: 'Other', value: 'a value' },
+    ])
   })
 })
 

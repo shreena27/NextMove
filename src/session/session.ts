@@ -721,6 +721,16 @@ export type SessionAction =
   // afterward (the prototype's own "…so re-assign after (same rule as
   // apply)" comment, 2486-2488).
   | { type: 'UNPLACEABLE_PICK'; questionId: string; value: string; facts: Fact[]; text: string; provenance: string }
+  // Task 15 (FR-AI-04) — the fills-review acknowledgment control on
+  // PrepareScreen's own `.fill-review` button (prototype
+  // `S.fillsReviewed=!S.fillsReviewed`, 3782). A plain boolean flip: unlike
+  // `TOGGLE_PREP_STEP`, this touches no case data (`caseFacts`/`answers`/
+  // any diagnosis-derived field), so there is no active-case re-snapshot to
+  // perform and therefore no `now` to thread through, D6 notwithstanding —
+  // D6 only requires a clock for arms that actually stamp one. Reversible
+  // on purpose (Task 15 brief design note 5): a citizen who ticks it and
+  // then spots a wrong value must be able to untick it.
+  | { type: 'TOGGLE_FILLS_REVIEWED' }
 
 /** Applies a CiFragment (cases.ts) onto SessionState. `navigateTo` decides
  *  the shape: a non-null screen id gets the SAME nav()-style treatment
@@ -1579,5 +1589,7 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         trustOpen: false, restartConfirm: false, removeConfirm: null, authErr: null, acctOpen: false,
       }
     }
+    case 'TOGGLE_FILLS_REVIEWED':
+      return { ...s, fillsReviewed: !s.fillsReviewed }
   }
 }

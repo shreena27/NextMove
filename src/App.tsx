@@ -655,6 +655,9 @@ export default function App() {
           prepDraft={state.prepDraft}
           onTogglePrepStep={i => dispatch({ type: 'TOGGLE_PREP_STEP', index: i, now })}
           onSetPrepDraft={text => dispatch({ type: 'SET_PREP_DRAFT', text })}
+          caseFacts={state.caseFacts}
+          fillsReviewed={state.fillsReviewed}
+          onToggleFillsReviewed={() => dispatch({ type: 'TOGGLE_FILLS_REVIEWED' })}
           savedCases={state.savedCases}
           onSave={() =>
             dispatch({
@@ -767,6 +770,9 @@ export default function App() {
           prepDraft={state.prepDraft}
           onTogglePrepStep={i => dispatch({ type: 'TOGGLE_PREP_STEP', index: i, now })}
           onSetPrepDraft={text => dispatch({ type: 'SET_PREP_DRAFT', text })}
+          caseFacts={state.caseFacts}
+          fillsReviewed={state.fillsReviewed}
+          onToggleFillsReviewed={() => dispatch({ type: 'TOGGLE_FILLS_REVIEWED' })}
           savedCases={state.savedCases}
           onSave={() =>
             dispatch({
@@ -885,6 +891,9 @@ export default function App() {
           prepDraft={state.prepDraft}
           onTogglePrepStep={i => dispatch({ type: 'TOGGLE_PREP_STEP', index: i, now })}
           onSetPrepDraft={text => dispatch({ type: 'SET_PREP_DRAFT', text })}
+          caseFacts={state.caseFacts}
+          fillsReviewed={state.fillsReviewed}
+          onToggleFillsReviewed={() => dispatch({ type: 'TOGGLE_FILLS_REVIEWED' })}
           savedCases={state.savedCases}
           onSave={() =>
             dispatch({
