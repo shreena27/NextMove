@@ -15,6 +15,24 @@ import {
 // own doc comment / auth.ts's doc comment): AppUser is a type only, never a
 // network call — session.ts still never talks to Supabase directly.
 import type { AppUser } from './auth'
+// C8 (Task 6): the describe/interp slice. `GatedInterpretation`/`Fact` are
+// Task 2's types; `DESCRIBE_CHAINS`/`DescribeEntryScreenId` are Task 2's own
+// values/types; `repick`/`editFact`/`removeFact` are Task 2's pure D4
+// helpers — INTERP_REPICK/SAVE_FACT_EDIT/REMOVE_FACT are thin arms over
+// them. `gateInterpretation` (interpretGates.ts) is the SOLE legitimate
+// constructor of a `GatedInterpretation` (its own doc comment) — the
+// INTERPRETATION_FAILED arm below routes its synthesised unplaceable value
+// through this same real constructor rather than the `__gated` brand's
+// `as unknown as` escape hatch, so every real interp value in this codebase,
+// success or failure, is stamped by the one module that owns the brand.
+// `InterpretationFailure` is Task 5's orchestrator result-reason union
+// (session/interpretation.ts) — imported here only as a TYPE for the
+// INTERPRETATION_FAILED action's payload; this file never calls
+// `runInterpretation` itself (that is Task 11's dispatch site).
+import type { DescribeEntryScreenId, Fact, GatedInterpretation } from '../domain/interpret'
+import { DESCRIBE_CHAINS, editFact, removeFact, repick } from '../domain/interpret'
+import { gateInterpretation } from '../domain/interpretGates'
+import type { InterpretationFailure } from './interpretation'
 
 /** The three services C3 ships. Declared here rather than derived from
  *  DEPS_FOR, which is typed Record<string, DependentKeys> — `keyof` that is
@@ -35,6 +53,7 @@ export type ScreenId =
   | 'sir-state' | 'sir-unsupported' | 'sir-reverifying' | 'sir-q1' | 'sir-diagnosis' | 'sir-nextmove' | 'sir-prepare'
   | 'checkin' | 'dead-end' | 'case-closed' | 'save-done'
   | 'save-case' | 'save-otp' | 'save-name'
+  | 'interp-confirm'
 // Transcribe the exact id list from the prototype's own switch (3910-3944),
 // taking only C3's screens; do not invent or normalise a name.
 // C4 adds the three '*-prepare' ids (also the prototype's own, same
@@ -46,9 +65,14 @@ export type ScreenId =
 // C6 adds 'sir-reverifying' (freshness/re-verification screen, prototype
 // 3931's 'sir-reverifying' case).
 // C7 adds 'save-case' / 'save-otp' / 'save-name' (same switch, 3937-3939) —
-// the sign-in + save flow. Still deliberately NOT added here:
-// 'interp-confirm' (C8's free-text interpretation confirm) — it belongs to
-// a later chunk and stays off this union until that chunk lands.
+// the sign-in + save flow.
+// C8/Task 6 adds 'interp-confirm' (the prototype's own id, same switch,
+// 3936) — the free-text interpretation confirm/unplaceable screen. Its own
+// line, not folded into a neighbour, matching its own router adjacency
+// (sir-prepare -> interp-confirm -> save-case). App.tsx's router `switch`
+// does not gain a case for it in this task (Code Organization) — that is
+// what deliberately opens this task's one-error build window (Global
+// Constraints).
 
 // CiSnapshot is cases.ts's, not this file's (imported above): Task 4
 // anticipated its shape here (`answers`/`prepChecks` copied by value, plus
@@ -61,12 +85,17 @@ export type ScreenId =
 // snapshotting, so a live reference would drift under it). See cases.ts's
 // own CiSnapshot doc comment for the full reasoning.
 
-/** C3+C4's slice, plus everything C5 adds, plus C7's user/auth-flow fields:
- *  the persisted casefile list, working/active case tracking,
- *  prepare-progress state, check-in interaction state, casefile UI state,
- *  and (from C7) the signed-in user and the sign-in/save-flow's own UI
- *  state. Fields belonging to the LATER C8 chunk (`describe*`/`interp`) are
- *  still ABSENT on purpose — a field nothing reads is a field that rots.
+/** C3+C4's slice, plus everything C5 adds, plus C7's user/auth-flow fields,
+ *  plus (from C8/Task 6) the describe/interp slice: the persisted casefile
+ *  list, working/active case tracking, prepare-progress state, check-in
+ *  interaction state, casefile UI state, the signed-in user and the
+ *  sign-in/save-flow's own UI state, and the "describe it in your own
+ *  words" free-text interpretation state (`describe*`/`interp*`/
+ *  `caseFacts`/`appliedText`/`factEdit*`/`fillsReviewed`/`quotaExhausted`).
+ *  This chunk's own doc comment used to say those fields were "still ABSENT
+ *  on purpose — a field nothing reads is a field that rots"; that list is
+ *  now empty — every field below is declared, typed, initialised, and
+ *  written/read by a real reducer arm in this same file.
  *
  *  `savedCases` AND (from C7) `user` are the persisted slice: they are the
  *  ONLY fields RESTART and BACK-to-Home preserve, via an explicit allowlist
@@ -230,6 +259,120 @@ export interface SessionState {
    *  `SIGN_OUT` resets this to `'idle'` (it is part of `initialSession`),
    *  so a subsequent sign-in retries cleanly. */
   migration: 'idle' | 'running' | 'done' | 'failed'
+
+  // ---------------------------------------------------------------------
+  // C8 (Task 6) — the describe/interp slice. All thirteen fields below are
+  // real state: eleven of the prototype's own (S, 1949) plus two genuinely
+  // added ones (`interpProvenance`, `quotaExhausted` — marked below). None
+  // of the thirteen is on the NAVIGATE-style clear set (design note 5): the
+  // prototype's own nav() (2029) clears none of them either, and
+  // `describeText` surviving Back/failure/re-entry is spec §1's own
+  // requirement, not an omission — see session.test.ts's own pin. All
+  // thirteen ARE on the four `initialSession`-allowlist arms (RESTART,
+  // BACK-to-Home, CLOSE_UNRESOLVED, SIGN_OUT), for free, because those arms
+  // spread `initialSession` rather than listing fields to clear — this
+  // interface's own header comment explains why that is the fail-safe
+  // direction for any field, present or future.
+  // ---------------------------------------------------------------------
+
+  /** The entry row's expanded state (prototype `S.describeOpen`, 1949;
+   *  `toggleDescribe`, 2410). */
+  describeOpen: boolean
+  /** The citizen's in-progress text (prototype `S.describeText`, 1949).
+   *  Survives Back, failure, and re-entry (spec §1) — it lives on
+   *  `SessionState`, not a component's own `useState`, and is deliberately
+   *  NOT on the nav()-style clear set (design note 5, above). */
+  describeText: string
+  /** The empty-input error (prototype `S.describeErr`, 1949; prototype
+   *  2422: "Write a line or two first. Even rough words are fine."). Scoped
+   *  to the describe box, not the screen: cleared by `TOGGLE_DESCRIBE` and
+   *  by starting a new read (`INTERPRETATION_STARTED`), never by
+   *  navigation. */
+  describeErr: string | null
+  /** An interpretation is in flight (prototype `S.reading`, 1949; D6: a
+   *  real promise this port awaits, not the prototype's `setTimeout`). */
+  reading: boolean
+  /** The active interpretation, or `null` (prototype `S.interp`, 1949: the
+   *  composed `{ctxScreen, engine, service, text, ...result}` shape,
+   *  2429). Typed as `ActiveInterpretation` (below), not an inline
+   *  intersection, because three components and two reducer arms read it.
+   *  Replaced WHOLESALE by `INTERPRETATION_DONE`/`INTERPRETATION_FAILED`,
+   *  never merged (design note 8) — editing the original text re-runs
+   *  interpretation and "old mappings discarded, stated" (spec §3). */
+  interp: ActiveInterpretation | null
+  /** Per-question "Change" reveal state, keyed by `questionId` (prototype
+   *  `S.interpChangeOpen`, 1949; the per-question reveal, 3076). Reset to
+   *  `{}` by `INTERPRETATION_DONE` in the SAME transition that replaces
+   *  `interp` — a reveal left open against the old mapping list must not
+   *  survive onto the new one (design note 8). */
+  interpChangeOpen: Record<string, boolean>
+  /** The CONFIRMED facts, which outlive the interpretation and belong to
+   *  the case (prototype `S.caseFacts`, 1949). Cleared by every ANSWER
+   *  write, unconditionally (design note 6) — a fact captured under one
+   *  diagnosis must not survive onto a corrected one. */
+  caseFacts: Fact[]
+  /** The text that produced the CURRENT answers, kept for the trust
+   *  disclosure and the casefile (prototype `S.appliedText`, 1949). D17's
+   *  invariant, pinned in session.test.ts: non-null iff `interpProvenance`
+   *  is non-null — see that field's own comment. */
+  appliedText: string | null
+  /** D7's inline fact-edit state (prototype `S.factEditIdx`/`S.factEditVal`,
+   *  1949; `editFact(i)`/`saveFactEdit()`, 2451-2455). `factEditIdx` is the
+   *  index into `interp.facts` currently being edited, or `null`;
+   *  `factEditVal` is the draft input, seeded from the fact's current value
+   *  when editing starts and discarded (not applied) if saved blank —
+   *  matching the prototype's own guard exactly. */
+  factEditIdx: number | null
+  factEditVal: string
+  /** FR-AI-04's review acknowledgment (prototype `S.fillsReviewed`, 1949;
+   *  Task 15). Cleared by every ANSWER write alongside `caseFacts`/
+   *  `appliedText` (design note 6) — an acknowledgment of fills belonging
+   *  to a discarded diagnosis must not carry forward. */
+  fillsReviewed: boolean
+  /** D17 — NOT a prototype field; the prototype derives provenance at save
+   *  time instead (`caseSnapshot`), which this port deliberately does NOT
+   *  do: deriving it later from whatever `interpreterId()` happens to say
+   *  at save/render time would stamp a simulator-read case with a
+   *  `gemini:…` provenance the moment a later prepare step is ticked in a
+   *  `gemini`-configured environment. Captured HERE, at interpretation time
+   *  (`runInterpretation`'s own `provenanceLabel` call, session/
+   *  interpretation.ts), carried on `state.interp.provenance`, and copied
+   *  onto this field by the SAME transition that writes `appliedText`
+   *  (`APPLY_INTERPRETATION`/`UNPLACEABLE_PICK`, Task 7). Invariant, pinned
+   *  in session.test.ts: non-null iff `appliedText` is non-null — written
+   *  and cleared together, always, so a provenance record can never end up
+   *  attached to text that has been discarded (the ANSWER arm's own
+   *  unconditional clear, design note 6, is what keeps this true across a
+   *  correction). */
+  interpProvenance: string | null
+  /** I7 — NOT a prototype field; a provider reported its quota exhausted
+   *  this session, so `DescribeBlock` (Task 11) renders `null` (spec §2:
+   *  "the entry row is hidden, not broken"). Declared and reducer-tested
+   *  here, inert until Task 18 supplies the only piece this task genuinely
+   *  cannot: a real provider recognising a 429. Deliberately NOT on the
+   *  NAVIGATE clear set (design note 5) — quota exhaustion is a property of
+   *  the SESSION, not of a screen — and it resets on the four
+   *  `initialSession` arms like everything else above. */
+  quotaExhausted: boolean
+}
+
+/** The prototype's own composed interp shape (`S.interp = {ctxScreen,
+ *  engine, service, text, ...result}`, 2429): a `GatedInterpretation`
+ *  (interpretGates.ts's sole real constructor output) plus the entry-screen
+ *  context that produced it. `ctxScreen`/`engine`/`service`/`text` never
+ *  live on `GatedInterpretation` itself — that module has no reason to know
+ *  them — so the party that calls `runInterpretation` composes this wrapper
+ *  before dispatching `INTERPRETATION_DONE`. Exported as its own interface,
+ *  not an inline intersection on `SessionState.interp`, because three
+ *  components and two reducer arms read it. `engine` uses this file's own
+ *  `ServiceKey` (above), not `domain/casefile.ts`'s structurally-identical
+ *  one — same "declared locally, not imported" layering reasoning that
+ *  file's own `ServiceKey` doc comment gives. */
+export interface ActiveInterpretation extends GatedInterpretation {
+  ctxScreen: string
+  engine: ServiceKey
+  service: string
+  text: string
 }
 
 export const initialSession: SessionState = {
@@ -245,6 +388,13 @@ export const initialSession: SessionState = {
   user: null, authMethod: 'phone', authId: '', otp: '', authErr: null,
   otpResent: false, signOutConfirm: false, acctOpen: false, pendingName: '',
   authBusy: false, otpCooldownUntil: null, migration: 'idle',
+  // C8 (Task 6) — the describe/interp slice (SessionState's own comment,
+  // above, explains why none of these thirteen is on the nav clear set).
+  describeOpen: false, describeText: '', describeErr: null,
+  reading: false, interp: null, interpChangeOpen: {},
+  caseFacts: [], appliedText: null,
+  factEditIdx: null, factEditVal: '', fillsReviewed: false,
+  interpProvenance: null, quotaExhausted: false,
 }
 
 // =============================================================================
@@ -305,7 +455,11 @@ export interface PendingGoogleSaveSnapshot {
 // only fires for a screen id the TYPE SYSTEM already believes is
 // unreachable — no help against a plain `string` read back from
 // `sessionStorage`).
-const SCREEN_IDS: Record<ScreenId, true> = {
+// Exported (C8/Task 6) so session.test.ts can assert `'interp-confirm' in
+// SCREEN_IDS` directly — the same drift-proof guarantee this const's own
+// comment above already documents, now checkable from the test file instead
+// of only indirectly through parsePendingGoogleSaveSnapshot.
+export const SCREEN_IDS: Record<ScreenId, true> = {
   'home': true, 'other-services': true,
   'passport-guardrail': true, 'passport-outofscope': true, 'passport-q1': true, 'passport-q2': true,
   'passport-recovery': true, 'passport-recovery-paste': true, 'passport-recovery-show': true,
@@ -316,6 +470,7 @@ const SCREEN_IDS: Record<ScreenId, true> = {
   'sir-q1': true, 'sir-diagnosis': true, 'sir-nextmove': true, 'sir-prepare': true,
   'checkin': true, 'dead-end': true, 'case-closed': true, 'save-done': true,
   'save-case': true, 'save-otp': true, 'save-name': true,
+  'interp-confirm': true,
 }
 
 /** Parses a stored snapshot; `null` on anything that is not exactly the
@@ -499,6 +654,45 @@ export type SessionAction =
   // D2.
   | { type: 'SET_OTP_RESENT'; value: boolean }
   | { type: 'SET_OTP_COOLDOWN'; until: number | null }
+  // Task 6 (C8) — the describe/interp slice. Every arm below is a thin arm
+  // doing exactly what its prototype counterpart does (design note 7),
+  // EXCEPT `APPLY_INTERPRETATION`, deliberately NOT declared here — Task
+  // 7's, alongside the routing it needs (design note 7's own closing line).
+  | { type: 'TOGGLE_DESCRIBE' }
+  | { type: 'SET_DESCRIBE_TEXT'; text: string }
+  // A separate action from SET_DESCRIBE_TEXT (prototype exampleFill,
+  // 2416-2419) — it also clears describeErr, and a later task's test needs
+  // to distinguish "typed" from "tapped an example".
+  | { type: 'FILL_DESCRIBE_EXAMPLE'; text: string }
+  | { type: 'SET_DESCRIBE_ERR'; error: string | null }
+  | { type: 'INTERPRETATION_STARTED' }
+  // One action, one transition (design note 6): splitting the state write
+  // from the navigation invites a state where the confirm screen renders
+  // against a stale `interp`. `interp` is fully composed by the dispatching
+  // caller (Task 11) before this fires — this arm never builds one itself.
+  | { type: 'INTERPRETATION_DONE'; interp: ActiveInterpretation }
+  // FR-AI-05: every failure lands on the unplaceable panel, fail CLOSED —
+  // except the 'quota' reason (I7), the spec's own named exception, which
+  // stays put instead (see the reducer arm's own comment). NOTE: this file
+  // never PRODUCES the 'quota' reason (nothing dispatches it — that is
+  // Task 18's real Gemini-429 mapping); this arm only CONSUMES it, the
+  // branch design note 7's own brief explicitly asks Task 6 to build.
+  // interpretation.test.ts's own grep-style pin greps for the literal
+  // substring `reason:` immediately followed by `'quota'` (colon, not
+  // `===`) — deliberately never written that way anywhere in this file, in
+  // code OR comments, so that pin stays meaningful for Task 18.
+  | { type: 'INTERPRETATION_FAILED'; reason: InterpretationFailure }
+  // I5's other half — the unmount cleanup for an in-flight call the citizen
+  // navigated away from (Task 11 design note 7a). Guarded on `s.reading` in
+  // the reducer arm itself: the SAME cleanup also fires on the successful
+  // (INTERPRETATION_DONE) unmount, where it must be a no-op.
+  | { type: 'INTERPRETATION_ABANDONED' }
+  | { type: 'INTERP_REPICK'; questionId: string; value: string }
+  | { type: 'TOGGLE_INTERP_CHANGE'; questionId: string; open: boolean }
+  | { type: 'SET_FACT_EDIT'; index: number }
+  | { type: 'SET_FACT_EDIT_VAL'; value: string }
+  | { type: 'SAVE_FACT_EDIT' }
+  | { type: 'REMOVE_FACT'; index: number }
 
 /** Applies a CiFragment (cases.ts) onto SessionState. `navigateTo` decides
  *  the shape: a non-null screen id gets the SAME nav()-style treatment
@@ -519,6 +713,18 @@ function applyCiFragment(s: SessionState, fragment: CiFragment): SessionState {
     }
   }
   return { ...s, ...rest }
+}
+
+// The human-readable service label per engine (prototype's own SERVICE_SQ
+// keys / DESCRIBE_CTX's `service` field, 1751-1774) — only needed as a
+// FALLBACK by INTERPRETATION_FAILED below, for the defensive path where
+// `s.screen` is not itself a DESCRIBE_CHAINS-covered entry screen (should
+// not happen in practice; see that arm's own comment). Every real
+// DESCRIBE_CHAINS entry already carries the exact same label per engine, so
+// this is not a second, driftable source of truth for the ordinary path —
+// only the corner case this reducer must stay TOTAL against.
+const DESCRIBE_SERVICE_LABEL: Record<ServiceKey, string> = {
+  passport: 'Passport', voter: 'Voter Services', sir: 'SIR',
 }
 
 export function sessionReducer(s: SessionState, a: SessionAction): SessionState {
@@ -552,7 +758,9 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       // and the server-push effect (gated on migration === 'done') from
       // ever running again after a Back-to-home, so a casefile saved
       // after that point exists only in memory. See the it.each in
-      // session.test.ts pinning all three initialSession-reset arms.
+      // session.test.ts pinning all FOUR initialSession-reset arms (Task 6
+      // extends this from three to four — RESTART, BACK-to-home,
+      // CLOSE_UNRESOLVED, SIGN_OUT).
       if (prev === 'home') return { ...initialSession, savedCases: s.savedCases, user: s.user, migration: s.migration }
       // DEVIATION from the prototype's back() (2035-2040), which clears
       // only trustOpen/authErr — not acctOpen, and not restartConfirm
@@ -572,7 +780,35 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       // changed (design note 6; answers.ts's own doc comment). `answers`
       // itself keeps C1's strict no-op: the same reference comes back
       // when the written value is unchanged.
-      return { ...s, answers, prepChecks: {}, prepDraft: null }
+      //
+      // Task 6 (C8) design note 6 — the one existing-arm behaviour change
+      // this chunk makes, transcribed from the prototype's own setAns()
+      // (2195): caseFacts/appliedText/fillsReviewed reset here too, for the
+      // SAME reason prepChecks/prepDraft already do — facts and the applied
+      // text belong to the diagnosis they were captured for, and a
+      // correction that changes the diagnosis must not leave a draft
+      // pre-filled from a fact captured under a different reading, or a
+      // trust disclosure quoting text that no longer produced the current
+      // answers. `interpProvenance` joins them — the prototype has no
+      // equivalent (it derives provenance at save time instead), but
+      // clearing it here is what keeps D17's "non-null iff appliedText is
+      // non-null" invariant true; forgetting it would leave a provenance
+      // record attached to text that has just been discarded. ALL FOUR are
+      // unconditional, exactly like prepChecks/prepDraft — never gated on
+      // whether `answers` changed; the reference-equality no-op applies to
+      // `answers` alone.
+      //
+      // This is also the seam Task 7's design note 2 names as the
+      // sharpest interaction in the chunk: APPLY_INTERPRETATION writes
+      // answers AND facts, so a naive multi-dispatch implementation
+      // (N x ANSWER, then set facts) would have each ANSWER wipe what the
+      // previous one just set. This arm's clears are correct and required
+      // here regardless — Task 7 is where the ordering that survives them
+      // gets solved, not this file.
+      return {
+        ...s, answers, prepChecks: {}, prepDraft: null,
+        caseFacts: [], appliedText: null, interpProvenance: null, fillsReviewed: false,
+      }
     }
     case 'RESTART_REQUEST': return { ...s, restartConfirm: true }
     case 'RESTART_CANCEL': return { ...s, restartConfirm: false }
@@ -592,8 +828,9 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
     // durable) AND re-arms MIGRATION_STARTED's guard, so a re-emitted
     // SIGNED_IN (tab focus / cross-tab recovery) re-runs the migration
     // against an already-cleared nm_cases and can drop cases saved since
-    // the restart. See the it.each in session.test.ts pinning all three
-    // initialSession-reset arms (RESTART, BACK-to-home, CLOSE_UNRESOLVED).
+    // the restart. See the it.each in session.test.ts pinning all FOUR
+    // initialSession-reset arms (RESTART, BACK-to-home, CLOSE_UNRESOLVED,
+    // and — Task 6's addition — SIGN_OUT).
     case 'RESTART': return { ...initialSession, savedCases: s.savedCases, user: s.user, migration: s.migration }
     case 'TOGGLE_TRUST': return { ...s, trustOpen: !s.trustOpen }
     case 'SET_RECOVERY_TEXT': return { ...s, recoveryText: a.text }
@@ -773,7 +1010,8 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       // never a member of savedCases and is dropped here exactly like
       // everywhere else RESTART drops workingCase — leaving genuinely no
       // record, on purpose. See the it.each in session.test.ts pinning all
-      // three initialSession-reset arms.
+      // FOUR initialSession-reset arms (Task 6 extends this from three to
+      // four — RESTART, BACK-to-home, CLOSE_UNRESOLVED, SIGN_OUT).
       return { ...initialSession, savedCases: fragment.savedCases, user: s.user, migration: s.migration }
     }
     case 'REOPEN_CASE': {
@@ -934,5 +1172,136 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       return { ...s, otpResent: a.value }
     case 'SET_OTP_COOLDOWN':
       return { ...s, otpCooldownUntil: a.until }
+    // Task 6 (C8) — the describe/interp slice. APPLY_INTERPRETATION is
+    // Task 7's, not built here.
+    case 'TOGGLE_DESCRIBE':
+      // Prototype toggleDescribe() (2410): `S.describeOpen=!S.describeOpen;
+      // S.describeErr=null;` — describeErr is scoped to the box, not the
+      // screen, so it clears on both the opening AND closing edge.
+      return { ...s, describeOpen: !s.describeOpen, describeErr: null }
+    case 'SET_DESCRIBE_TEXT':
+      // Prototype describeInput() (2411-2415) — the char-count is a pure
+      // render-time derivation of `describeText.length` in every real
+      // caller; nothing here needs to track it separately.
+      return { ...s, describeText: a.text }
+    case 'FILL_DESCRIBE_EXAMPLE':
+      // Prototype exampleFill() (2416-2419): sets the text AND clears
+      // describeErr — a distinct action from SET_DESCRIBE_TEXT for exactly
+      // that second clear.
+      return { ...s, describeText: a.text, describeErr: null }
+    case 'SET_DESCRIBE_ERR':
+      return { ...s, describeErr: a.error }
+    case 'INTERPRETATION_STARTED':
+      // Prototype runInterpretation() (2424): `S.reading=true;
+      // S.describeErr=null;` — the empty-input guard immediately above it
+      // (2422) never reaches this arm; INTERPRETATION_STARTED is only ever
+      // dispatched once the caller has already confirmed non-empty text.
+      return { ...s, reading: true, describeErr: null }
+    case 'INTERPRETATION_DONE':
+      // Prototype (2429-2431): `S.interp={...}; S.reading=false;
+      // S.interpChangeOpen={}; S.factEditIdx=null; nav('interp-confirm')`.
+      // One action, one transition (design note 6) — `interp` is assigned
+      // WHOLESALE, never spread onto the previous value (design note 8): a
+      // stale mapping or an open reveal from the earlier interpretation
+      // must not survive onto the new one.
+      return {
+        ...s, interp: a.interp, reading: false, interpChangeOpen: {}, factEditIdx: null,
+        history: [...s.history, s.screen], screen: 'interp-confirm',
+        trustOpen: false, restartConfirm: false, removeConfirm: null, authErr: null, acctOpen: false,
+      }
+    case 'INTERPRETATION_FAILED': {
+      if (a.reason === 'quota') {
+        // I7, the spec's own named exception (spec §2: "the entry row is
+        // hidden, not broken") — does NOT navigate. Not fail-stuck: the
+        // citizen stays on their own question screen with the full closed
+        // option list right there, the path that always works. describeText
+        // is deliberately untouched (it is never on the nav clear set
+        // anyway, but this arm does not even navigate, so there is no clear
+        // set to apply here at all).
+        return { ...s, reading: false, quotaExhausted: true, describeOpen: false, interp: null }
+      }
+      // FR-AI-05: every other failure lands on the "We couldn't safely
+      // place this" panel with the citizen's text preserved — fail CLOSED,
+      // not fail-stuck. The synthesised interp is routed through the SAME
+      // sole legitimate constructor every real interpretation uses
+      // (interpretGates.ts's `gateInterpretation`), never the raw
+      // `__gated` brand escape hatch: an empty `raw.mappings` forces
+      // `unplaceable: true` (mappings.length===0) and an empty `discarded`
+      // unconditionally — with no raw mapping ever proposed, the chain
+      // argument has no effect on that output, so `[]` is exactly as
+      // correct as the real chain would be here. `gateFacts`, called
+      // UNCONDITIONALLY inside `gateInterpretation`, still derives real
+      // facts straight from the citizen's own text regardless of the
+      // failed provider call (interpretFacts.ts's own baseline extraction
+      // runs off `text` alone) — exactly what the unplaceable panel's fact
+      // chips need. `engine` falls back to 'passport' only if `s.screen`
+      // is somehow not a real describe entry screen (should not happen —
+      // DescribeBlock only ever renders, and only ever dispatches from, a
+      // screen DESCRIBE_CHAINS covers) — kept TOTAL anyway, matching this
+      // chunk's own D16/I2 discipline: a reducer must never throw or leave
+      // `reading` stuck.
+      const engine: ServiceKey = DESCRIBE_CHAINS[s.screen as DescribeEntryScreenId]?.engine ?? 'passport'
+      const gated = gateInterpretation(
+        [], engine, s.answers, s.describeText, { mappings: [], facts: [] }, 0, 'none — interpretation failed',
+      )
+      return {
+        ...s, reading: false,
+        interp: { ...gated, ctxScreen: s.screen, engine, service: DESCRIBE_SERVICE_LABEL[engine], text: s.describeText },
+        history: [...s.history, s.screen], screen: 'interp-confirm',
+        trustOpen: false, restartConfirm: false, removeConfirm: null, authErr: null, acctOpen: false,
+      }
+    }
+    case 'INTERPRETATION_ABANDONED':
+      // I5's other half (Task 11 design note 7a) — the unmount cleanup for
+      // an in-flight call the citizen navigated away from. Guarded on
+      // `s.reading`: the SAME cleanup also fires on the SUCCESSFUL unmount
+      // (INTERPRETATION_DONE navigates, which unmounts the describe block
+      // too), where `reading` is already false — this must be a no-op
+      // there, by identity, not a second state write. Touches nothing but
+      // `reading`/`describeErr` — in particular NOT describeText,
+      // describeOpen, interp, or screen.
+      return s.reading ? { ...s, reading: false, describeErr: null } : s
+    case 'INTERP_REPICK': {
+      // Thin arm over D4's pure `repick` (domain/interpret.ts). No-op with
+      // no active interpretation.
+      if (!s.interp) return s
+      const chain = DESCRIBE_CHAINS[s.interp.ctxScreen as DescribeEntryScreenId]?.chain ?? []
+      const gated = repick(s.interp, a.questionId, a.value, chain)
+      return { ...s, interp: { ...s.interp, mappings: gated.mappings, discarded: gated.discarded } }
+    }
+    case 'TOGGLE_INTERP_CHANGE':
+      // The per-question reveal (prototype 3076). D11's persistent control:
+      // the caller supplies the target `open` state explicitly rather than
+      // this arm inferring a toggle, so a reveal can be closed again the
+      // same way it was opened.
+      return { ...s, interpChangeOpen: { ...s.interpChangeOpen, [a.questionId]: a.open } }
+    case 'SET_FACT_EDIT': {
+      // Prototype editFact(i) (2451) — arms the index and seeds
+      // factEditVal from the fact's CURRENT value. No-op with no active
+      // interpretation or an out-of-range index.
+      if (!s.interp) return s
+      const fact = s.interp.facts[a.index]
+      if (!fact) return s
+      return { ...s, factEditIdx: a.index, factEditVal: fact.value }
+    }
+    case 'SET_FACT_EDIT_VAL':
+      return { ...s, factEditVal: a.value }
+    case 'SAVE_FACT_EDIT': {
+      // Prototype saveFactEdit() (2452-2455): a blank (whitespace-only)
+      // value is DISCARDED, not applied — but edit mode still closes
+      // either way, matching the prototype's own guard exactly. Thin arm
+      // over D4's pure `editFact` (domain/interpret.ts) for the applied
+      // case.
+      if (!s.interp || s.factEditIdx === null) return s
+      const trimmed = s.factEditVal.trim()
+      const facts = trimmed ? editFact(s.interp.facts, s.factEditIdx, trimmed) : s.interp.facts
+      return { ...s, interp: { ...s.interp, facts }, factEditIdx: null }
+    }
+    case 'REMOVE_FACT': {
+      // Thin arm over D4's pure `removeFact`. No-op with no active
+      // interpretation.
+      if (!s.interp) return s
+      return { ...s, interp: { ...s.interp, facts: removeFact(s.interp.facts, a.index) } }
+    }
   }
 }
