@@ -14,6 +14,7 @@ import {
   activeCase, sameAnswers, caseIsSaved, loadCase, openCheckin, beginWorkingCheckin, completeSave, newCaseId,
   appendLog, ciChoose, ciConfirm, ciValence, ciClosureAnswer, ciUndo, ciCancel,
   closeUnresolved, reopenCase, removeSaved, setRemind, toggleLog, setRemoveConfirm, setReminderCopied,
+  routeAfterApply,
 } from './cases'
 import type { OpenCheckinFragment, BeginWorkingFragment, CiSnapshot } from './cases'
 
@@ -1425,4 +1426,25 @@ describe('setReminderCopied (design note 8 — a previous draft declared this ac
     expect(setReminderCopied(true)).toEqual({ reminderCopied: true })
     expect(setReminderCopied(false)).toEqual({ reminderCopied: false })
   })
+})
+
+describe('routeAfterApply — Task 7 design note 5: FR-AI-03\'s smart skip, in its entirety', () => {
+  it.each([
+    ['passport', { q1: 'adverse', q2: 'formal_grievance' }, undefined, 'passport-diagnosis'],
+    ['passport', { q1: 'adverse' }, undefined, 'passport-q2'],
+    ['passport', {}, undefined, 'passport-q1'],
+    ['voter', {}, 'sir', 'sir-state'],
+    ['voter', { voterQ1: 'decision', voterAppealed: 'pending' }, undefined, 'voter-diagnosis'],
+    ['voter', { voterQ1: 'decision' }, undefined, 'voter-q2'],
+    ['voter', { voterQ1: 'no_word' }, undefined, 'voter-diagnosis'],
+    ['voter', {}, 'applied', 'voter-q1'],
+    ['voter', {}, undefined, 'voter-entry'],
+    ['sir', { sirQ1: 'unclassified' }, undefined, 'sir-diagnosis'],
+    ['sir', {}, undefined, 'sir-q1'],
+  ] as [ServiceKey, AnswerRecord, string | undefined, string][])(
+    '%s with answers %j and entryRoute %s routes to %s',
+    (engine, answers, entryRoute, expected) => {
+      expect(routeAfterApply(engine, answers, entryRoute)).toBe(expected)
+    },
+  )
 })

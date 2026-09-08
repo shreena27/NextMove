@@ -1750,6 +1750,308 @@ describe('SET_FACT_EDIT / SET_FACT_EDIT_VAL / SAVE_FACT_EDIT / REMOVE_FACT (D7, 
 })
 
 // =============================================================================
+// Task 7 — APPLY_INTERPRETATION / UNPLACEABLE_PICK: the one path from a
+// proposal to an answer (design notes 1-7; AC-AI-1). FIXTURE_INTERP is a
+// passport interp; VOTER_INTERP below builds a voter one for the D2/D3/
+// dependent-clearing tests, which all need the voter engine specifically.
+// =============================================================================
+
+describe('APPLY_INTERPRETATION — Task 7: the one path from a proposal to an answer (design notes 1-5, 7; AC-AI-1)', () => {
+  const NOW = 1_726_000_000_000
+
+  const PASSPORT_INTERP: ActiveInterpretation = {
+    ...FIXTURE_INTERP,
+    mappings: [
+      { questionId: 'q1', value: 'adverse', span: 'they rejected my application', optionValues: ['no_contact', 'contacted_incomplete', 'verified_no_progress', 'adverse'] },
+      { questionId: 'q2', value: 'formal_grievance', span: 'I filed a formal grievance', optionValues: ['no_followup', 'informal', 'formal_grievance'] },
+    ],
+    facts: [FIXTURE_FACT],
+    provenance: 'simulated (local matcher)',
+    text: 'they rejected my application; I filed a formal grievance',
+  }
+
+  const VOTER_INTERP = (mappings: ActiveInterpretation['mappings']): ActiveInterpretation => ({
+    ...FIXTURE_INTERP,
+    engine: 'voter', service: 'Voter Services', ctxScreen: 'voter-q1',
+    mappings,
+  })
+
+  const dirty = (extra: Partial<SessionState> = {}): SessionState => ({
+    ...initialSession,
+    interp: PASSPORT_INTERP,
+    screen: 'passport-q1', history: ['home'],
+    prepChecks: { 0: true }, prepDraft: 'a draft', fillsReviewed: true,
+    describeText: 'they rejected my application', describeOpen: true,
+    trustOpen: true, restartConfirm: true, removeConfirm: 'c1', authErr: 'stale error', acctOpen: true,
+    ...extra,
+  })
+
+  it('writes both passport answers and lands on passport-diagnosis', () => {
+    const s = r(dirty(), { type: 'APPLY_INTERPRETATION', now: NOW })
+    expect(s.answers.q1).toBe('adverse')
+    expect(s.answers.q2).toBe('formal_grievance')
+    expect(s.screen).toBe('passport-diagnosis')
+  })
+
+  it(
+    'sets caseFacts to the interpretation\'s facts, appliedText to its text and interpProvenance to interp.provenance ' +
+    '(D17), non-empty — design note 2: facts must be assigned AFTER the answer writes; the ANSWER-path semantics ' +
+    'clear them, and a refactor routing this arm through ANSWER would silently reintroduce that',
+    () => {
+      const s = r(dirty(), { type: 'APPLY_INTERPRETATION', now: NOW })
+      expect(s.caseFacts).toEqual([FIXTURE_FACT])
+      expect(s.caseFacts.length).toBeGreaterThan(0)
+      expect(s.appliedText).toBe(PASSPORT_INTERP.text)
+      expect(s.interpProvenance).toBe(PASSPORT_INTERP.provenance)
+    },
+  )
+
+  it('clears prepChecks, prepDraft, fillsReviewed, describeText, describeOpen and interp, and applies the nav clear set', () => {
+    const s = r(dirty(), { type: 'APPLY_INTERPRETATION', now: NOW })
+    expect(s.prepChecks).toEqual({})
+    expect(s.prepDraft).toBeNull()
+    expect(s.fillsReviewed).toBe(false)
+    expect(s.describeText).toBe('')
+    expect(s.describeOpen).toBe(false)
+    expect(s.interp).toBeNull()
+    expect(s.history).toEqual(['home', 'passport-q1'])
+    expect(s.trustOpen).toBe(false)
+    expect(s.restartConfirm).toBe(false)
+    expect(s.removeConfirm).toBeNull()
+    expect(s.authErr).toBeNull()
+    expect(s.acctOpen).toBe(false)
+  })
+
+  it(
+    'dependent clearing threads correctly: a voterQ1 mapping applied over an existing voterAppealedRaw/voterAppealed ' +
+    'pair clears both (via VOTER_DEPS), in one transition — the accumulating answers object must be threaded through ' +
+    'applyCorrection; applying each mapping against the ORIGINAL answers loses the dependent clear',
+    () => {
+      const dirtyState: SessionState = {
+        ...dirty({ interp: VOTER_INTERP([{ questionId: 'voterQ1', value: 'no_word', span: 'no word yet', optionValues: [] }]) }),
+        answers: { voterQ1: 'decision', voterAppealedRaw: 'pending', voterAppealed: 'pending' },
+      }
+      const s = r(dirtyState, { type: 'APPLY_INTERPRETATION', now: NOW })
+      expect(s.answers.voterQ1).toBe('no_word')
+      expect(s.answers.voterAppealedRaw).toBeUndefined()
+      expect(s.answers.voterAppealed).toBeUndefined()
+    },
+  )
+
+  it(
+    'the parity write: a voterAppealedRaw: \'pending\' mapping writes BOTH voterAppealedRaw and voterAppealed, in ' +
+    'that order — the raw/normalised split, VoterScreens.tsx:106-108',
+    () => {
+      // DESCRIBE_CHAINS['voter-q2'] only offers a voterAppealedRaw mapping
+      // when the entry screen is voter-q2 — reachable only once voterQ1 is
+      // ALREADY 'decision' (the tap path's own precondition). answers
+      // seeds that pre-existing fact so routeAfterApply sees a realistic
+      // voter-q2-entry state, not an interp that arrived with no voterQ1
+      // at all.
+      const dirtyState = dirty({
+        interp: VOTER_INTERP([{ questionId: 'voterAppealedRaw', value: 'pending', span: 'appeal is pending', optionValues: [] }]),
+        answers: { voterQ1: 'decision' },
+      })
+      const s = r(dirtyState, { type: 'APPLY_INTERPRETATION', now: NOW })
+      expect(s.answers.voterAppealedRaw).toBe('pending')
+      expect(s.answers.voterAppealed).toBe('pending')
+      expect(s.screen).toBe('voter-diagnosis')
+    },
+  )
+
+  it(
+    'the parity write\'s normalisation logic is exercised directly, not just the identity case: a mapping value of ' +
+    '\'notsure\' (never produced by a real describe mapping — Task 2 design note 5 keeps it out of the option set) ' +
+    'still normalises to \'unclassified\' on voterAppealed while voterAppealedRaw keeps the raw pick',
+    () => {
+      const dirtyState = dirty({ interp: VOTER_INTERP([{ questionId: 'voterAppealedRaw', value: 'notsure', span: 'not sure about the appeal', optionValues: [] }]) })
+      const s = r(dirtyState, { type: 'APPLY_INTERPRETATION', now: NOW })
+      expect(s.answers.voterAppealedRaw).toBe('notsure')
+      expect(s.answers.voterAppealed).toBe('unclassified')
+    },
+  )
+
+  it(
+    'D2: a confirmed voterEntry: \'sir\' mapping lands on sir-state and state.answers.voterEntry is undefined — the ' +
+    'tap path (VoterEntry\'s own onSelect, session.ts\'s voterEntryExplain note) writes nothing for it either',
+    () => {
+      expect.assertions(2)
+      const dirtyState = dirty({ interp: VOTER_INTERP([{ questionId: 'voterEntry', value: 'sir', span: 'I am on the SIR roll', optionValues: [] }]) })
+      const s = r(dirtyState, { type: 'APPLY_INTERPRETATION', now: NOW })
+      expect(s.screen).toBe('sir-state')
+      expect(s.answers.voterEntry).toBeUndefined()
+    },
+  )
+
+  it('is a no-op when there is no active interp', () => {
+    const s = r(initialSession, { type: 'APPLY_INTERPRETATION', now: NOW })
+    expect(s).toBe(initialSession)
+  })
+
+  it(
+    'design note 1: re-snapshots the active still-open case when its engine matches the interpretation\'s engine — ' +
+    'preserving the case\'s OWN returnScreen (the second precedent, applyCheckinPatch\'s, NOT TOGGLE_PREP_STEP\'s ' +
+    's.screen-based one), pinning savedAt (D7), and re-snapshotting with prepChecks:{} per design note 2\'s own clear',
+    () => {
+      const active: Casefile = {
+        ...FIXTURE_CASE, id: 'c1', engineKey: 'passport', outcome: 'still_open',
+        answers: { q1: 'no_contact' }, returnScreen: 'passport-nextmove',
+        prepChecks: { 0: true }, savedAt: NOW - 10_000,
+      }
+      const dirtyState: SessionState = {
+        ...dirty(), savedCases: [active], activeCaseId: 'c1', answers: { q1: 'no_contact' },
+      }
+      const s = r(dirtyState, { type: 'APPLY_INTERPRETATION', now: NOW })
+      expect(s.savedCases[0].answers).toEqual({ q1: 'adverse', q2: 'formal_grievance' })
+      expect(s.savedCases[0].returnScreen).toBe('passport-nextmove') // preserved, NOT recomputed to 'passport-diagnosis'
+      expect(s.savedCases[0].savedAt).toBe(NOW - 10_000) // D7: original savedAt survives
+      expect(s.savedCases[0].prepChecks).toEqual({}) // re-snapshotted with {} per design note 2's clear
+      expect(s.screen).toBe('passport-diagnosis') // the CITIZEN still navigates to the real destination
+    },
+  )
+
+  it('with no active case, APPLY_INTERPRETATION leaves savedCases/workingCase untouched', () => {
+    const s = r(dirty(), { type: 'APPLY_INTERPRETATION', now: NOW })
+    expect(s.savedCases).toEqual([])
+    expect(s.workingCase).toBeNull()
+  })
+
+  it('a MISMATCHED engine\'s active case is left untouched — applying a passport interpretation must never overwrite a voter case', () => {
+    const voterCase: Casefile = {
+      ...FIXTURE_CASE, id: 'c1', engineKey: 'voter', outcome: 'still_open', returnScreen: 'voter-nextmove', savedAt: NOW - 10_000,
+    }
+    const dirtyState: SessionState = { ...dirty(), savedCases: [voterCase], activeCaseId: 'c1' }
+    const s = r(dirtyState, { type: 'APPLY_INTERPRETATION', now: NOW })
+    expect(s.savedCases[0]).toEqual(voterCase)
+    expect(s.savedCases).toBe(dirtyState.savedCases)
+  })
+})
+
+describe(
+  'AC-AI-1 (reducer level) — reaching interp-confirm writes NOTHING to answers/caseFacts/appliedText/prepChecks/' +
+  'savedCases; only APPLY_INTERPRETATION and UNPLACEABLE_PICK write',
+  () => {
+    it('INTERPRETATION_DONE leaves answers reference-identical, and leaves caseFacts/appliedText/savedCases untouched', () => {
+      expect.assertions(4)
+      const dirty: SessionState = {
+        ...initialSession,
+        answers: { q1: 'adverse' },
+        caseFacts: [], appliedText: null,
+        savedCases: [FIXTURE_CASE],
+        screen: 'passport-q1', history: ['home'],
+      }
+      const s = r(dirty, { type: 'INTERPRETATION_DONE', interp: FIXTURE_INTERP })
+      expect(s.answers).toBe(dirty.answers) // reference-identical, not merely deep-equal
+      expect(s.caseFacts).toBe(dirty.caseFacts)
+      expect(s.appliedText).toBe(dirty.appliedText)
+      expect(s.savedCases).toBe(dirty.savedCases)
+    })
+  },
+)
+
+describe('UNPLACEABLE_PICK — the unplaceable-panel fallback (design note 6, I10)', () => {
+  const onPanel = (extra: Partial<SessionState> = {}): SessionState => ({
+    ...initialSession,
+    interp: FIXTURE_INTERP,
+    screen: 'interp-confirm', history: ['home', 'passport-q1'],
+    ...extra,
+  })
+
+  it('writes the answer, restores the facts/text/provenance, and navigates — all in one transition', () => {
+    const s = r(onPanel(), {
+      type: 'UNPLACEABLE_PICK', questionId: 'q1', value: 'adverse',
+      facts: [FIXTURE_FACT], text: 'they rejected my application', provenance: 'simulated (local matcher)',
+    })
+    expect(s.answers.q1).toBe('adverse')
+    expect(s.caseFacts).toEqual([FIXTURE_FACT])
+    expect(s.appliedText).toBe('they rejected my application')
+    expect(s.interpProvenance).toBe('simulated (local matcher)')
+    expect(s.screen).toBe('passport-q2')
+    expect(s.interp).toBeNull()
+  })
+
+  it('an empty facts payload leaves caseFacts empty rather than stale', () => {
+    const withStaleFacts: SessionState = { ...onPanel(), caseFacts: [FIXTURE_FACT] }
+    const s = r(withStaleFacts, {
+      type: 'UNPLACEABLE_PICK', questionId: 'q2', value: 'informal',
+      facts: [], text: 'informally raised it', provenance: 'simulated (local matcher)',
+    })
+    expect(s.caseFacts).toEqual([])
+  })
+
+  it.each([
+    ['q1', 'adverse', 'q1', 'adverse', 'passport-q2'],
+    ['q2', 'informal', 'q2', 'informal', 'passport-diagnosis'],
+    ['voterQ1', 'no_word', 'voterQ1', 'no_word', 'voter-diagnosis'],
+    ['sirQ1', 'roll_absent', 'sirQ1', 'roll_absent', 'sir-diagnosis'],
+  ] as const)(
+    'question %s value %s: derives its write/destination from unplaceablePickPlan, matching the real screen',
+    (questionId, value, key, expectedValue, screen) => {
+      const s = r(onPanel(), { type: 'UNPLACEABLE_PICK', questionId, value, facts: [], text: 't', provenance: 'p' })
+      expect(s.answers[key]).toBe(expectedValue)
+      expect(s.screen).toBe(screen)
+    },
+  )
+
+  it(
+    'D2: for voterEntry: \'sir\' writes NO answer at all and lands on sir-state, with the facts restored — ' +
+    'VoterScreens.tsx:30-38',
+    () => {
+      expect.assertions(3)
+      const s = r(onPanel(), {
+        type: 'UNPLACEABLE_PICK', questionId: 'voterEntry', value: 'sir',
+        facts: [FIXTURE_FACT], text: 'I am on the SIR roll', provenance: 'simulated (local matcher)',
+      })
+      expect(s.answers.voterEntry).toBeUndefined()
+      expect(s.screen).toBe('sir-state')
+      expect(s.caseFacts).toEqual([FIXTURE_FACT])
+    },
+  )
+
+  it(
+    'for voterAppealedRaw: \'pending\' produces the raw-then-normalised dual write, in that order, matching ' +
+    'VoterScreens.tsx:107-113\'s own load-bearing-ordering comment',
+    () => {
+      const s = r(onPanel(), {
+        type: 'UNPLACEABLE_PICK', questionId: 'voterAppealedRaw', value: 'pending',
+        facts: [], text: 'appeal pending', provenance: 'p',
+      })
+      expect(s.answers.voterAppealedRaw).toBe('pending')
+      expect(s.answers.voterAppealed).toBe('pending')
+      expect(s.screen).toBe('voter-diagnosis')
+    },
+  )
+
+  it(
+    'voterEntry: \'notsure\' explains in place — no writes, no fact restore, no navigation, matching ' +
+    'EXPLAIN_VOTER_ENTRY exactly',
+    () => {
+      const before = onPanel()
+      const s = r(before, {
+        type: 'UNPLACEABLE_PICK', questionId: 'voterEntry', value: 'notsure',
+        facts: [FIXTURE_FACT], text: 'not sure', provenance: 'p',
+      })
+      expect(s.voterEntryExplain).toBe(true)
+      expect(s.screen).toBe(before.screen) // unchanged — no navigation
+      expect(s.interp).toBe(before.interp) // untouched
+      expect(s.caseFacts).toEqual(before.caseFacts) // untouched — no restore either
+    },
+  )
+
+  it(
+    'I10: the action type carries no pre-computed screen — a payload screen field does not type-check, so the ' +
+    'destination can only ever come from unplaceablePickPlan',
+    () => {
+      // @ts-expect-error — UNPLACEABLE_PICK carries no `screen` field on purpose (I10): a pre-computed destination
+      // pushes six shipped routings into the panel as a second, drifting copy; Task 2's parity test is what keeps
+      // the single derivation honest. Verified RED by adding `screen` to the SessionAction member above and
+      // watching this line's ts-expect-error itself fail to compile ("Unused '@ts-expect-error' directive").
+      r(initialSession, { type: 'UNPLACEABLE_PICK', questionId: 'q1', value: 'adverse', facts: [], text: 't', provenance: 'p', screen: 'passport-q2' })
+    },
+  )
+})
+
+// =============================================================================
 // Task 19 (post-Task-18 fix) — Google's real, full-page OAuth redirect wipes
 // pendingSave/answers/prepChecks out of memory. RESUME_PENDING_SAVE is the
 // new action App.tsx's mount effect dispatches once it reads a sessionStorage

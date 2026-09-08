@@ -10,6 +10,7 @@ import {
   beginWorkingCheckin, openCheckin, completeSave, activeCase,
   ciChoose, ciConfirm, ciValence, ciClosureAnswer, ciUndo, ciCancel,
   closeUnresolved, reopenCase, removeSaved, setRemind, toggleLog, setRemoveConfirm, setReminderCopied,
+  routeAfterApply,
 } from './cases'
 // A session/ -> session/ import, permitted by the layering rule (session.ts's
 // own doc comment / auth.ts's doc comment): AppUser is a type only, never a
@@ -30,7 +31,7 @@ import type { AppUser } from './auth'
 // INTERPRETATION_FAILED action's payload; this file never calls
 // `runInterpretation` itself (that is Task 11's dispatch site).
 import type { DescribeEntryScreenId, Fact, GatedInterpretation } from '../domain/interpret'
-import { DESCRIBE_CHAINS, editFact, removeFact, repick } from '../domain/interpret'
+import { DESCRIBE_CHAINS, editFact, removeFact, repick, unplaceablePickPlan } from '../domain/interpret'
 import { gateInterpretation } from '../domain/interpretGates'
 import type { InterpretationFailure } from './interpretation'
 
@@ -660,8 +661,9 @@ export type SessionAction =
   | { type: 'SET_OTP_COOLDOWN'; until: number | null }
   // Task 6 (C8) — the describe/interp slice. Every arm below is a thin arm
   // doing exactly what its prototype counterpart does (design note 7),
-  // EXCEPT `APPLY_INTERPRETATION`, deliberately NOT declared here — Task
-  // 7's, alongside the routing it needs (design note 7's own closing line).
+  // EXCEPT `APPLY_INTERPRETATION`/`UNPLACEABLE_PICK` — Task 7's, declared
+  // at the end of this slice (below `REMOVE_FACT`), alongside the routing
+  // they need (`routeAfterApply`, session/cases.ts).
   | { type: 'TOGGLE_DESCRIBE' }
   | { type: 'SET_DESCRIBE_TEXT'; text: string }
   // A separate action from SET_DESCRIBE_TEXT (prototype exampleFill,
@@ -697,6 +699,28 @@ export type SessionAction =
   | { type: 'SET_FACT_EDIT_VAL'; value: string }
   | { type: 'SAVE_FACT_EDIT' }
   | { type: 'REMOVE_FACT'; index: number }
+  // Task 7 — the one path from a proposal to an answer (design notes 1-7;
+  // AC-AI-1). No payload beyond the clock: everything else the arm needs
+  // is already on `state.interp` (design note 1) — passing the mappings in
+  // again would create a second source of truth and a chance for the
+  // dispatch site to pass a stale set. `now` is injected (D6) because the
+  // arm may re-snapshot an active case, exactly as `TOGGLE_PREP_STEP`
+  // does.
+  | { type: 'APPLY_INTERPRETATION'; now: number }
+  // Task 7, design note 6 / I10 — the unplaceable panel's fallback.
+  // Deliberately has NO `screen` field: the destination is derived, once,
+  // by `unplaceablePickPlan` (domain/interpret.ts) — the single derivation
+  // pinned against all six real components by `interpretChains.test.ts`'s
+  // onSelect-parity test (Task 2 design note 8). A payload `screen` would
+  // let this action silently push six shipped routings into the panel
+  // component as a second, drifting copy (I10) — session.test.ts pins the
+  // absence with a `// @ts-expect-error`. `facts`/`text`/`provenance` are
+  // the interpretation's OWN values at the moment the citizen picked from
+  // the panel, carried on the action because `state.interp` is cleared by
+  // this SAME transition — there is nothing left to read them off
+  // afterward (the prototype's own "…so re-assign after (same rule as
+  // apply)" comment, 2486-2488).
+  | { type: 'UNPLACEABLE_PICK'; questionId: string; value: string; facts: Fact[]; text: string; provenance: string }
 
 /** Applies a CiFragment (cases.ts) onto SessionState. `navigateTo` decides
  *  the shape: a non-null screen id gets the SAME nav()-style treatment
@@ -1356,6 +1380,133 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       // interpretation.
       if (!s.interp) return s
       return { ...s, interp: { ...s.interp, facts: removeFact(s.interp.facts, a.index) } }
+    }
+    case 'APPLY_INTERPRETATION': {
+      // Design note 1: everything this arm needs is already on
+      // `state.interp` — no-op with no active interpretation, matching
+      // every other thin arm in this slice's own "no active interp -> no
+      // -op" convention (INTERP_REPICK, SET_FACT_EDIT, SAVE_FACT_EDIT,
+      // REMOVE_FACT, above).
+      if (!s.interp) return s
+      const interp = s.interp
+
+      // Design note 2 — the sharpest interaction in the whole chunk, and
+      // the load-bearing write order: thread the ACCUMULATING `answers`
+      // through `applyCorrection` for every surviving mapping, in mapping
+      // order (skipping `voterEntry`, D2, below), so an earlier write's
+      // dependent-clearing (`DEPS_FOR[interp.engine]`) correctly wipes a
+      // later mapping's now-stale dependent — exactly as it would if the
+      // citizen had tapped them in order. `caseFacts`/`appliedText`/
+      // `interpProvenance` are assigned ONLY after this loop finishes (in
+      // the returned object, at the very end) — never inside it, and this
+      // arm never dispatches through the `ANSWER` case above, whose own
+      // unconditional clear (that arm's own design note 6 comment) would
+      // otherwise wipe them the instant any second write landed. A future
+      // refactor that routed this arm through `ANSWER` would silently
+      // reintroduce exactly that bug; this comment, and the ordering test
+      // pinning it (session.test.ts), are what stop it.
+      let answers = s.answers
+      for (const m of interp.mappings) {
+        // D2: `voterEntry` is consumed as routing (below), never written —
+        // the tap path (`VoterEntry`'s own `onSelect`, VoterScreens.tsx)
+        // writes nothing for it either.
+        if (m.questionId === 'voterEntry') continue
+        answers = applyCorrection(answers, m.questionId, m.value, DEPS_FOR[interp.engine]).answers
+        if (m.questionId === 'voterAppealedRaw') {
+          // Design note 3 — the raw/normalised parity write, immediately
+          // after the raw write, in that order (VoterScreens.tsx:106-113's
+          // own load-bearing-ordering comment): the voter playbook reads
+          // the NORMALISED `voterAppealed`; the trust disclosure echoes
+          // the RAW pick. A describe mapping's value is never 'notsure'
+          // (Task 2 design note 5 keeps it out of the option set), so this
+          // normalisation is the identity here — written anyway, so the
+          // describe path and the tap path produce byte-identical answer
+          // records, which is FR-AI-01's actual promise.
+          const normalized = m.value === 'notsure' ? 'unclassified' : m.value
+          answers = applyCorrection(answers, 'voterAppealed', normalized, DEPS_FOR[interp.engine]).answers
+        }
+      }
+
+      // Design note 5 — FR-AI-03's smart skip, in its entirety: the
+      // destination is derived from the answers the writes above just
+      // produced, plus the D2 routing value read off the mapping list
+      // (never off `answers` — `voterEntry` was never written there).
+      const entryRoute = interp.mappings.find(m => m.questionId === 'voterEntry')?.value
+      const screen = routeAfterApply(interp.engine, answers, entryRoute) as ScreenId
+
+      // Design note 1's re-snapshot — the SECOND precedent
+      // (`applyCheckinPatch`, session/cases.ts:462), not `TOGGLE_PREP_
+      // STEP`'s own `s.screen`-based one: the citizen is not necessarily
+      // standing on the screen the new answers "belong" to, so this
+      // preserves the case's OWN existing `returnScreen` rather than
+      // recomputing it, and pins `savedAt` (D7) — the SAME inline
+      // placement logic `TOGGLE_PREP_STEP` uses, not an import.
+      // `prepChecks` is `{}` here, not `s.prepChecks`, because design note
+      // 2 clears `prepChecks` as part of this SAME transition (below) —
+      // snapshotting with stale prepChecks would contradict that clear.
+      const c = activeCase(s)
+      let workingCase = s.workingCase
+      let savedCases = s.savedCases
+      if (c && c.outcome === 'still_open' && c.engineKey === interp.engine) {
+        const d = diagnose(ENGINES[c.engineKey], answers)
+        const snap = caseSnapshot(c.engineKey, c.serviceLabel, c.returnScreen, d, answers, {}, a.now)
+        const updated: Casefile = { ...c, ...snap, savedAt: c.savedAt }
+        if (s.activeCaseId === 'working') {
+          workingCase = updated
+        } else {
+          savedCases = s.savedCases.map(x => (x.id === s.activeCaseId ? updated : x))
+        }
+      }
+
+      return {
+        ...s, answers, workingCase, savedCases,
+        // Design note 2's ordering, restated: these three are the LAST
+        // things this transition sets, after every write above.
+        caseFacts: interp.facts, appliedText: interp.text, interpProvenance: interp.provenance,
+        prepChecks: {}, prepDraft: null, fillsReviewed: false,
+        describeText: '', describeOpen: false, interp: null,
+        history: [...s.history, s.screen], screen,
+        trustOpen: false, restartConfirm: false, removeConfirm: null, authErr: null, acctOpen: false,
+      }
+    }
+    case 'UNPLACEABLE_PICK': {
+      // I10 — the single derivation of what a normal tap on each of the
+      // six describable questions does; never re-implemented here (design
+      // note 6).
+      const plan = unplaceablePickPlan(a.questionId, a.value)
+      if (!plan.screen) {
+        // The ONLY branch where `unplaceablePickPlan` returns a null
+        // screen is `voterEntry`/'notsure', which also sets `explain:
+        // true` — matches `EXPLAIN_VOTER_ENTRY` (above) exactly: no writes
+        // (`plan.writes` is empty for this branch anyway), no fact
+        // restore, no navigation, no `interp`/`describeText`/
+        // `describeOpen` clear. The citizen is not leaving the panel —
+        // they are opening the SAME inline explainer the entry screen's
+        // own `onSelect` opens.
+        return { ...s, voterEntryExplain: true }
+      }
+      // Design note 6 — the same write-threading discipline as design note
+      // 2's loop above, but simpler: `unplaceablePickPlan` already bakes
+      // in the raw/normalised dual write for `voterAppealedRaw` (its own
+      // `writes` array), so this loop needs no per-question special
+      // casing.
+      let answers = s.answers
+      for (const w of plan.writes) {
+        answers = applyCorrection(answers, w.key, w.value, DEPS_FOR[w.service]).answers
+      }
+      return {
+        ...s, answers,
+        // Restored AFTER the writes above — the prototype's own "…so
+        // re-assign after (same rule as apply)" comment (2486-2488): a
+        // plain answer write has no `ANSWER`-arm awareness of the
+        // unplaceable-panel facts it must not wipe, so this arm carries
+        // them on its own payload (`a.facts`/`a.text`/`a.provenance`) and
+        // re-applies them itself, in this SAME transition.
+        caseFacts: a.facts, appliedText: a.text, interpProvenance: a.provenance,
+        interp: null, describeText: '', describeOpen: false,
+        history: [...s.history, s.screen], screen: plan.screen as ScreenId,
+        trustOpen: false, restartConfirm: false, removeConfirm: null, authErr: null, acctOpen: false,
+      }
     }
   }
 }

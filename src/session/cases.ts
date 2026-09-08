@@ -919,3 +919,46 @@ export function setRemoveConfirm(id: string | null): { removeConfirm: string | n
 export function setReminderCopied(value: boolean): { reminderCopied: boolean } {
   return { reminderCopied: value }
 }
+
+/** Task 7, design note 5 — the prototype's own routing table (2470-2479),
+ *  transcribed as a pure exported function: FR-AI-03's "smart skip" in its
+ *  entirety. A question the citizen's own text already answered is never
+ *  asked again because the route jumps straight past it.
+ *
+ *  Return type is plain `string`, not session.ts's `ScreenId` — same
+ *  layering reason as `CaseSnapshot.returnScreen` above (this file's own
+ *  header note) and `UnplaceablePickPlan.screen`'s identical typing
+ *  (domain/interpret.ts): `session/` may import from `domain/`+`playbooks/`
+ *  and, for a type only, from `session/cases.ts` back into `session.ts`
+ *  (session.ts's own doc comment) — but this file must never import
+ *  `ScreenId` FROM session.ts, which would be a real cycle (session.ts
+ *  already imports this whole module). The one real call site
+ *  (session.ts's `APPLY_INTERPRETATION` arm) narrows the result `as
+ *  ScreenId`, the same way it already narrows `applyCiFragment`'s
+ *  `navigateTo`.
+ *
+ *  `engine` is typed with THIS file's own already-imported `ServiceKey`
+ *  (from `domain/casefile.ts`), not session.ts's locally-declared one —
+ *  they are structurally identical string-literal unions, so this is
+ *  transparent at the session.ts call site.
+ *
+ *  `entryRoute` is the D2 routing value — the `voterEntry` mapping's OWN
+ *  value, when the interpretation proposed one — taken as an explicit
+ *  argument rather than read off `answers`, because D2 means `voterEntry`
+ *  is never written there (session.ts's `APPLY_INTERPRETATION` arm reads it
+ *  straight off `interp.mappings` before this function is ever called). */
+export function routeAfterApply(engine: ServiceKey, answers: AnswerRecord, entryRoute: string | undefined): string {
+  if (engine === 'passport') {
+    if (answers.q1 && answers.q2) return 'passport-diagnosis'
+    if (answers.q1) return 'passport-q2'
+    return 'passport-q1'
+  }
+  if (engine === 'voter') {
+    if (entryRoute === 'sir') return 'sir-state'
+    if (answers.voterQ1 === 'decision') return answers.voterAppealed ? 'voter-diagnosis' : 'voter-q2'
+    if (answers.voterQ1) return 'voter-diagnosis'
+    return entryRoute === 'applied' ? 'voter-q1' : 'voter-entry'
+  }
+  // engine === 'sir' — the union's only remaining member.
+  return answers.sirQ1 ? 'sir-diagnosis' : 'sir-q1'
+}
