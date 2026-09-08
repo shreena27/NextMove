@@ -285,6 +285,56 @@ const CATCH_ALL_PATTERNS: RegExp[] = [
   /\b\d+\s*hours?\b/gi,
 ]
 
+/** D5 (C8, docs/superpowers/plans/2026-09-08-c8-describe-it.md, Task 10) —
+ *  the ONE mechanism this project has ever granted from the numeric scan.
+ *  Shaped like `SAFETY_EXEMPTIONS` above, but scoped to one location AND
+ *  one exact MATCHED STRING (never a whole location, never a pattern id —
+ *  numeric findings are not matched against a named `BannedPatternId`, so
+ *  there is no pattern to scope to). `staleNumericExemptionFindings` below
+ *  is the same staleness discipline `staleExemptionFindings` already
+ *  applies, keyed the same way.
+ *
+ *  Its one entry exists because `UI.describe.examples['passport-q1'].one`
+ *  (screenCopy.ts, C8 Task 10) is a citizen-authored EXAMPLE STORY —
+ *  tappable chip text the citizen may fill their own textarea with, not a
+ *  NextMove claim about any timeline — and it happens to contain a date
+ *  (`"applied 12 March 2026"`). Fabricating a `sources/manifest.json`
+ *  `sourced_dates` entry for a fictional example date would corrupt the
+ *  evidence base the manifest exists to protect (PRD §29); see the plan's
+ *  D5 for the two rejected alternatives (rewrite the example / drop the
+ *  date). Repo-owner sign-off: plan Open Question 1, RESOLVED 2026-09-08,
+ *  "add the scoped NUMERIC_EXEMPTIONS mechanism." */
+export const NUMERIC_EXEMPTIONS: { at: string; match: string; reason: string }[] = [
+  {
+    at: 'ui:describe.examples.passport-q1.one',
+    match: '12 March 2026',
+    reason:
+      'Illustrative example of CITIZEN-authored input, rendered as a tappable chip that fills the textarea. Not a '
+      + 'NextMove claim about any timeline and not attributable to NextMove — this scan exists to stop NextMove '
+      + 'asserting an unsourced date, and no assertion is made here. Fabricating a sources/manifest.json entry for '
+      + 'a fictional date would corrupt the evidence base PRD §29 built; see plan D5 for the two rejected '
+      + 'alternatives.',
+  },
+]
+
+const numericExemptKey = (at: string, match: string) => `${at} :: ${match}`
+const numericExempt = new Set(NUMERIC_EXEMPTIONS.map(e => numericExemptKey(e.at, e.match)))
+
+/** A NUMERIC_EXEMPTIONS entry whose exact matched string no longer appears
+ *  at its `at` location is dead permission — the same discipline
+ *  `staleExemptionFindings` already applies to `SAFETY_EXEMPTIONS`, keyed
+ *  on the literal matched text instead of a pattern id, since numeric
+ *  findings are not matched against a named `BannedPatternId`. */
+export function staleNumericExemptionFindings(strings: CopyString[]): string[] {
+  const byAt = new Map(strings.map(s => [s.at, s.text]))
+  return NUMERIC_EXEMPTIONS
+    .filter(e => {
+      const text = byAt.get(e.at)
+      return text === undefined || !text.includes(e.match)
+    })
+    .map(e => `NUMERIC_EXEMPTIONS["${e.at}" / "${e.match}"]: no longer matches that text at that location — remove it.`)
+}
+
 function matchRanges(re: RegExp, text: string): [number, number][] {
   return [...text.matchAll(re)].map(m => [m.index!, m.index! + m[0].length])
 }
@@ -321,6 +371,10 @@ export function numericFindings(strings: CopyString[]): string[] {
       const key = canonicalDate(m[0])
       const entry = manifest.sourced_dates[key]
       if (!entry) {
+        // D5 — NUMERIC_EXEMPTIONS, scoped to this exact (at, matched text)
+        // pair only. See its own doc comment above for why this is the one
+        // case this scan is allowed to stay silent on.
+        if (numericExempt.has(numericExemptKey(at, m[0]))) continue
         findings.push(`${at}: "${m[0]}" (canonical "${key}") has no sourced_dates entry in sources/manifest.json.`)
         continue
       }

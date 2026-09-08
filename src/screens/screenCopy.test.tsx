@@ -26,7 +26,7 @@ import { caseSnapshot, LOG_COPY, type Casefile } from '../domain/casefile'
 import { checkinOptionsFor } from '../domain/checkinOptions'
 import { fmtDay, fmtRemind } from '../ui/dates'
 import * as LABELS from './labels'
-import { SCREEN_COPY, UI, PASSPORT_COPY, SIR_COPY, type CopyLocation } from './screenCopy'
+import { SCREEN_COPY, UI, PASSPORT_COPY, VOTER_COPY, SIR_COPY, type CopyLocation } from './screenCopy'
 import { INTERACTION_GATED } from './interactionGated'
 import { Home } from './Home'
 import { OtherServices } from './OtherServices'
@@ -59,6 +59,42 @@ import { SaveOtpScreen } from '../templates/SaveOtpScreen'
 import { SaveNameScreen } from '../templates/SaveNameScreen'
 
 const noop = () => {}
+
+// C8 (Task 10, design note 11): "C8 authors NO new citizen-facing string,
+// and this task is where that is verified." Read once, at module load
+// (still "at test time", not a copy pasted into any test — the whole point
+// is that a hand-transcription slip in screenCopy.ts is caught by comparing
+// against the ACTUAL file, not a second hardcoded copy of it), and reused
+// by every test below that needs to check a string against the prototype.
+const PROTOTYPE = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'design', 'nextmove-v1-prototype.html'), 'utf8',
+)
+
+/** Extracts a `DESCRIBE_CTX` chain entry's `label` for the given `id` out of
+ *  the REAL prototype text (design note 5's own it.each requirement — "each
+ *  asserting against the string read out of design/nextmove-v1-
+ *  prototype.html at test time rather than a copy pasted into the test").
+ *  Some ids repeat across DESCRIBE_CTX chains with byte-identical text
+ *  (q2 at 1754/1757, voterQ1 at 1761/1765, voterAppealedRaw at
+ *  1762/1766/1769) — the first match is authoritative. */
+function describeCtxLabel(id: string): string {
+  const re = new RegExp(String.raw`\{id:'${id}',\s*label:(['"])((?:\\.|(?!\1).)*)\1`)
+  const m = PROTOTYPE.match(re)
+  if (!m) throw new Error(`DESCRIBE_CTX label for id "${id}" not found in the prototype`)
+  return m[2]
+}
+
+/** True when `template`'s literal (non-`{placeholder}`) parts appear, IN
+ *  ORDER and each following the last within the same line, somewhere in
+ *  `source` — used by design note 11's verbatim check for the four chip
+ *  aria-label templates and the discard-note template, the prototype's own
+ *  carve-out (it assembles these inline, e.g. `aria-label="Edit ${f.label}
+ *  ${f.value}"`, 3032, so the template string itself never appears whole). */
+function templateLiteralPartsMatch(template: string, source: string): boolean {
+  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = template.split(/\{[^}]+\}/).map(escapeRe).join('[^\\n]*?')
+  return new RegExp(pattern).test(source)
+}
 
 // -----------------------------------------------------------------------
 // Every authored answer-option Record that predates C3 and stays a single
@@ -293,6 +329,136 @@ describe('C3 screen copy passes the same content-safety scan as rule copy (§7)'
     ]
     for (const s of six) expect(typeof s).toBe('string')
     expect(new Set(six).size, six.join(' | ')).toBe(6)
+  })
+
+  // -----------------------------------------------------------------------
+  // C8 (docs/superpowers/plans/2026-09-08-c8-describe-it.md, Task 10): the
+  // describe/interpret/facts copy bucket, registered before any component
+  // that renders it exists (Tasks 11-15). See this file's own
+  // "SCREEN_COPY is the single definition site" describe block below for
+  // why the coverage sweep is expected to go red for these new subtrees
+  // until then — nothing here weakens that sweep.
+
+  it('the ui: bucket actually grew with the C8 describe-it entries (a sweep over an accidentally-unregistered tree is vacuously clean)', () => {
+    // task-10-brief.md RED item 1 (THIS task's own brief, C8's — not the C7
+    // one the check above and its own comment cite; same numbering,
+    // unrelated plans).
+    const ats = SCREEN_COPY.ui.map(c => c.at)
+    for (const at of [
+      'ui:describe.rowStrong',
+      'ui:describe.examples.passport-q1.one',
+      'ui:describe.examples.sir-q1.one',
+      'ui:interp.headline',
+      'ui:interp.spanPrefix',
+      'ui:interp.qLabel.q1',
+      'ui:unplaceable.lede',
+      'ui:facts.pickedUpKey',
+      'ui:facts.aadhaarRefused',
+      'ui:prepare.hintFilledUnreviewed',
+    ]) {
+      expect(ats, at).toContain(at)
+    }
+  })
+
+  it("D8: the interp framing paragraph transcribes the prototype's semicolon, not the spec's/PRD's em-dash paraphrase", () => {
+    // task-10-brief.md RED item 8 (D8, assertion 1 of 3).
+    expect(UI.interp.framingParagraph, 'D8 — transcribe the prototype, not the spec/PRD em-dash paraphrase').toContain('; the verified playbook does that')
+    expect(UI.interp.framingParagraph, 'D8 — transcribe the prototype, not the spec/PRD em-dash paraphrase').not.toContain(' — the verified playbook')
+  })
+
+  it("D8: the Aadhaar refusal transcribes the prototype's longer sentence", () => {
+    // task-10-brief.md RED item 8 (D8, assertion 2 of 3).
+    expect(UI.facts.aadhaarRefused, 'D8 — transcribe the prototype, not the spec/PRD shorter paraphrase').toMatch(/, and nothing here ever needs one\.$/)
+  })
+
+  it("D8: the fill-list key transcribes the prototype's semicolon, not FR-AI-04's em-dash paraphrase", () => {
+    // task-10-brief.md RED item 8 (D8, assertion 3 of 3).
+    expect(UI.prepare.fillListKey, 'D8 — transcribe the prototype, not the PRD em-dash paraphrase').toContain('text; please check them')
+  })
+
+  it('the unplaceable lede is registered as exactly one entry carrying all three of its sentences (design note 7)', () => {
+    expect(typeof UI.unplaceable.lede).toBe('string')
+    for (const sentence of [
+      "That's not a problem with what you wrote.",
+      "NextMove only matches words against its verified categories, and it couldn't do that safely here.",
+      'Rather than guess, pick the closest option yourself.',
+    ]) {
+      expect(
+        UI.unplaceable.lede,
+        'the lede must stay ONE whole paragraph — splitting it would let its load-bearing first sentence drift out of the guardrail scan\'s sight',
+      ).toContain(sentence)
+    }
+  })
+
+  it('the Aadhaar refusal is registered exactly once across the flattened ui bucket, rendered from two call sites (design note 8)', () => {
+    const occurrences = SCREEN_COPY.ui.filter(c => c.text === UI.facts.aadhaarRefused).map(o => o.at)
+    expect(occurrences, 'must be registered once, not duplicated across two entries').toEqual(['ui:facts.aadhaarRefused'])
+  })
+
+  it('CAPTION_TEMPLATES includes the C8 discard-note template and the four chip aria-label templates', () => {
+    // task-10-brief.md RED item: CAPTION_TEMPLATES/CAPTION_SUBSTITUTIONS
+    // coverage. The full key-equality check lives in the coverage-holds-
+    // by-construction describe block below, alongside every other
+    // CAPTION_TEMPLATES entry (same split the C7 equivalent test uses).
+    for (const key of [
+      'ui:interp.discardNote',
+      'ui:facts.editValueAria',
+      'ui:facts.removeValueAria',
+      'ui:facts.editLabel',
+      'ui:facts.saveLabel',
+    ]) {
+      expect(CAPTION_TEMPLATES.has(key), key).toBe(true)
+    }
+  })
+
+  it('UI.describe.examples is a keyed object per entry screen, never an array (design note 4a)', () => {
+    for (const [screenId, examples] of Object.entries(UI.describe.examples)) {
+      expect(Array.isArray(examples), screenId).toBe(false)
+    }
+    const exampleAts = SCREEN_COPY.ui.filter(c => c.at.startsWith('ui:describe.examples.')).map(c => c.at)
+    expect(exampleAts.length, 'eight example strings across six entry screens').toBe(8)
+    for (const at of exampleAts) {
+      expect(
+        at,
+        '`CopyTree` is `{ [key: string]: string | CopyTree }`; an array here is a compile error, and widening the '
+        + 'type would add an index-addressed `at` convention to a scheme every other bucket addresses by name',
+      ).not.toMatch(/\.\d+(\.|$)/)
+    }
+  })
+
+  it.each([
+    ['q1'], ['q2'], ['voterEntry'], ['voterQ1'], ['voterAppealedRaw'], ['sirQ1'],
+  ] as const)("UI.interp.qLabel.%s is byte-identical to DESCRIBE_CTX's own label (prototype 1753-1772, design note 5)", (key) => {
+    expect(UI.interp.qLabel[key]).toBe(describeCtxLabel(key))
+  })
+
+  it.each([
+    ['q2', PASSPORT_COPY.q2.headline],
+    ['voterQ1', VOTER_COPY.q1.headline],
+    ['sirQ1', SIR_COPY.q1.headline],
+  ] as const)('UI.interp.qLabel.%s must NOT be replaced by the similarly-worded screen headline', (key, headline) => {
+    expect(
+      UI.interp.qLabel[key],
+      "these read almost the same and are not the same ('…follow up?' vs '…follow up on this?', 'What is' vs "
+      + '"What\'s"); pointing a confirm card at a screen headline makes the card change when the headline is edited',
+    ).not.toBe(headline)
+  })
+
+  it('design note 11: every new UI.describe/UI.interp/UI.unplaceable/UI.facts leaf appears verbatim in the prototype (C8 authors no new citizen-facing string)', () => {
+    const newBucketPrefixes = ['ui:describe.', 'ui:interp.', 'ui:unplaceable.', 'ui:facts.']
+    const entries = SCREEN_COPY.ui.filter(c => newBucketPrefixes.some(p => c.at.startsWith(p)))
+    expect(entries.length).toBeGreaterThan(0)
+    for (const c of entries) {
+      if (CAPTION_TEMPLATES.has(c.at)) {
+        // The four chip aria-label templates + the discard note: the
+        // prototype assembles these inline (e.g. `aria-label="Edit
+        // ${f.label} ${f.value}"`, 3032), so the template string itself
+        // never appears whole — assert its literal parts appear, in order.
+        expect(templateLiteralPartsMatch(c.text, PROTOTYPE), c.at).toBe(true)
+        continue
+      }
+      expect(PROTOTYPE, c.at).toContain(c.text)
+    }
   })
 
   const TEXT_FILE_RE = /\.(ts|tsx|json|css|html?|md|txt|svg)$/i
@@ -935,6 +1101,19 @@ const CAPTION_TEMPLATES = new Set([
   'ui:saveOtp.resendWaitMany',
   'ui:account.casefilesOne',
   'ui:account.casefilesMany',
+  // C8 (docs/superpowers/plans/2026-09-08-c8-describe-it.md, Task 10 design
+  // notes 6 and 8) — registered here ahead of Tasks 12/13 building
+  // InterpConfirmScreen/FactChips (same incremental pattern as C7's
+  // saveOtp.lede/resendWaitMany and account.casefilesOne/Many above, which
+  // sat here with a key-equality-only entry in CAPTION_SUBSTITUTIONS before
+  // their own mounting screens existed). This REOPENS the "none remain
+  // gapped" claim just above, for these five only — Tasks 12 and 13 close
+  // it the same way Tasks 12/15 already did for the C7 entries.
+  'ui:interp.discardNote', // interpolates the first discarded question's own label, lowercased, for {question}
+  'ui:facts.editValueAria', // interpolates the fact's label/value for {label}/{value} — a chip's NORMAL state
+  'ui:facts.removeValueAria', // interpolates the fact's label/value for {label}/{value} — a chip's NORMAL state
+  'ui:facts.editLabel', // interpolates the fact's label for {label} — a chip's EDIT-MODE state (also INTERACTION_GATED)
+  'ui:facts.saveLabel', // interpolates the fact's label for {label} — a chip's EDIT-MODE state (also INTERACTION_GATED)
 ])
 
 // `INTERACTION_GATED` itself (design note 4a: entries no STATIC mount can
@@ -1113,13 +1292,31 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     'ui:saveOtp.resendWaitMany': UI.saveOtp.resendWaitMany.replace('{n}', '5'),
     'ui:account.casefilesOne': UI.account.casefilesOne.replace('{n}', '1'),
     'ui:account.casefilesMany': UI.account.casefilesMany.replace('{n}', '2'),
+    // C8 (Task 10 registered these five; Tasks 12/13 close the render-check
+    // gap once InterpConfirmScreen/FactChips exist to render against — see
+    // CAPTION_TEMPLATES' own comment above these five keys). Substituted
+    // forms only, no render assertion added below yet, same "key-equality
+    // now, render check later" incremental step the C7 entries above took
+    // before their own mounting screens existed.
+    'ui:interp.discardNote': UI.interp.discardNote.replace('{question}', 'have you already appealed this decision'),
+    'ui:facts.editValueAria': UI.facts.editValueAria.replace('{label}', 'File Number').replace('{value}', 'BN1068334517807'),
+    'ui:facts.removeValueAria': UI.facts.removeValueAria.replace('{label}', 'File Number').replace('{value}', 'BN1068334517807'),
+    'ui:facts.editLabel': UI.facts.editLabel.replace('{label}', 'File Number'),
+    'ui:facts.saveLabel': UI.facts.saveLabel.replace('{label}', 'File Number'),
   }
 
   it('CAPTION_SUBSTITUTIONS covers exactly CAPTION_TEMPLATES, and each substituted form actually renders', async () => {
     // NOTE (C7 Task 10/12/15): the key-equality check below covers all of
     // CAPTION_TEMPLATES — every entry, including 'ui:account.casefilesOne'/
     // 'casefilesMany', now ALSO has a real render assertion following it;
-    // none remain gapped.
+    // none of the C7 entries remain gapped.
+    // NOTE (C8 Task 10): the five 'ui:interp.discardNote'/'ui:facts.*'
+    // entries added above DO reopen the gap, deliberately — their mounting
+    // components (InterpConfirmScreen, FactChips) don't exist until Tasks
+    // 12/13. The key-equality pin below still holds (CAPTION_SUBSTITUTIONS
+    // supplies a substituted STRING for all five), it is only the render
+    // assertion that is deferred, same incremental step the C7 entries took
+    // before their own screens existed.
     expect(Object.keys(CAPTION_SUBSTITUTIONS).sort()).toEqual([...CAPTION_TEMPLATES].sort())
 
     const { container: trustContainer } = render(

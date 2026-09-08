@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   BANNED_PATTERNS, SAFETY_EXEMPTIONS, CAUSE_STATES, COPY_FIELDS,
+  NUMERIC_EXEMPTIONS, staleNumericExemptionFindings,
   copyStrings, extraCopy, bannedFindings, staleExemptionFindings,
   numericFindings, retiredActionFindings, causeStateFindings,
 } from './contentSafety'
@@ -9,6 +10,14 @@ import { SAFETY_NET_TITLE } from './citations'
 import { passportPlaybook, PASSPORT_STAGE_SHORT } from '../passportPlaybook'
 import { voterPlaybook } from '../voterPlaybook'
 import { sirPlaybook, sirCopyExtras } from '../sirPlaybook'
+// UI is screens/-owned application data, not guardrail harness — importing
+// it here is the same direction contentSafety.test.ts already imports
+// passportPlaybook/voterPlaybook/sirPlaybook from playbooks/ in (a TEST
+// file reading real, shipped copy to prove the mechanism against it, not
+// the harness reaching INTO application code). guardrails/isolation.test.ts
+// only restricts the reverse direction (application code importing
+// guardrails/), and only for non-test files — see that file's own header.
+import { UI } from '../../screens/screenCopy'
 
 const rule = (id: string, over: Partial<PlaybookRule> = {}): PlaybookRule => ({
   id,
@@ -249,6 +258,69 @@ describe('numericFindings (manifest-backed allowlists)', () => {
       ...copyStrings(sirPlaybook), ...sirCopyExtras(),
     ]
     expect(numericFindings(all)).toEqual([])
+  })
+})
+
+// D5 (C8, docs/superpowers/plans/2026-09-08-c8-describe-it.md, Task 10) —
+// the one exemption this project has ever granted from the numeric scan.
+describe('NUMERIC_EXEMPTIONS (D5)', () => {
+  it('carries exactly one entry, with a reason that says what is actually true', () => {
+    expect(NUMERIC_EXEMPTIONS).toHaveLength(1)
+    const [entry] = NUMERIC_EXEMPTIONS
+    expect(entry.at).toBe('ui:describe.examples.passport-q1.one')
+    expect(entry.match).toBe('12 March 2026')
+    for (const clause of [
+      'CITIZEN-authored input',
+      'Not a NextMove claim',
+      'Fabricating a sources/manifest.json entry',
+    ]) {
+      expect(entry.reason, clause).toContain(clause)
+    }
+  })
+
+  it('a date identical to the real example trips the scan when it is NOT covered by any exemption (RED verification — what an empty NUMERIC_EXEMPTIONS would look like for this text)', () => {
+    // Same matched text as the real exemption, but at a location
+    // NUMERIC_EXEMPTIONS does not name — proving the scan's DEFAULT
+    // behaviour (absent an exemption) is to fire, exactly as it does for
+    // every other unsourced date.
+    const f = numericFindings([{ at: 'toy:toy-1.text', text: 'applied 12 March 2026' }])
+    expect(f.join('\n')).toMatch(/12 March 2026.*no sourced_dates entry/i)
+  })
+
+  it('is silent at the real exempted location, on the real registered example text (the entry present)', () => {
+    const real = UI.describe.examples['passport-q1'].one
+    expect(real).toContain('12 March 2026') // sanity: still the string the exemption targets
+    expect(numericFindings([{ at: 'ui:describe.examples.passport-q1.one', text: real }])).toEqual([])
+  })
+
+  it('does not silence a DIFFERENT date at the SAME exempted location', () => {
+    const f = numericFindings([{ at: 'ui:describe.examples.passport-q1.one', text: 'applied 4 April 2026' }])
+    expect(f.join('\n')).toMatch(/4 April 2026.*no sourced_dates entry/i)
+  })
+
+  it('does not silence the SAME date at a DIFFERENT location', () => {
+    const f = numericFindings([{ at: 'ui:describe.examples.passport-q1.two', text: 'applied 12 March 2026' }])
+    expect(f.join('\n')).toMatch(/12 March 2026.*no sourced_dates entry/i)
+  })
+})
+
+describe('staleNumericExemptionFindings', () => {
+  it('flags an exemption that no longer matches anything (fixture-driven — a guardrail that has never been shown to fail is not a guardrail)', () => {
+    const findings = staleNumericExemptionFindings([{ at: 'toy:toy-1.text', text: 'Clean copy, no date here.' }])
+    expect(findings.length).toBe(NUMERIC_EXEMPTIONS.length)
+    expect(findings.join('\n')).toMatch(/no longer matches/i)
+  })
+
+  it('the real ui:describe.examples.passport-q1.one exemption still matches the real shipped copy (not stale)', () => {
+    const real = UI.describe.examples['passport-q1'].one
+    const strings = [{ at: 'ui:describe.examples.passport-q1.one', text: real }]
+    expect(staleNumericExemptionFindings(strings)).toEqual([])
+
+    // And with that string's text swapped for something that doesn't say
+    // "12 March 2026" at all, the exemption WOULD be flagged — proving the
+    // check actually bites, not just that it is vacuously satisfied.
+    const nowStale = staleNumericExemptionFindings([{ at: 'ui:describe.examples.passport-q1.one', text: 'Clean copy with no date at all.' }])
+    expect(nowStale.join('\n')).toMatch(/no longer matches/i)
   })
 })
 
