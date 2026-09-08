@@ -1398,7 +1398,24 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       // Thin arm over D4's pure `removeFact`. No-op with no active
       // interpretation.
       if (!s.interp) return s
-      return { ...s, interp: { ...s.interp, facts: removeFact(s.interp.facts, a.index) } }
+      // fix round 1, Important finding: also clear factEditIdx/factEditVal —
+      // `factEditIdx` is a plain array index into `interp.facts`, and
+      // removing a fact at a LOWER index than the one currently being edited
+      // shifts every later fact down by one, so a stale factEditIdx would
+      // silently reattach the open editor to a DIFFERENT fact than the one
+      // the citizen is actually looking at (with only two facts left, the
+      // index goes fully out of range instead — milder, same root cause).
+      // Matches the same reset-rather-than-shift-adjust convention this
+      // codebase already established at INTERPRETATION_DONE and the
+      // INTERPRETATION_FAILED reset site above for this exact stale-index
+      // hazard class: removing ANY fact while a DIFFERENT fact is being
+      // edited closes the open editor (its unsaved draft is discarded)
+      // rather than risking it silently reattaching to the wrong fact.
+      return {
+        ...s,
+        interp: { ...s.interp, facts: removeFact(s.interp.facts, a.index) },
+        factEditIdx: null, factEditVal: '',
+      }
     }
     case 'APPLY_INTERPRETATION': {
       // Design note 1: everything this arm needs is already on

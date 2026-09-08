@@ -1823,6 +1823,34 @@ describe('SET_FACT_EDIT / SET_FACT_EDIT_VAL / SAVE_FACT_EDIT / REMOVE_FACT (D7, 
     expect(s.interp?.facts).toEqual([otherFact])
   })
 
+  it(
+    'REMOVE_FACT also resets factEditIdx/factEditVal — fix round 1, Important finding. factEditIdx is a plain ' +
+    'array index into interp.facts; removing a fact at a LOWER index than the one currently being edited shifts ' +
+    'every later fact down by one, so a stale factEditIdx would silently point at a DIFFERENT fact than the one ' +
+    'the citizen is actually looking at. Reviewer\'s exact repro: three facts [A, B, C], open edit mode on B ' +
+    '(index 1), type a draft value, then Remove A (index 0) — facts become [B, C], and without this fix a ' +
+    'subsequent Save would commit B\'s draft onto C (now at index 1) and stamp edited:true on it, a false ' +
+    'provenance record. The fix clears (not shift-adjusts) factEditIdx/factEditVal, matching the same convention ' +
+    'already established at INTERPRETATION_DONE and the INTERPRETATION_FAILED reset site above.',
+    () => {
+      const factB: Fact = { kind: 'note', refType: 'date_applied', label: 'Date Applied', value: '12 June 2026', fills: null }
+      const factC: Fact = { kind: 'note', refType: 'date_other', label: 'Another Date', value: '30 July 2026', fills: null }
+      const opened = r(withInterp([FIXTURE_FACT, factB, factC]), { type: 'SET_FACT_EDIT', index: 1 })
+      const typed = r(opened, { type: 'SET_FACT_EDIT_VAL', value: 'a completely different draft' })
+      const removed = r(typed, { type: 'REMOVE_FACT', index: 0 })
+      // (a) edit mode closed — no stale index left armed against the shifted array.
+      expect(removed.factEditIdx).toBeNull()
+      expect(removed.factEditVal).toBe('')
+      expect(removed.interp?.facts).toEqual([factB, factC])
+      // (b) a Save dispatched after the remove must be a no-op (SAVE_FACT_EDIT's own
+      // `factEditIdx === null` guard) — C's value must survive untouched and unedited,
+      // not silently overwritten with B's draft the way the reviewer found.
+      const savedAfter = r(removed, { type: 'SAVE_FACT_EDIT' })
+      expect(savedAfter.interp?.facts).toEqual([factB, factC])
+      expect(savedAfter.interp?.facts[1]).toEqual(factC)
+    },
+  )
+
   it('SET_FACT_EDIT / SAVE_FACT_EDIT / REMOVE_FACT are no-ops when there is no active interp', () => {
     expect(r(initialSession, { type: 'SET_FACT_EDIT', index: 0 })).toEqual(initialSession)
     expect(r(initialSession, { type: 'SAVE_FACT_EDIT' })).toEqual(initialSession)
