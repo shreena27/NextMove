@@ -1,5 +1,17 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { describeItEnabled, interpreterId } from './featureFlags'
+
+// vitest's `unstubEnvs` config defaults to false (see vite.config.ts -- not
+// set there, and changing that is out of this task's scope), so
+// `vi.stubEnv` calls are not auto-reverted between tests or files. Every
+// assertion below stubs its own precondition immediately before checking
+// it, so nothing in this file's own run depends on this -- but without an
+// explicit revert, the file would finish with VITE_DESCRIBE_IT/
+// VITE_INTERPRETER left at their last-stubbed values, leaking into any
+// later test file that shares a worker and doesn't stub its own value.
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
 
 describe('describeItEnabled', () => {
   it('is false when VITE_DESCRIBE_IT is unset -- the feature ships OFF; an unset variable must never enable it', () => {
