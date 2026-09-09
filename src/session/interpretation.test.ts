@@ -17,11 +17,13 @@ import { DESCRIBE_CHAINS } from '../domain/interpret'
 import { extractFacts } from '../domain/interpretFacts'
 import { simProvider } from '../domain/simInterpreter'
 import { passportPlaybook } from '../playbooks/passportPlaybook'
+import { MODEL_ID, QuotaError } from './geminiInterpreter'
 import type { InterpretationFailure } from './interpretation'
 import { runInterpretation, provenanceLabel, INTERPRETATION_TIMEOUT_MS } from './interpretation'
 
 afterEach(() => {
   vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
@@ -169,15 +171,16 @@ describe("runInterpretation — D17's pin: provenance is captured at interpretat
 })
 
 // ---------------------------------------------------------------------------
-// Design note 8: 'quota' is inert scaffolding, declared now, wired in Task 18
+// Design note 8: 'quota' was inert scaffolding through Task 17; Task 18 wires
+// the one real producer.
 
-describe("runInterpretation — 'quota' is inert scaffolding (design note 8, I7): declared now, nothing produces it yet", () => {
+describe("runInterpretation — 'quota' (design note 8, I7): declared in Task 5, wired in Task 18", () => {
   it('is a legal InterpretationFailure member (type-level)', () => {
     const failure: InterpretationFailure = 'quota'
     expect(failure).toBe('quota')
   })
 
-  it("grep-style pin: no non-test source file under src/ contains reason: 'quota' yet — Task 18 supplies the ONLY real producer (the Gemini 429 -> quota mapping)", () => {
+  it("grep-style pin, UPDATED for Task 18: exactly ONE non-test source file under src/ contains reason: 'quota' — session/interpretation.ts itself, this module's own QuotaError -> 'quota' mapping just above. Through Task 17 this pin asserted the string appeared NOWHERE; Task 18 is the one task explicitly named (design note 8) as the sole real producer, so the pin now asserts there is exactly one producer, not zero — a second one appearing anywhere else would still be a regression this test catches", () => {
     const srcRoot = join(dirname(fileURLToPath(import.meta.url)), '..') // src/session/interpretation.test.ts -> src/
     const files: string[] = []
     const walk = (dir: string): void => {
@@ -195,7 +198,28 @@ describe("runInterpretation — 'quota' is inert scaffolding (design note 8, I7)
     walk(srcRoot)
     expect(files.length).toBeGreaterThan(0) // sanity: the walk itself is not vacuous
     const offenders = files.filter(f => /reason:\s*'quota'/.test(readFileSync(f, 'utf8')))
-    expect(offenders).toEqual([])
+    expect(offenders).toEqual([join(srcRoot, 'session', 'interpretation.ts')])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 18 design note 8's one wire-up: a Gemini 429 (QuotaError) maps to
+// reason: 'quota' specifically, not the generic 'failed'. Tested against a
+// mocked PROVIDER that throws QuotaError, never a real Gemini call or a real
+// exhausted quota — the adapter's own 429 -> QuotaError mapping is pinned
+// separately in geminiInterpreter.test.ts.
+
+describe("runInterpretation — Task 18's 429 mapping: a thrown QuotaError maps to reason: 'quota'", () => {
+  it("a provider that throws QuotaError -> { ok: false, reason: 'quota' }", async () => {
+    vi.stubEnv('VITE_DESCRIBE_IT', 'on')
+    vi.spyOn(simProvider, 'interpret').mockRejectedValue(new QuotaError('quota exceeded (test double)'))
+    await expect(runInterpretation('passport-q1', {}, PASSPORT_TEXT)).resolves.toEqual({ ok: false, reason: 'quota' })
+  })
+
+  it('a DIFFERENT thrown error (same shape, not QuotaError) still maps to the generic \'failed\' — the mapping is type-specific, not "any throw during interpretation is now quota"', async () => {
+    vi.stubEnv('VITE_DESCRIBE_IT', 'on')
+    vi.spyOn(simProvider, 'interpret').mockRejectedValue(new Error('quota exceeded (test double)'))
+    await expect(runInterpretation('passport-q1', {}, PASSPORT_TEXT)).resolves.toEqual({ ok: false, reason: 'failed' })
   })
 })
 
@@ -246,13 +270,53 @@ describe('runInterpretation — timeout (design note 6)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Fail-closed: provider registry (design note 7)
+// Provider registry (design note 7) — UPDATED for Task 18. Through Task 17,
+// VITE_INTERPRETER=gemini resolved to PROVIDERS.gemini === null, so this
+// spot pinned the resulting { ok: false, reason: 'no-provider' }. Task 18
+// registers the real geminiProvider, so that branch is no longer reachable
+// through this id — this test now pins the OPPOSITE fact (the real adapter
+// really is wired end to end), with a mocked fetch standing in for Gemini,
+// never a real network call.
 
-describe('runInterpretation — provider registry (design note 7)', () => {
-  it("VITE_INTERPRETER=gemini before Task 18 -> { ok: false, reason: 'no-provider' }, no throw", async () => {
+describe('runInterpretation — provider registry (design note 7): the real Gemini adapter is registered by Task 18', () => {
+  it("VITE_INTERPRETER=gemini now resolves the REAL geminiProvider — a mocked fetch drives a normal successful result end to end, and the gated result's provenance is gemini:${MODEL_ID}, not 'no-provider'", async () => {
     vi.stubEnv('VITE_DESCRIBE_IT', 'on')
     vi.stubEnv('VITE_INTERPRETER', 'gemini')
-    await expect(runInterpretation('passport-q1', {}, PASSPORT_TEXT)).resolves.toEqual({ ok: false, reason: 'no-provider' })
+    vi.stubEnv('VITE_GEMINI_API_KEY', 'test-key-not-real')
+    // Span is 3 tokens ('was'/'rejected'/'outright'), clearing the REAL
+    // production floor (geminiProvider.minSpanTokens === 3, D3) — a
+    // 2-token span like 'rejected outright' alone would clear the
+    // simulator's floor (1) but NOT this one, which is exactly the
+    // distinction D3 exists to enforce; picking a floor-clearing span here
+    // keeps this test about registry wiring, not an accidental span-gate
+    // rejection.
+    const inner = {
+      mappings: [{ questionId: 'q1', value: 'adverse', span: 'was rejected outright' }],
+      facts: [],
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(inner) }] } }] }),
+      })),
+    )
+    const result = await runInterpretation('passport-q1', {}, PASSPORT_TEXT)
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.interp.mappings).toEqual([
+        { questionId: 'q1', value: 'adverse', span: 'was rejected outright', optionValues: expect.any(Array) },
+      ])
+      expect(result.interp.provenance).toBe(`gemini:${MODEL_ID}`)
+    }
+  })
+
+  it('VITE_INTERPRETER=gemini with no VITE_GEMINI_API_KEY configured fails closed to { ok: false, reason: \'failed\' } (the adapter\'s own missing-key guard, caught by the whole-body try/catch), not a thrown/rejected promise', async () => {
+    vi.stubEnv('VITE_DESCRIBE_IT', 'on')
+    vi.stubEnv('VITE_INTERPRETER', 'gemini')
+    vi.stubEnv('VITE_GEMINI_API_KEY', undefined)
+    await expect(runInterpretation('passport-q1', {}, PASSPORT_TEXT)).resolves.toEqual({ ok: false, reason: 'failed' })
   })
 })
 

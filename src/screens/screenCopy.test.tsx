@@ -1899,11 +1899,11 @@ function functionBody(source: string, header: string): string {
 }
 
 describe('C8 Task 17: the repo-wide scope-exclusion pins (design note 6)', () => {
-  it('no `fetch` anywhere in non-test src/ — there is no live Gemini call before Task 18, and the simulator is the only provider registered', () => {
+  it('`fetch` is called from exactly ONE non-test file, `geminiInterpreter.ts` (Task 18) — UPDATED from Task 17\'s "no fetch anywhere" pin now that the real adapter exists. This is an exhaustive enumeration, not a bare "at least the one we expect": a second file calling `fetch` would mean a second, unaccounted-for network integration exists, which is exactly the kind of drift this pin exists to catch', () => {
     const offenders = appSourceFiles()
       .filter(f => /\bfetch\s*\(/.test(stripComments(readFileSync(f, 'utf8'))))
       .map(relPath)
-    expect(offenders, offenders.join('\n')).toEqual([])
+    expect(offenders, offenders.join('\n')).toEqual(['src/session/geminiInterpreter.ts'])
   })
 
   it('`gateInterpretation` is called from exactly TWO places, both named — the `__gated` brand stops a provider forging a gated result; THIS pin is what stops anyone skipping the gate. Two mechanisms, and neither substitutes for the other', () => {
@@ -1961,15 +1961,17 @@ describe('C8 Task 17: the repo-wide scope-exclusion pins (design note 6)', () =>
   it('`session.ts` reads no `import.meta.env` at all — the reducer is pure, and C3\'s fix removed the one design that would have needed it', () => {
     const sessionSrc = stripComments(readFileSync(join(srcRoot(), 'session', 'session.ts'), 'utf8'))
     expect(sessionSrc).not.toMatch(/import\.meta\.env/)
-    // The whole repo, for good measure: exactly two modules may read it, and
-    // both read it LAZILY inside a function (featureFlags.ts's own header
-    // note explains why a module-scope read freezes the value before any test
-    // can set it).
+    // The whole repo, for good measure: UPDATED for Task 18 — exactly THREE
+    // modules may read it now (`geminiInterpreter.ts` joins the previous two
+    // for its own `VITE_GEMINI_API_KEY` read), and all three read it LAZILY
+    // inside a function (featureFlags.ts's own header note explains why a
+    // module-scope read freezes the value before any test can set it;
+    // geminiInterpreter.ts's `interpret()` follows the identical discipline).
     const readers = appSourceFiles()
       .filter(f => /import\.meta\.env/.test(stripComments(readFileSync(f, 'utf8'))))
       .map(relPath)
       .sort()
-    expect(readers).toEqual(['src/session/featureFlags.ts', 'src/session/supabase.ts'])
+    expect(readers).toEqual(['src/session/featureFlags.ts', 'src/session/geminiInterpreter.ts', 'src/session/supabase.ts'])
   })
 
   it("no `console.*` call in non-test src/ carries `text`, `span` or `value` (exclusion 9) — the citizen's own words, the model's justifying span and an extracted fact value must never reach a log", () => {

@@ -22,6 +22,7 @@ import type {
 import { DESCRIBE_CHAINS } from '../domain/interpret'
 import { gateInterpretation } from '../domain/interpretGates'
 import { simProvider } from '../domain/simInterpreter'
+import { MODEL_ID, QuotaError, geminiProvider } from './geminiInterpreter'
 import type { InterpreterId } from './featureFlags'
 import { describeItEnabled, interpreterId } from './featureFlags'
 
@@ -47,13 +48,15 @@ export type InterpretationFailure = 'disabled' | 'no-chain' | 'no-provider' | 'f
  *  provider that never resolves, under fake timers. */
 export const INTERPRETATION_TIMEOUT_MS = 15000
 
-/** Design note 7: a plain object, one entry today. An unregistered id (or
- *  today's only other member, `'gemini'`, before Task 18 registers the real
- *  adapter) resolves to `null`, which `runInterpretation` turns into a
- *  fail-closed `'no-provider'` result rather than a crash. */
+/** Design note 7: a plain object. Task 18 registers the real adapter here —
+ *  both members are non-null now, so `'no-provider'` is currently
+ *  unreachable through this map for either legal `InterpreterId`. The
+ *  `| null` return type stays (an unregistered/misconfigured id still fails
+ *  closed rather than crashing) as defensive scaffolding for a future third
+ *  provider, not as dead code to remove. */
 const PROVIDERS: Record<InterpreterId, InterpreterProvider | null> = {
   sim: simProvider,
-  gemini: null,
+  gemini: geminiProvider,
 }
 
 /** D17: captured HERE, at interpretation time, and carried onto the gated
@@ -65,12 +68,13 @@ const PROVIDERS: Record<InterpreterId, InterpreterProvider | null> = {
  *  only place that reads a provider's `id` for provenance purposes. */
 export function provenanceLabel(provider: InterpreterProvider): string {
   if (provider.id === 'sim') return 'simulated (local matcher)'
-  // Task 18 wires the real `gemini:${MODEL_ID} prompt:${PROMPT_VERSION}`
-  // label once the Gemini adapter (and its MODEL_ID/PROMPT_VERSION
-  // constants) exist. Unreachable today: PROVIDERS above has no 'gemini'
-  // entry yet, so runInterpretation never resolves a provider with this id
-  // before Task 18 registers one.
-  throw new Error(`provenanceLabel: unimplemented provider id "${provider.id}"`)
+  // Task 18, Open Question 2 (resolved to the simpler form): just
+  // `gemini:${MODEL_ID}`, no `prompt:${PROMPT_VERSION}` field. Nothing in
+  // this codebase versions prompts yet, and an always-`v1` field would be
+  // noise in a record whose whole purpose is to be true and legible later —
+  // add a prompt-version segment here the day prompts actually start
+  // changing, not before.
+  return `gemini:${MODEL_ID}`
 }
 
 /** Shape-validates a provider's raw response BEFORE it is ever handed to the
@@ -214,7 +218,14 @@ export async function runInterpretation(
       provenanceLabel(provider),
     )
     return { ok: true, interp }
-  } catch {
+  } catch (err) {
+    // Design note 8's one wire-up: a Gemini 429 throws the typed QuotaError
+    // (geminiInterpreter.ts), and ONLY that error type maps to the
+    // pre-declared 'quota' reason (spec §2: quota exhaustion hides the entry
+    // row rather than breaking it). Every other throw — a network error, a
+    // malformed payload, a timeout, a broken chain resolver — falls through
+    // to the generic 'failed', unchanged from before this task.
+    if (err instanceof QuotaError) return { ok: false, reason: 'quota' }
     return { ok: false, reason: 'failed' }
   }
 }
