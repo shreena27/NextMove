@@ -3,20 +3,25 @@
 // the production launch bar; spec §7 asks for "fixed real phrasings per
 // service with expected mappings, run on every prompt/model change." This
 // module ships the harness itself — a fixture-row type and a runner that
-// reports per-question agreement — plus the example stories already shown
-// to citizens (`screenCopy.ts`'s `UI.describe.examples`) as SEED rows.
+// reports per-question agreement. The SEED rows built from the example
+// stories already shown to citizens (`screenCopy.ts`'s `UI.describe.examples`)
+// live in `evalHarness.test.ts` (`SEED_EVAL_ROWS`), not here — whole-branch
+// review (2026-09-09 fix wave), Finding 4: building them needs `UI` from
+// `../screens/screenCopy`, and `session/` code must never import from
+// `screens/` (this codebase's Global Constraints, docs/superpowers/plans/
+// 2026-09-08-c8-describe-it.md); nothing at runtime reads `SEED_EVAL_ROWS`,
+// only the test file that proves the harness runs end to end.
 //
 // What this module deliberately does NOT ship (scope exclusion 8, and the
 // task brief's own instruction): a corpus of REAL phrasings gathered against
-// a live Gemini, and a published agreement threshold. `SEED_EVAL_ROWS`
-// below is checked against `simProvider` only — the simulator agreeing with
-// its own (empirically observed) output proves the HARNESS runs correctly;
-// it is not, and cannot be, a passed launch bar. See this task's own report
-// for that stated plainly.
+// a live Gemini, and a published agreement threshold. `SEED_EVAL_ROWS` is
+// checked against `simProvider` only — the simulator agreeing with its own
+// (empirically observed) output proves the HARNESS runs correctly; it is
+// not, and cannot be, a passed launch bar. See this task's own report for
+// that stated plainly.
 import type { DescribeEntryScreenId, InterpreterProvider } from '../domain/interpret'
 import { DESCRIBE_CHAINS } from '../domain/interpret'
 import { resolveOptionValues } from '../domain/interpretGates'
-import { UI } from '../screens/screenCopy'
 
 /** One eval fixture: a citizen-shaped story, the entry screen it was typed
  *  on, and the mapping(s) a correct read of it should produce. Exactly the
@@ -91,67 +96,12 @@ export async function runEval(rows: readonly EvalFixtureRow[], provider: Interpr
   return { rows: rows.length, perQuestion }
 }
 
-/** The expected mapping for each of `UI.describe.examples`'s eight example
- *  stories, keyed the same way (`screenId` -> ordinal key `one`/`two`).
- *  These are NOT invented — they are the simulator's own empirically
- *  observed output for each story, determined by actually calling
- *  `simulateInterpretation` against them (design note 6: "the same way
- *  Task 17's own implementer verified simulator behavior empirically"), not
- *  read off `simInterpreter.ts`'s rule table by eye. `'passport-q2'.two` is
- *  the story that trips the simulator's OWN documented deliberate flaw
- *  (`simInterpreter.ts`'s "informal" agent/patient-confusion rule) — its
- *  expected value here is `'informal'`, the simulator's actual (flawed)
- *  read, NOT the honest human read of the sentence. That is deliberate: a
- *  seed row's `expected` records what a CORRECTLY FUNCTIONING copy of the
- *  fixture's own provider produces, so `SEED_EVAL_ROWS` run against
- *  `simProvider` proves the harness computes agreement correctly. It is not
- *  a claim about what Gemini should produce for that story — a real Gemini
- *  eval corpus (which this module does not ship) would need its OWN
- *  expected values, independently derived, most likely the honest read
- *  rather than the simulator's known flaw. */
-const EXPECTED_BY_SCREEN_KEY: Record<string, Record<string, { questionId: string; value: string }[]>> = {
-  'passport-q1': {
-    one: [
-      { questionId: 'q1', value: 'contacted_incomplete' },
-      { questionId: 'q2', value: 'informal' },
-    ],
-    two: [],
-  },
-  'passport-q2': {
-    one: [{ questionId: 'q2', value: 'informal' }],
-    two: [{ questionId: 'q2', value: 'informal' }],
-  },
-  'voter-entry': {
-    one: [
-      { questionId: 'voterEntry', value: 'applied' },
-      { questionId: 'voterQ1', value: 'decision' },
-      { questionId: 'voterAppealedRaw', value: 'none' },
-    ],
-  },
-  'voter-q1': {
-    one: [{ questionId: 'voterQ1', value: 'no_word' }],
-  },
-  'voter-q2': {
-    one: [{ questionId: 'voterAppealedRaw', value: 'pending' }],
-  },
-  'sir-q1': {
-    one: [{ questionId: 'sirQ1', value: 'roll_absent' }],
-  },
-}
-
-/** Seed rows (design note 6): the eight example stories already shown to
- *  citizens (`screenCopy.ts`'s `UI.describe.examples`), built by reading
- *  their TEXT live off that object (never duplicated as a second copy of
- *  the strings, so this module can never drift from what a citizen actually
- *  sees) and pairing each with its empirically-observed expected mapping
- *  above. Proves the harness runs end to end (`evalHarness.test.ts`); does
- *  NOT constitute a populated eval corpus or a passed launch bar — see this
- *  module's own header comment. */
-export const SEED_EVAL_ROWS: EvalFixtureRow[] = Object.entries(UI.describe.examples).flatMap(([screenId, byKey]) =>
-  Object.entries(byKey as Record<string, string>).map(([key, text]) => ({
-    service: DESCRIBE_CHAINS[screenId as DescribeEntryScreenId].service,
-    entryScreen: screenId,
-    text,
-    expected: EXPECTED_BY_SCREEN_KEY[screenId]?.[key] ?? [],
-  })),
-)
+// Whole-branch review (2026-09-09 fix wave), Finding 4: `EXPECTED_BY_SCREEN_KEY`
+// and `SEED_EVAL_ROWS` used to live here, but they exist ONLY to build the
+// seed fixture rows `evalHarness.test.ts` runs through `runEval` above — no
+// runtime (non-test) code ever reads either — and building them required
+// importing `UI` from `../screens/screenCopy`, a `session/` -> `screens/`
+// import this codebase's Global Constraints forbid (docs/superpowers/plans/
+// 2026-09-08-c8-describe-it.md): "session/ code never imports from
+// screens/". `runEval` itself (above) needs no such import; the seed data
+// now lives in `evalHarness.test.ts`, the only place it was ever consumed.

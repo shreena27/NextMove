@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Fact } from './interpret'
-import { extractFacts, gateFacts, interpretFactsCopyExtras } from './interpretFacts'
+import { extractFacts, gateFacts, interpretFactsCopyExtras, redactRefusedNumbers, REDACTED_NUMBER_PLACEHOLDER } from './interpretFacts'
 import { passportPlaybook } from '../playbooks/passportPlaybook'
 import { voterPlaybook } from '../playbooks/voterPlaybook'
 import { sirPlaybook, SIR_STATES } from '../playbooks/sirPlaybook'
@@ -125,6 +125,88 @@ describe('extractFacts — the taken array (M5, design note 2): two DIFFERENT co
     const result = extractFacts('passport', text)
     const unknowns = result.facts.filter(f => f.refType === 'unknown')
     expect(unknowns).toHaveLength(1)
+  })
+})
+
+describe('Whole-branch review (2026-09-09 fix wave), Finding 1: a SECOND bare 12-digit number in the same text must ALSO be refused, not chipped', () => {
+  it(
+    'the reproduction from the finding itself: two 12-digit numbers in one story — the shape loop\'s own ' +
+    '`text.match(shape.re)` only ever finds the FIRST occurrence of a shape, so the second number never reaches its ' +
+    'own Aadhaar-shape check and, pre-fix, fell into the unknown sweep and was chipped as {refType:\'unknown\'}',
+    () => {
+      const result = extractFacts('passport', 'my aadhaar is 123456789012 and my wife has 987654321098 too')
+      expect(result.facts).toEqual([])
+      expect(result.droppedSensitive).toBe(true)
+      expect(JSON.stringify(result)).not.toContain('987654321098')
+      expect(JSON.stringify(result)).not.toContain('123456789012')
+    },
+  )
+
+  it('a SECOND bare, uncued 12-digit number (no Aadhaar cue word anywhere near it) is STILL refused, not chipped — the second number needs no cue of its own to be Aadhaar-shaped', () => {
+    const result = extractFacts('passport', 'the first number is 111122223333 and the other one is 444455556666')
+    expect(result.facts).toEqual([])
+    expect(result.droppedSensitive).toBe(true)
+  })
+
+  it(
+    'classifyValue\'s UNKNOWN_REF branch, the "different entry point" gap: a bare 12-digit substring with no word ' +
+    'boundary (glued directly to its own Aadhaar cue word, e.g. "aadhaarno123456789012") is invisible to both the ' +
+    'shape loop\'s and the sweep\'s own \\b-anchored scans — but a provider fact carrying a FRAGMENT of it (a ' +
+    'realistic shape a real Gemini call might hand back as an "unrecognized number") must still be refused via ' +
+    'gateFacts, never chipped as an honest unknown',
+    () => {
+      const text = 'aadhaarno123456789012 ok'
+      const baseline = extractFacts('passport', text)
+      // Sanity: the baseline's own \b-anchored scans really do find nothing
+      // here — the whole point of this fixture. If they did, the assertion
+      // below would prove nothing about the fragment-containment fix.
+      expect(baseline.facts).toEqual([])
+      expect(baseline.droppedSensitive).toBe(false)
+      const result = gateFacts('passport', text, [{ value: '1234567890' } as unknown as { value: string }])
+      expect(result.facts).toEqual([])
+      expect(result.droppedSensitive).toBe(true)
+    },
+  )
+
+  // Existing containment/refusal tests re-run here for confidence, not
+  // duplicated — see the "extractFacts — the taken array" and "gateFacts —
+  // C-1" describe blocks above and below, all of which stay green after
+  // this fix: the shape loop's own single-occurrence refusal, the window-
+  // edge test, the bidirectional taken checks, and the C-1/I-1 adversarial
+  // traces are unaffected by either change (the sweep only gained an
+  // ADDITIONAL early-refusal branch; classifyValue's UNKNOWN_REF branch only
+  // gained an ADDITIONAL early-refusal branch, both strictly narrowing what
+  // used to be chipped, never widening it).
+})
+
+describe('redactRefusedNumbers — Whole-branch review (2026-09-09 fix wave), Finding 2: appliedText must never carry a raw refused number verbatim', () => {
+  it('an Aadhaar-cued 12-digit number is replaced with the placeholder, and the raw digits do not survive anywhere in the output', () => {
+    const out = redactRefusedNumbers('passport', 'my aadhaar is 123456789012, please help')
+    expect(out).not.toContain('123456789012')
+    expect(out).toContain(REDACTED_NUMBER_PLACEHOLDER)
+    expect(out).toBe(`my aadhaar is ${REDACTED_NUMBER_PLACEHOLDER}, please help`)
+  })
+
+  it('a bare, uncued 12-digit number (Aadhaar-shaped by digit count alone) is also redacted', () => {
+    const out = redactRefusedNumbers('passport', 'my number is 123456789012')
+    expect(out).not.toContain('123456789012')
+    expect(out).toBe(`my number is ${REDACTED_NUMBER_PLACEHOLDER}`)
+  })
+
+  it('a second bare 12-digit number elsewhere in the same text is ALSO redacted (Finding 1\'s own fix feeds this one)', () => {
+    const out = redactRefusedNumbers('passport', 'my aadhaar is 123456789012 and my wife has 987654321098 too')
+    expect(out).not.toContain('123456789012')
+    expect(out).not.toContain('987654321098')
+  })
+
+  it('text with no refused number is returned unchanged', () => {
+    const text = 'I applied 12 March 2026 for renewal and my EPIC is ABC1234567.'
+    expect(redactRefusedNumbers('voter', text)).toBe(text)
+  })
+
+  it('a legitimate, non-Aadhaar shape fill (a cued ARN) is NOT redacted — only REFUSED values are scrubbed, never an accepted chip/fill value', () => {
+    const text = 'ARN 123456789012, applied 12 March 2026.'
+    expect(redactRefusedNumbers('passport', text)).toBe(text)
   })
 })
 

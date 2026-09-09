@@ -313,6 +313,17 @@ describe('INTERACTION_GATED coverage — the SCREEN_COPY strings no static mount
       },
     }
 
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true,
+    })
+    try {
+      for (const at of Object.keys(assertions)) await assertions[at]()
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
+      else delete (navigator as { clipboard?: unknown }).clipboard
+    }
+
     // The forcing function is STRICT equality, no exclusion filter — the
     // reviewer's ruling after mutation-testing both an earlier exclusion-
     // list version of this check and this strict one. The exclusion-list
@@ -336,17 +347,17 @@ describe('INTERACTION_GATED coverage — the SCREEN_COPY strings no static mount
     // closed, via the `'ui:prepare.hintFilledUnreviewed'` entry above. Every
     // name `INTERACTION_GATED` lists now has a real covering function;
     // nothing remains gapped.
+    //
+    // Whole-branch review (2026-09-09 fix wave), Finding 8: this pin now
+    // runs AFTER the loop above, not before it. Pinned here, it also proves
+    // the loop actually ran to completion (every `assertions[at]()` awaited
+    // without throwing) before declaring victory on the key-set shape — a
+    // strict-equality check that runs first can only ever prove the object
+    // literal's OWN shape, established at definition time regardless of
+    // whether a single covering function inside it ever really executes;
+    // moving it here establishes the loop's side effects FIRST, so this
+    // assertion is the true last word on this test, not an early one a
+    // later regression in the loop could slip past unnoticed.
     expect(Object.keys(assertions).sort()).toEqual([...INTERACTION_GATED].sort())
-
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true,
-    })
-    try {
-      for (const at of Object.keys(assertions)) await assertions[at]()
-    } finally {
-      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
-      else delete (navigator as { clipboard?: unknown }).clipboard
-    }
   })
 })

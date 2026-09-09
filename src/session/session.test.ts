@@ -1712,6 +1712,45 @@ describe('INTERPRETATION_FAILED (FR-AI-05) — every failure lands on the "We co
   )
 })
 
+describe(
+  'Whole-branch review (2026-09-09 fix wave), Finding 2: appliedText must never carry a raw Aadhaar number ' +
+  'verbatim, even though the shipped trust-disclosure copy already promises "NextMove never keeps Aadhaar numbers"',
+  () => {
+    it("INTERPRETATION_FAILED's synthesised interp.text has the Aadhaar number scrubbed, not the citizen's raw text", () => {
+      const dirty: SessionState = {
+        ...initialSession,
+        screen: 'passport-q1', history: ['home'],
+        describeText: 'my aadhaar is 123456789012 and I need help',
+        describeOpen: true, reading: true,
+      }
+      const s = r(dirty, { type: 'INTERPRETATION_FAILED', reason: 'failed' })
+      expect(s.interp?.droppedSensitive).toBe(true)
+      expect(s.interp?.text).not.toContain('123456789012')
+    })
+
+    it(
+      'the scrubbed text survives onto appliedText once picked from the unplaceable panel (UNPLACEABLE_PICK) — ' +
+      'the exact path a real "You wrote" persistence takes for a failed interpretation',
+      () => {
+        const dirty: SessionState = {
+          ...initialSession,
+          screen: 'passport-q1', history: ['home'],
+          describeText: 'my aadhaar is 123456789012 and I need help',
+          describeOpen: true, reading: true,
+        }
+        const failed = r(dirty, { type: 'INTERPRETATION_FAILED', reason: 'failed' })
+        expect(failed.interp).not.toBeNull()
+        const picked = r(failed, {
+          type: 'UNPLACEABLE_PICK', questionId: 'q1', value: 'adverse',
+          facts: failed.interp!.facts, text: failed.interp!.text, provenance: failed.interp!.provenance,
+        })
+        expect(picked.appliedText).not.toBeNull()
+        expect(picked.appliedText).not.toContain('123456789012')
+      },
+    )
+  },
+)
+
 describe('INTERPRETATION_ABANDONED (I5) — the unmount cleanup for an in-flight call the citizen navigated away from', () => {
   it('with reading:true, clears reading and describeErr, leaving describeText/describeOpen/interp/screen untouched', () => {
     expect.assertions(6)
@@ -2293,6 +2332,7 @@ describe('RESUME_PENDING_SAVE (Task 19 fix)', () => {
         type: 'RESUME_PENDING_SAVE',
         engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
         answers: { q1: 'adverse', q2: 'informal' }, prepChecks: {},
+        caseFacts: [], appliedText: null, interpProvenance: null,
         now: 1_725_000_000_000, newId: 'same-uuid',
       })
 
@@ -2326,6 +2366,7 @@ describe('RESUME_PENDING_SAVE (Task 19 fix)', () => {
       type: 'RESUME_PENDING_SAVE',
       engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
       answers: { q1: 'adverse' }, prepChecks: {},
+      caseFacts: [], appliedText: null, interpProvenance: null,
       now: 1_725_000_000_000, newId: 'unused-because-merged',
     })
     expect(s.savedCases).toHaveLength(1)
@@ -2338,16 +2379,49 @@ describe('RESUME_PENDING_SAVE (Task 19 fix)', () => {
       type: 'RESUME_PENDING_SAVE',
       engineKey: 'sir', serviceLabel: 'SIR', returnScreen: 'sir-nextmove',
       answers: {}, prepChecks: {},
+      caseFacts: [], appliedText: null, interpProvenance: null,
       now: 1_725_000_000_000, newId: 'fixed-id-proves-no-internal-mint',
     })
     expect(s.savedCases[0].id).toBe('fixed-id-proves-no-internal-mint')
   })
+
+  it(
+    'Whole-branch review (2026-09-09 fix wave), Finding 3: restores caseFacts/appliedText/interpProvenance onto ' +
+    'top-level session state AND feeds them into the re-snapshotted case — NOT the freshly-booted [] / null / ' +
+    'null a session.ts describe-it slice starts at this early in the mount effect',
+    () => {
+      const booted = r(initialSession, { type: 'SIGNED_IN', user: FIXTURE_USER })
+      const s = r(booted, {
+        type: 'RESUME_PENDING_SAVE',
+        engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+        answers: { q1: 'adverse' }, prepChecks: {},
+        caseFacts: [FIXTURE_FACT], appliedText: 'they rejected my application', interpProvenance: 'simulated (local matcher)',
+        now: 1_725_000_000_000, newId: 'facts-survive-uuid',
+      })
+      expect(s.caseFacts).toEqual([FIXTURE_FACT])
+      expect(s.appliedText).toBe('they rejected my application')
+      expect(s.interpProvenance).toBe('simulated (local matcher)')
+      // The re-snapshotted saved case carries the SAME restored values, not
+      // the freshly-booted defaults — the whole point being that a citizen
+      // returning to this case later (a check-in, a re-diagnose) sees the
+      // facts/text/provenance the describe-it flow actually captured.
+      expect(s.savedCases[0].caseFacts).toEqual([FIXTURE_FACT])
+      expect(s.savedCases[0].appliedText).toBe('they rejected my application')
+      expect(s.savedCases[0].interpProvenance).toBe('simulated (local matcher)')
+    },
+  )
 })
 
 describe('parsePendingGoogleSaveSnapshot (Task 19 fix — validates a sessionStorage-round-tripped snapshot before it ever reaches RESUME_PENDING_SAVE)', () => {
+  // Whole-branch review (2026-09-09 fix wave), Finding 3: every fixture in
+  // this block now carries caseFacts/appliedText/interpProvenance — a real
+  // snapshot from the fixed handleGoogle always does (SaveCaseScreen.tsx's
+  // own defaults), and this function now requires all three (see its own
+  // doc comment).
   const VALID_RAW = JSON.stringify({
     engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
     answers: { q1: 'adverse' }, prepChecks: { 0: true },
+    caseFacts: [FIXTURE_FACT], appliedText: 'they rejected my application', interpProvenance: 'simulated (local matcher)',
   })
 
   it('parses a well-formed snapshot, field by field', () => {
@@ -2355,7 +2429,20 @@ describe('parsePendingGoogleSaveSnapshot (Task 19 fix — validates a sessionSto
     expect(s).toEqual({
       engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
       answers: { q1: 'adverse' }, prepChecks: { 0: true },
+      caseFacts: [FIXTURE_FACT], appliedText: 'they rejected my application', interpProvenance: 'simulated (local matcher)',
     })
+  })
+
+  it('parses a well-formed snapshot with the describe-it slice at its empty defaults ([]/null/null) — the common case, no describe-it interaction happened', () => {
+    const raw = JSON.stringify({
+      engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+      answers: { q1: 'adverse' }, prepChecks: {},
+      caseFacts: [], appliedText: null, interpProvenance: null,
+    })
+    const s = parsePendingGoogleSaveSnapshot(raw)
+    expect(s?.caseFacts).toEqual([])
+    expect(s?.appliedText).toBeNull()
+    expect(s?.interpProvenance).toBeNull()
   })
 
   it('returns null, not a throw, on malformed JSON', () => {
@@ -2371,7 +2458,7 @@ describe('parsePendingGoogleSaveSnapshot (Task 19 fix — validates a sessionSto
   it('returns null when engineKey is not a real engine — the one check that stops a corrupt snapshot from crashing the resumed diagnose()', () => {
     const raw = JSON.stringify({
       engineKey: 'not-a-real-engine', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
-      answers: {}, prepChecks: {},
+      answers: {}, prepChecks: {}, caseFacts: [], appliedText: null, interpProvenance: null,
     })
     expect(parsePendingGoogleSaveSnapshot(raw)).toBeNull()
   })
@@ -2383,29 +2470,61 @@ describe('parsePendingGoogleSaveSnapshot (Task 19 fix — validates a sessionSto
     () => {
       const raw = JSON.stringify({
         engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'not-a-real-screen',
-        answers: {}, prepChecks: {},
+        answers: {}, prepChecks: {}, caseFacts: [], appliedText: null, interpProvenance: null,
       })
       expect(parsePendingGoogleSaveSnapshot(raw)).toBeNull()
     },
   )
 
   it('returns null when a required field is missing (serviceLabel absent)', () => {
-    const raw = JSON.stringify({ engineKey: 'passport', returnScreen: 'passport-nextmove', answers: {}, prepChecks: {} })
+    const raw = JSON.stringify({
+      engineKey: 'passport', returnScreen: 'passport-nextmove', answers: {}, prepChecks: {},
+      caseFacts: [], appliedText: null, interpProvenance: null,
+    })
     expect(parsePendingGoogleSaveSnapshot(raw)).toBeNull()
   })
 
   it('returns null when answers/prepChecks are not objects', () => {
     const raw1 = JSON.stringify({
       engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
-      answers: 'not an object', prepChecks: {},
+      answers: 'not an object', prepChecks: {}, caseFacts: [], appliedText: null, interpProvenance: null,
     })
     const raw2 = JSON.stringify({
       engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
-      answers: {}, prepChecks: 'not an object',
+      answers: {}, prepChecks: 'not an object', caseFacts: [], appliedText: null, interpProvenance: null,
     })
     expect(parsePendingGoogleSaveSnapshot(raw1)).toBeNull()
     expect(parsePendingGoogleSaveSnapshot(raw2)).toBeNull()
   })
+
+  it(
+    'Whole-branch review (2026-09-09 fix wave), Finding 3: returns null when caseFacts is not an array, or ' +
+    'when appliedText/interpProvenance is neither a string nor null',
+    () => {
+      const base = {
+        engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+        answers: {}, prepChecks: {},
+      }
+      expect(parsePendingGoogleSaveSnapshot(JSON.stringify({ ...base, caseFacts: 'not an array', appliedText: null, interpProvenance: null }))).toBeNull()
+      expect(parsePendingGoogleSaveSnapshot(JSON.stringify({ ...base, caseFacts: [], appliedText: 42, interpProvenance: null }))).toBeNull()
+      expect(parsePendingGoogleSaveSnapshot(JSON.stringify({ ...base, caseFacts: [], appliedText: null, interpProvenance: 42 }))).toBeNull()
+      // Sanity: the same base, correctly shaped, parses fine — proves the
+      // three rejections above are about the new fields, not `base` itself.
+      expect(parsePendingGoogleSaveSnapshot(JSON.stringify({ ...base, caseFacts: [], appliedText: null, interpProvenance: null }))).not.toBeNull()
+    },
+  )
+
+  it(
+    'returns null when caseFacts/appliedText/interpProvenance are absent altogether — an OLDER, pre-Finding-3 ' +
+    'snapshot shape must not silently resume with the describe-it slice unaccounted for',
+    () => {
+      const raw = JSON.stringify({
+        engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
+        answers: {}, prepChecks: {},
+      })
+      expect(parsePendingGoogleSaveSnapshot(raw)).toBeNull()
+    },
+  )
 
   it(
     "accepts 'interp-confirm' (Task 6/C8) as a returnScreen — a new ScreenId joins SCREEN_IDS by construction " +
@@ -2413,7 +2532,7 @@ describe('parsePendingGoogleSaveSnapshot (Task 19 fix — validates a sessionSto
     () => {
       const raw = JSON.stringify({
         engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'interp-confirm',
-        answers: {}, prepChecks: {},
+        answers: {}, prepChecks: {}, caseFacts: [], appliedText: null, interpProvenance: null,
       })
       expect(parsePendingGoogleSaveSnapshot(raw)).not.toBeNull()
     },

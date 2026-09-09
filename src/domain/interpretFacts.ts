@@ -130,9 +130,16 @@ const OTHER_DATE_RE = /\b(\d{1,2}\s)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|no
  *  innocuous "unknown" chip). Seeding `gateFacts`'s `taken` from THIS
  *  function's own `taken`, not from `facts`, closes that gap: the refused
  *  digits are in `taken` whether or not they ever became a `Fact`. */
-function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]; droppedSensitive: boolean; taken: string[] } {
+function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]; droppedSensitive: boolean; taken: string[]; refused: string[] } {
   const facts: Fact[] = []
   const taken: string[] = []
+  // Whole-branch review (2026-09-09 fix wave), Finding 1: every value ever
+  // REFUSED (as opposed to merely `taken` — accepted shape/chip values are
+  // `taken` too, but must never be redacted from the citizen's own text).
+  // `redactRefusedNumbers`, below, is the only reader of this array — it is
+  // what lets that function scrub exactly the substrings this function
+  // itself refused, and nothing else, out of `appliedText`.
+  const refused: string[] = []
   let droppedSensitive = false
 
   // The shape loop (1855-1871). The taken check here is ONE-DIRECTIONAL
@@ -148,6 +155,7 @@ function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]
         // reaches state, never reaches storage.
         droppedSensitive = true
         taken.push(m[0])
+        refused.push(m[0])
         continue
       }
       if (!cueBefore(text, idx)) {
@@ -158,6 +166,7 @@ function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]
         if (/^\d{12}$/.test(m[0])) {
           droppedSensitive = true
           taken.push(m[0])
+          refused.push(m[0])
           continue
         }
         facts.push({ kind: 'reference_number', refType: 'unknown', label: UNKNOWN_LABEL, value: m[0], fills: null })
@@ -179,13 +188,40 @@ function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]
   // resurrects a refused Aadhaar number as an "unknown" chip under an
   // innocent label — the exact harm the refusal above exists to prevent,
   // reintroduced one loop later.
-  const unk = text.match(UNKNOWN_REF) ?? []
-  for (const u of unk) {
-    if (!taken.some(t => t.includes(u) || u.includes(t))) {
-      facts.push({ kind: 'reference_number', refType: 'unknown', label: UNKNOWN_LABEL, value: u, fills: null })
+  //
+  // Whole-branch review (2026-09-09 fix wave), Finding 1: `matchAll`, not
+  // the plain (non-global-result) `#match` this function's own shape loop
+  // above uses via `text.match(shape.re)` — that call, per its own doc
+  // comment, only ever returns the FIRST match of a given shape's regex. A
+  // SECOND bare 12-digit number anywhere else in the same text (e.g. two
+  // Aadhaar numbers in one story) never reaches the shape loop's own
+  // Aadhaar-shape check above AT ALL and, pre-fix, fell straight into this
+  // sweep and was chipped as an honest "unknown" fact with no Aadhaar-shape
+  // check whatsoever — the exact bypass this fix closes. `matchAll` is what
+  // gives this loop each candidate's own INDEX, needed to run the SAME
+  // `aadhaarBefore` cue check the shape loop's own cueRequired branch
+  // already runs; UNKNOWN_REF keeps its `g` flag, and `matchAll`, like
+  // `#match`, takes its own internal copy of the regex to iterate, so no
+  // state leaks between calls (see the field comment on UNKNOWN_REF above).
+  const unk = [...text.matchAll(UNKNOWN_REF)]
+  for (const m of unk) {
+    const u = m[0]
+    const idx = m.index ?? 0
+    if (taken.some(t => t.includes(u) || u.includes(t))) continue
+    if (/^\d{12}$/.test(u) || aadhaarBefore(text, idx)) {
+      // Same refusal mechanism as the shape loop's own cueRequired branch
+      // above: dropped, pushed into `taken` (so a later provider-supplied
+      // substring's containment check still catches it, C-1) AND into
+      // `refused` (so `redactRefusedNumbers` still scrubs it), never
+      // chipped.
+      droppedSensitive = true
       taken.push(u)
-      break // one is enough
+      refused.push(u)
+      continue
     }
+    facts.push({ kind: 'reference_number', refType: 'unknown', label: UNKNOWN_LABEL, value: u, fills: null })
+    taken.push(u)
+    break // one is enough
   }
 
   // Dates (1880-1887): only an APPLIED date auto-fills — its role is
@@ -203,7 +239,7 @@ function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]
     facts.push({ kind: 'date', refType: 'date_other', label: DATE_OTHER_LABEL, value: otherDate[0].trim(), fills: null })
   }
 
-  return { facts, droppedSensitive, taken }
+  return { facts, droppedSensitive, taken, refused }
 }
 
 /** The app deriving facts from the citizen's OWN typed text — no provider
@@ -224,6 +260,53 @@ export function extractFacts(engine: ServiceKey, text: string): { facts: Fact[];
   return { facts, droppedSensitive }
 }
 
+/** Whole-branch review (2026-09-09 fix wave), Finding 2: the placeholder a
+ *  refused number is replaced with wherever the citizen's own text is
+ *  persisted or displayed verbatim (`appliedText` — casefile ->
+ *  localStorage/Supabase, and the "You wrote" row it feeds, TrustDisclosure.
+ *  tsx/UnplaceablePanel.tsx). A bracketed placeholder, matching this
+ *  module's own established convention for a value that stands in for
+ *  something real but unshown (`fills`'s own `'[File Number / ARN]'`, `'[date
+ *  you applied]'`) — not a new voice, the same one. Registered with
+ *  `interpretFactsCopyExtras()` below, the same content-safety sweep this
+ *  module's other data-shaped labels already go through. */
+export const REDACTED_NUMBER_PLACEHOLDER = '[number removed]'
+
+/** Whole-branch review (2026-09-09 fix wave), Finding 2: `appliedText` (the
+ *  citizen's own text, persisted verbatim and shown as "You wrote" —
+ *  TrustDisclosure.tsx, UnplaceablePanel.tsx) is composed from the SAME
+ *  `text` this module's own refusal rules already run against for `facts` —
+ *  but, pre-fix, from the RAW value, not the gated one. A real Aadhaar
+ *  number the citizen typed was correctly refused from `facts` (never
+ *  chipped) while surviving unredacted in `appliedText`, directly
+ *  contradicting the shipped trust-disclosure copy's own promise ("NextMove
+ *  never keeps Aadhaar numbers").
+ *
+ *  This function is the fix: called by every site that composes the `text`
+ *  which becomes `interp.text` (and, eventually, `appliedText`) —
+ *  `DescribeBlock.tsx`'s success path and `session.ts`'s
+ *  `INTERPRETATION_FAILED` arm — AFTER `gateInterpretation`/`gateFacts` has
+ *  already run against the UNREDACTED text (redacting first would blind the
+ *  fact-extraction rules to the very shapes/cues they exist to catch). Reuses
+ *  `extractFactsInternal`'s own `refused` array — exactly the substrings
+ *  THIS SAME module already decided to refuse, never re-derived — so a
+ *  citizen's typed text and the fact-chip refusal it produced can never
+ *  disagree about which numbers were kept out. Deliberately does NOT consult
+ *  `gateFacts`/provider facts: `appliedText` is the citizen's OWN words, and
+ *  every value a provider could refuse is, by `gateFacts`'s own verbatim
+ *  gate, already a literal substring of `text` — so the baseline's own
+ *  refusals are exactly the set that can appear in this text to begin with.
+ *  Pure — no `text` mutation (strings are immutable regardless), same
+ *  `(engine, text)` in, same string out. */
+export function redactRefusedNumbers(engine: ServiceKey, text: string): string {
+  const { refused } = extractFactsInternal(engine, text)
+  let out = text
+  for (const value of refused) {
+    out = out.split(value).join(REDACTED_NUMBER_PLACEHOLDER)
+  }
+  return out
+}
+
 function normalizeWs(s: string): string {
   return s.replace(/\s+/g, ' ').trim()
 }
@@ -235,6 +318,33 @@ function normalizeWs(s: string): string {
 function matchesWhole(re: RegExp, value: string): boolean {
   const m = value.match(re)
   return !!m && m[0] === value
+}
+
+/** Whole-branch review (2026-09-09 fix wave), Finding 1, second entry point:
+ *  expands outward from `text[index, index+length)` while the adjacent
+ *  characters are digits, and reports whether the resulting MAXIMAL run of
+ *  digits is exactly 12 long — i.e. whether the candidate sits inside (or
+ *  is) a bare Aadhaar-shaped number, REGARDLESS of whether that number has a
+ *  `\b` word boundary anywhere in the raw text.
+ *
+ *  Why this is needed at all: a citizen-typed "aadhaarno123456789012" (no
+ *  separator between the cue word and the digits) has NO `\b` between the
+ *  cue word's last letter and the first digit — both are `\w` characters —
+ *  so neither the shape loop's `\b\d{12}\b` above nor `UNKNOWN_REF`'s own
+ *  `\b`-anchored sweep above ever sees this run as a candidate AT ALL, and
+ *  `taken`/`refused` (populated only from what those two DID see) have
+ *  nothing in them to catch a provider-supplied FRAGMENT of it with. This
+ *  function is `classifyValue`'s own containment check for exactly that
+ *  gap: it is called with the fragment's OWN index in the untouched `text`
+ *  (not the isolated `value` `matchesWhole` tests elsewhere in this
+ *  function), so it can see the real digits on either side of the fragment
+ *  that the fragment's own boundary-anchored shape tests cannot. */
+function isBareAadhaarDigitRun(text: string, index: number, length: number): boolean {
+  let start = index
+  while (start > 0 && /\d/.test(text[start - 1])) start--
+  let end = index + length
+  while (end < text.length && /\d/.test(text[end])) end++
+  return /^\d{12}$/.test(text.slice(start, end))
 }
 
 type Classified =
@@ -297,6 +407,23 @@ function classifyValue(engine: ServiceKey, text: string, value: string, index: n
   // test would risk `lastIndex` state bleeding across calls. Constructing a
   // one-off non-global regex per call sidesteps that entirely.
   if (matchesWhole(new RegExp(UNKNOWN_REF.source), value)) {
+    // Whole-branch review (2026-09-09 fix wave), Finding 1, second entry
+    // point: `matchesWhole` above tests `value` in ISOLATION (design note 8,
+    // step 5) — a provider-supplied FRAGMENT of a citizen-typed Aadhaar
+    // number (wrong length to match any REF_SHAPES pattern, and possibly
+    // with no `\b` boundary anywhere in the raw text — see
+    // `isBareAadhaarDigitRun`'s own doc comment) sails through that
+    // isolated test with nothing to stop it. Checked here, against the
+    // fragment's OWN location in the real `text`: either it sits inside a
+    // reconstructible 12-digit run (regardless of `\b`), or it is directly
+    // cued by an Aadhaar-word within the existing 32-char lookback window —
+    // the SAME two conditions the sweep above refuses a candidate for.
+    // Refused the same way every other Aadhaar refusal in this file is:
+    // `fact: null, droppedSensitive: true` — never chipped under an
+    // "unknown" label.
+    if (/^\d+$/.test(value) && (isBareAadhaarDigitRun(text, index, value.length) || aadhaarBefore(text, index))) {
+      return { fact: null, droppedSensitive: true, category: 'shape' }
+    }
     return {
       fact: { kind: 'reference_number', refType: 'unknown', label: UNKNOWN_LABEL, value, fills: null },
       droppedSensitive: false,
@@ -433,5 +560,9 @@ export function interpretFactsCopyExtras(): CopyLocation[] {
   out.push({ at: 'interpretFacts:UNKNOWN_LABEL', text: UNKNOWN_LABEL })
   out.push({ at: 'interpretFacts:DATE_APPLIED_LABEL', text: DATE_APPLIED_LABEL })
   out.push({ at: 'interpretFacts:DATE_OTHER_LABEL', text: DATE_OTHER_LABEL })
+  // Whole-branch review (2026-09-09 fix wave), Finding 2: `redactRefusedNumbers`'s
+  // own placeholder is citizen-facing (it can appear inside the quoted "You
+  // wrote" text) — swept the same as every other data-shaped label above.
+  out.push({ at: 'interpretFacts:REDACTED_NUMBER_PLACEHOLDER', text: REDACTED_NUMBER_PLACEHOLDER })
   return out
 }

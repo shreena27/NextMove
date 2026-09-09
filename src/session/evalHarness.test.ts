@@ -6,10 +6,88 @@
 // real per-service phrasing corpus against real Gemini output and set a
 // published threshold; see this task's own report.
 import { describe, it, expect } from 'vitest'
-import type { InterpreterProvider, RawInterpretation } from '../domain/interpret'
+import type { DescribeEntryScreenId, InterpreterProvider, RawInterpretation } from '../domain/interpret'
+import { DESCRIBE_CHAINS } from '../domain/interpret'
 import { simProvider } from '../domain/simInterpreter'
-import { SEED_EVAL_ROWS, runEval } from './evalHarness'
+import { UI } from '../screens/screenCopy'
+import { runEval } from './evalHarness'
 import type { EvalFixtureRow } from './evalHarness'
+
+// Whole-branch review (2026-09-09 fix wave), Finding 4: `EXPECTED_BY_SCREEN_KEY`
+// and `SEED_EVAL_ROWS` moved HERE from `evalHarness.ts` itself — nothing at
+// runtime ever read either, only this test file, and building them needs
+// `UI` from `../screens/screenCopy`, a `session/` -> `screens/` import this
+// codebase's Global Constraints forbid (docs/superpowers/plans/2026-09-08-
+// c8-describe-it.md: "session/ code never imports from screens/"). A test
+// file is exempt from that layering rule the same way `isolation.test.ts`'s
+// own scanner only ever walks non-test application files — see that file's
+// own new "session/ layering" describe block, which is what actually
+// enforces the rule now (and would have caught this chunk's own violation).
+
+/** The expected mapping for each of `UI.describe.examples`'s eight example
+ *  stories, keyed the same way (`screenId` -> ordinal key `one`/`two`).
+ *  These are NOT invented — they are the simulator's own empirically
+ *  observed output for each story, determined by actually calling
+ *  `simulateInterpretation` against them (design note 6: "the same way
+ *  Task 17's own implementer verified simulator behavior empirically"), not
+ *  read off `simInterpreter.ts`'s rule table by eye. `'passport-q2'.two` is
+ *  the story that trips the simulator's OWN documented deliberate flaw
+ *  (`simInterpreter.ts`'s "informal" agent/patient-confusion rule) — its
+ *  expected value here is `'informal'`, the simulator's actual (flawed)
+ *  read, NOT the honest human read of the sentence. That is deliberate: a
+ *  seed row's `expected` records what a CORRECTLY FUNCTIONING copy of the
+ *  fixture's own provider produces, so `SEED_EVAL_ROWS` run against
+ *  `simProvider` proves the harness computes agreement correctly. It is not
+ *  a claim about what Gemini should produce for that story — a real Gemini
+ *  eval corpus (which this module does not ship) would need its OWN
+ *  expected values, independently derived, most likely the honest read
+ *  rather than the simulator's known flaw. */
+const EXPECTED_BY_SCREEN_KEY: Record<string, Record<string, { questionId: string; value: string }[]>> = {
+  'passport-q1': {
+    one: [
+      { questionId: 'q1', value: 'contacted_incomplete' },
+      { questionId: 'q2', value: 'informal' },
+    ],
+    two: [],
+  },
+  'passport-q2': {
+    one: [{ questionId: 'q2', value: 'informal' }],
+    two: [{ questionId: 'q2', value: 'informal' }],
+  },
+  'voter-entry': {
+    one: [
+      { questionId: 'voterEntry', value: 'applied' },
+      { questionId: 'voterQ1', value: 'decision' },
+      { questionId: 'voterAppealedRaw', value: 'none' },
+    ],
+  },
+  'voter-q1': {
+    one: [{ questionId: 'voterQ1', value: 'no_word' }],
+  },
+  'voter-q2': {
+    one: [{ questionId: 'voterAppealedRaw', value: 'pending' }],
+  },
+  'sir-q1': {
+    one: [{ questionId: 'sirQ1', value: 'roll_absent' }],
+  },
+}
+
+/** Seed rows (design note 6): the eight example stories already shown to
+ *  citizens (`screenCopy.ts`'s `UI.describe.examples`), built by reading
+ *  their TEXT live off that object (never duplicated as a second copy of
+ *  the strings, so this module can never drift from what a citizen actually
+ *  sees) and pairing each with its empirically-observed expected mapping
+ *  above. Proves the harness runs end to end (below); does NOT constitute a
+ *  populated eval corpus or a passed launch bar — see `evalHarness.ts`'s own
+ *  header comment. */
+const SEED_EVAL_ROWS: EvalFixtureRow[] = Object.entries(UI.describe.examples).flatMap(([screenId, byKey]) =>
+  Object.entries(byKey as Record<string, string>).map(([key, text]) => ({
+    service: DESCRIBE_CHAINS[screenId as DescribeEntryScreenId].service,
+    entryScreen: screenId,
+    text,
+    expected: EXPECTED_BY_SCREEN_KEY[screenId]?.[key] ?? [],
+  })),
+)
 
 describe('SEED_EVAL_ROWS', () => {
   it('has all eight example stories (six entry screens, screenCopy.ts\'s own comment count) — sanity: not vacuous', () => {

@@ -466,6 +466,12 @@ export default function App() {
       returnScreen: snapshot.returnScreen as ScreenId,
       answers: snapshot.answers,
       prepChecks: snapshot.prepChecks,
+      // Whole-branch review (2026-09-09 fix wave), Finding 3: the
+      // describe-it slice's own three fields, restored the same way
+      // answers/prepChecks already are.
+      caseFacts: snapshot.caseFacts,
+      appliedText: snapshot.appliedText,
+      interpProvenance: snapshot.interpProvenance,
       now, newId: newCaseId(),
     })
     // `now` is intentionally omitted from the dependency array — same
@@ -1079,6 +1085,11 @@ export default function App() {
         <SaveCaseScreen
           authMethod={state.authMethod} authId={state.authId} authErr={state.authErr} authBusy={state.authBusy}
           pendingSave={state.pendingSave} answers={state.answers} prepChecks={state.prepChecks}
+          // Whole-branch review (2026-09-09 fix wave), Finding 3: the
+          // describe-it slice's own three fields, wired through the same
+          // way answers/prepChecks already are — see SaveCaseScreen.tsx's
+          // own doc comment.
+          caseFacts={state.caseFacts} appliedText={state.appliedText} interpProvenance={state.interpProvenance}
           now={now} topbar={topbar(true, false)} dispatch={dispatch}
         />
       )

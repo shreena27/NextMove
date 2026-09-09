@@ -54,7 +54,18 @@ beforeEach(() => {
  *  runs inside the test body, after this `beforeEach`, and correctly
  *  overrides it for that test. Re-applied before every test the same way
  *  Guard 1 is, so a prior test's own stub (or its absence) never leaks
- *  forward. */
+ *  forward.
+ *
+ *  Whole-branch review (2026-09-09 fix wave), Finding 5: scoped OFF when
+ *  `NEXTMOVE_SUPABASE_LIVE` is set — `supabase/rls.live.test.ts`'s whole
+ *  `describe` block is itself skipped unless that env var is set (so this
+ *  gap was invisible under a normal `npm test` run), but when it IS set,
+ *  that file makes REAL Supabase calls through the REAL global `fetch` —
+ *  this guard, unconditionally applied, was stubbing that fetch out from
+ *  under it and turning an opt-in live integration test into a silent no-op
+ *  (or a confusing failure) instead of the real network exercise it is
+ *  supposed to be. Guard 1 (`VITE_INTERPRETER`) is untouched — this scoping
+ *  applies to Guard 2 only. */
 function unmockedFetchGuard(): Promise<never> {
   return Promise.reject(
     new Error(
@@ -66,5 +77,7 @@ function unmockedFetchGuard(): Promise<never> {
 }
 
 beforeEach(() => {
-  vi.stubGlobal('fetch', unmockedFetchGuard)
+  if (!process.env.NEXTMOVE_SUPABASE_LIVE) {
+    vi.stubGlobal('fetch', unmockedFetchGuard)
+  }
 })

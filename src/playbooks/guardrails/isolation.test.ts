@@ -138,3 +138,52 @@ describe('guardrail harness isolation', () => {
     expect(violations, violations.join('\n')).toEqual([])
   })
 })
+
+// Whole-branch review (2026-09-09 fix wave), Finding 4: this chunk's own
+// `evalHarness.ts` introduced a NEW class of layering violation this file
+// did not yet catch — `session/` importing from `screens/` (`UI` from
+// `../screens/screenCopy`, to build seed eval fixtures). The plan's Global
+// Constraints (docs/superpowers/plans/2026-09-08-c8-describe-it.md)
+// establish that `session/` code never imports from `screens/` — that
+// module has been fixed (the seed data moved into its own test file, which
+// this scan does not walk, by the SAME `applicationTsFiles` exemption the
+// guardrail-isolation check above already relies on) — but nothing
+// mechanical asserted the RULE itself, only this one instance. This closes
+// the class, not just the instance: `templates/` and `ui/` are named
+// alongside `screens/` because they sit at the SAME "renders to the citizen"
+// layer `session/` (pure state/orchestration) must stay below, and a future
+// `session/` file could just as easily reach for a template or a UI
+// component instead of a screen.
+const SESSION_DIR = join(srcRoot, 'session')
+const FORBIDDEN_FROM_SESSION_RE = /(^|\/)(screens|templates|ui)(\/|$)/
+
+function isSessionFile(file: string): boolean {
+  return file === SESSION_DIR || file.startsWith(SESSION_DIR + sep)
+}
+
+function sessionLayeringFindingsFor(file: string): string[] {
+  const source = readFileSync(file, 'utf8')
+  const label = file.split(sep).join('/')
+  const violations: string[] = []
+  for (const spec of importSpecifiers(source)) {
+    if (FORBIDDEN_FROM_SESSION_RE.test(spec)) {
+      violations.push(
+        `${label}: imports "${spec}" — session/ code must never import from screens/, templates/ or ui/ (Global Constraints, docs/superpowers/plans/2026-09-08-c8-describe-it.md).`,
+      )
+    }
+  }
+  return violations
+}
+
+describe('session/ layering: never imports from screens/, templates/ or ui/', () => {
+  const files = applicationTsFiles(srcRoot).filter(isSessionFile)
+
+  it('found session/ application files to check (the check itself is not vacuous)', () => {
+    expect(files.length).toBeGreaterThan(0)
+  })
+
+  it('no session/ file imports screens/, templates/ or ui/', () => {
+    const violations = files.flatMap(sessionLayeringFindingsFor)
+    expect(violations, violations.join('\n')).toEqual([])
+  })
+})

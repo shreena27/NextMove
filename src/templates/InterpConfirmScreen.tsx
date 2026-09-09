@@ -324,7 +324,19 @@ export function InterpConfirmScreen({ state, dispatch, now, topbar }: InterpConf
                         type="button"
                         className="read-change"
                         aria-expanded={open}
-                        aria-controls={optsId}
+                        // Whole-branch review (2026-09-09 fix wave), Finding
+                        // 7: NO `aria-controls` here — `.read-opts` (id=
+                        // {optsId}) is structurally ABSENT (not merely
+                        // hidden; InterpConfirmScreen.test.tsx pins
+                        // `.read-opts` NOT in the document on this exact
+                        // collapsed branch) while this branch renders `open`
+                        // is always `false` here, by this branch's own
+                        // condition), so a permanently-set `aria-controls`
+                        // was a dangling IDREF pointing at nothing. The
+                        // sibling `.read-change` below (the open/never-seen
+                        // branch) keeps `aria-controls={optsId}` unconditionally
+                        // because `.read-opts` genuinely renders every time
+                        // that branch does.
                         ref={el => { changeBtnRefs.current[m.questionId] = el }}
                         onClick={() => dispatch({ type: 'TOGGLE_INTERP_CHANGE', questionId: m.questionId, open: true })}
                       >

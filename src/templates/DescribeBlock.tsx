@@ -116,6 +116,7 @@ import type { DescribeEntryScreenId } from '../domain/interpret'
 import { DESCRIBE_CHAINS, DESCRIBE_MAX } from '../domain/interpret'
 import { runInterpretation } from '../session/interpretation'
 import { describeItEnabled } from '../session/featureFlags'
+import { redactRefusedNumbers } from '../domain/interpretFacts'
 import { Button } from '../ui/Button'
 import { ICONS } from '../ui/icons'
 import { UI } from '../screens/screenCopy'
@@ -202,9 +203,19 @@ export function DescribeBlock({ screenId, state, dispatch }: DescribeBlockProps)
       // that calls `runInterpretation` composes this wrapper before
       // dispatching `INTERPRETATION_DONE`" — that's here. `GatedInterpretation`
       // carries no `ctxScreen`/`engine`/`service`/`text` of its own.
+      //
+      // Whole-branch review (2026-09-09 fix wave), Finding 2: `text` is
+      // `redactRefusedNumbers(chain.engine, trimmed)`, NOT the raw `trimmed`
+      // — `result.interp` (the `facts`/`droppedSensitive` above) was already
+      // gated against the UNREDACTED `trimmed` text (`runInterpretation`'s
+      // own call), so the fact rules still see the real digits; only THIS
+      // composed `text` — the value that becomes `appliedText`/the "You
+      // wrote" row (TrustDisclosure.tsx, UnplaceablePanel.tsx) — is scrubbed,
+      // so a citizen-typed Aadhaar number correctly refused from `facts`
+      // cannot still survive, unredacted, in the persisted/displayed text.
       dispatch({
         type: 'INTERPRETATION_DONE',
-        interp: { ...result.interp, ctxScreen: screenId, engine: chain.engine, service: chain.service, text: trimmed },
+        interp: { ...result.interp, ctxScreen: screenId, engine: chain.engine, service: chain.service, text: redactRefusedNumbers(chain.engine, trimmed) },
       })
     } else {
       dispatch({ type: 'INTERPRETATION_FAILED', reason: result.reason })
@@ -224,7 +235,14 @@ export function DescribeBlock({ screenId, state, dispatch }: DescribeBlockProps)
         type="button"
         className="describe-row"
         aria-expanded={state.describeOpen}
-        aria-controls={DESCRIBE_BOX_ID}
+        // Whole-branch review (2026-09-09 fix wave), Finding 7: `aria-controls`
+        // is only SET while `.describe-box` (id={DESCRIBE_BOX_ID}) actually
+        // renders — that element is structurally ABSENT (not merely hidden;
+        // `DescribeBlock.test.tsx` pins `.describe-box` NOT in the document
+        // while collapsed) when `state.describeOpen` is false, so a
+        // permanently-set `aria-controls` was a dangling IDREF pointing at
+        // nothing for the entire collapsed lifetime of this component.
+        aria-controls={state.describeOpen ? DESCRIBE_BOX_ID : undefined}
         onClick={() => dispatch({ type: 'TOGGLE_DESCRIBE' })}
       >
         <span className="dr-icon">{ICONS.pen}</span>

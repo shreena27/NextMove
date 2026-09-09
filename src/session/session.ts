@@ -33,6 +33,7 @@ import type { AppUser } from './auth'
 import type { DescribeEntryScreenId, Fact, GatedInterpretation } from '../domain/interpret'
 import { DESCRIBE_CHAINS, editFact, removeFact, repick, unplaceablePickPlan } from '../domain/interpret'
 import { gateInterpretation } from '../domain/interpretGates'
+import { redactRefusedNumbers } from '../domain/interpretFacts'
 import type { InterpretationFailure } from './interpretation'
 
 /** The three services C3 ships. Declared here rather than derived from
@@ -440,6 +441,23 @@ export interface PendingGoogleSaveSnapshot {
   returnScreen: string
   answers: AnswerRecord
   prepChecks: Record<number, boolean>
+  /** Whole-branch review (2026-09-09 fix wave), Finding 3: the describe-it
+   *  slice's own three fields — WITHOUT these, a citizen who described their
+   *  situation, then saved via Google (a real full-page redirect that wipes
+   *  every in-memory value, design note 5 above), silently lost them on
+   *  return: no draft auto-fill on restore, no "You wrote" record, even
+   *  though they had already gone through the trust-confirmation flow.
+   *  `caseFacts`/`interpProvenance` are validated the same permissive way
+   *  `answers`/`prepChecks` already are below (object-shaped, trusted on
+   *  structure) — this is round-tripped `sessionStorage` JSON, not a live
+   *  in-module value, but it was written by THIS SAME build's own
+   *  `handleGoogle` moments earlier, not arbitrary attacker input the way a
+   *  server response would be. `appliedText` is the one nullable field here
+   *  (mirrors `SessionState.appliedText` itself, D17's own "non-null iff
+   *  interpProvenance is non-null" invariant). */
+  caseFacts: Fact[]
+  appliedText: string | null
+  interpProvenance: string | null
 }
 
 // Fix round 1, Finding 2: a runtime set of every valid ScreenId, checked the
@@ -517,9 +535,19 @@ export function parsePendingGoogleSaveSnapshot(raw: string): PendingGoogleSaveSn
   if (typeof p.returnScreen !== 'string' || !(p.returnScreen in SCREEN_IDS)) return null
   if (!p.answers || typeof p.answers !== 'object') return null
   if (!p.prepChecks || typeof p.prepChecks !== 'object') return null
+  // Whole-branch review (2026-09-09 fix wave), Finding 3: validated the same
+  // way `answers`/`prepChecks` above are — permissive on internal shape
+  // (this codebase's fact/provenance types are not re-verified field by
+  // field here, matching `answers`/`prepChecks`'s own precedent), strict on
+  // the outer shape (an array for `caseFacts`; a string or `null`, never
+  // anything else, for the two nullable fields).
+  if (!Array.isArray(p.caseFacts)) return null
+  if (p.appliedText !== null && typeof p.appliedText !== 'string') return null
+  if (p.interpProvenance !== null && typeof p.interpProvenance !== 'string') return null
   return {
     engineKey: p.engineKey, serviceLabel: p.serviceLabel, returnScreen: p.returnScreen,
     answers: p.answers as AnswerRecord, prepChecks: p.prepChecks as Record<number, boolean>,
+    caseFacts: p.caseFacts as Fact[], appliedText: p.appliedText as string | null, interpProvenance: p.interpProvenance as string | null,
   }
 }
 
@@ -556,9 +584,18 @@ export type SessionAction =
   // instead, the one real behavioural difference from BEGIN_SAVE this fix
   // needs. `now`/`newId` are dispatch-site-injected (App.tsx's mount effect),
   // same D4/D6 convention as BEGIN_SAVE's own — never minted in the reducer.
+  // `caseFacts`/`appliedText`/`interpProvenance` (whole-branch review,
+  // 2026-09-09 fix wave, Finding 3): the describe-it slice's own three
+  // fields, restored the SAME way `answers`/`prepChecks` already are — a
+  // citizen who described their situation before saving via Google must not
+  // silently lose the facts/text/provenance a real trust-confirmation flow
+  // already captured, just because the redirect also wiped THESE fields out
+  // of memory.
   | {
       type: 'RESUME_PENDING_SAVE'; engineKey: ServiceKey; serviceLabel: string; returnScreen: ScreenId
-      answers: AnswerRecord; prepChecks: Record<number, boolean>; now: number; newId: string
+      answers: AnswerRecord; prepChecks: Record<number, boolean>
+      caseFacts: Fact[]; appliedText: string | null; interpProvenance: string | null
+      now: number; newId: string
     }
   // The check-in interaction state machine (Task 6; design notes 2-10).
   // Every one of these six is a thin arm over its matching cases.ts pure
@@ -947,25 +984,41 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       // derivation would resolve to null here regardless — asserted
       // directly rather than merely assumed.
       const pendingSave = { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen }
+      // Whole-branch review (2026-09-09 fix wave), Finding 3: `a.caseFacts`/
+      // `a.appliedText`/`a.interpProvenance` — NOT `s.caseFacts`/
+      // `s.appliedText`/`s.interpProvenance` — for the SAME reason
+      // `a.answers`/`a.prepChecks` are used instead of `s.answers`/
+      // `s.prepChecks` immediately above: this early in the mount effect,
+      // `s.*` is still whatever a freshly-booted session starts at
+      // (initialSession's `[]`/`null`/`null`), not the citizen's actual
+      // describe-it facts/text/provenance — those were restored onto the
+      // ACTION by the sessionStorage snapshot, not onto live state.
       const fragment = completeSave(
         {
           savedCases: s.savedCases, workingCase: null, answers: a.answers, prepChecks: a.prepChecks,
-          caseFacts: s.caseFacts, appliedText: s.appliedText, interpProvenance: s.interpProvenance,
+          caseFacts: a.caseFacts, appliedText: a.appliedText, interpProvenance: a.interpProvenance,
         },
         { engineKey: a.engineKey, serviceLabel: a.serviceLabel, returnScreen: a.returnScreen, now: a.now, newId: a.newId },
       )
       return {
         ...s, ...fragment,
         // Beyond what completeSave's own fragment touches (savedCases/
-        // activeCaseId/workingCase): also restore answers/prepChecks onto
-        // top-level session state, which BEGIN_SAVE's own arm never needs
-        // to do (its state.answers is already live and correct). Without
-        // this, a citizen who taps "Back to my case" from save-done
-        // (SaveDoneScreen, NAVIGATE to pendingSave.returnScreen) would land
-        // on a screen that re-diagnoses against an EMPTY post-boot answers
-        // record instead of the answers the save just used.
+        // activeCaseId/workingCase): also restore answers/prepChecks/
+        // caseFacts/appliedText/interpProvenance onto top-level session
+        // state, which BEGIN_SAVE's own arm never needs to do (its live
+        // state is already correct). Without this, a citizen who taps "Back
+        // to my case" from save-done (SaveDoneScreen, NAVIGATE to
+        // pendingSave.returnScreen) would land on a screen that re-diagnoses
+        // against an EMPTY post-boot answers record instead of the answers
+        // the save just used — and, before this fix, with no draft auto-fill
+        // and no "You wrote" record either, since caseFacts/appliedText/
+        // interpProvenance stayed at their freshly-booted `null`/`[]` values
+        // (Finding 3).
         answers: a.answers,
         prepChecks: a.prepChecks,
+        caseFacts: a.caseFacts,
+        appliedText: a.appliedText,
+        interpProvenance: a.interpProvenance,
         pendingSave,
         history: [...s.history, s.screen], screen: 'save-done',
         trustOpen: false, restartConfirm: false, removeConfirm: null,
@@ -1307,8 +1360,18 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       // (`DescribeChain.service`) — the same real value every ordinary
       // DESCRIBE_CHAINS entry already carries, not a second, driftable
       // source of truth.
+      //
+      // Bundled fix (cheap, same area, 2026-09-09 fix wave finding 6):
+      // trimmed the SAME way `DescribeBlock.tsx`'s success path trims
+      // before ever calling `runInterpretation` — `s.describeText` itself is
+      // deliberately never trimmed (design note 3's own "survives Back,
+      // failure, and re-entry" carries the citizen's exact keystrokes), but
+      // the synthesised `text` below (which becomes `interp.text`, then
+      // `appliedText` via the `UNPLACEABLE_PICK` path) must not carry
+      // leading/trailing whitespace the success path's own text never would.
+      const trimmedText = s.describeText.trim()
       const gated = gateInterpretation(
-        [], entry.engine, s.answers, s.describeText, { mappings: [], facts: [] }, 0, 'none — interpretation failed',
+        [], entry.engine, s.answers, trimmedText, { mappings: [], facts: [] }, 0, 'none — interpretation failed',
       )
       return {
         ...s, reading: false,
@@ -1326,7 +1389,15 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
         // fact that no longer exists on the new (different) unplaceable
         // panel.
         interpChangeOpen: {}, factEditIdx: null,
-        interp: { ...gated, ctxScreen: s.screen, engine: entry.engine, service: entry.service, text: s.describeText },
+        // Whole-branch review (2026-09-09 fix wave), Finding 2: `text` is
+        // `redactRefusedNumbers(entry.engine, trimmedText)`, not the raw
+        // `trimmedText` — `gated` above was already computed against the
+        // UNREDACTED `trimmedText` (the fact rules must see the real
+        // digits); only this composed `text` — which becomes `appliedText`/
+        // the "You wrote" row (TrustDisclosure.tsx, UnplaceablePanel.tsx) —
+        // is scrubbed, the same fix `DescribeBlock.tsx`'s success path
+        // applies at its own equivalent composition site.
+        interp: { ...gated, ctxScreen: s.screen, engine: entry.engine, service: entry.service, text: redactRefusedNumbers(entry.engine, trimmedText) },
         history: [...s.history, s.screen], screen: 'interp-confirm',
         trustOpen: false, restartConfirm: false, removeConfirm: null, authErr: null, acctOpen: false,
       }

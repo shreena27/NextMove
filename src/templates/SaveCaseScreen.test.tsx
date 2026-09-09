@@ -18,6 +18,15 @@ import { UI } from '../screens/screenCopy'
 import { sessionReducer, initialSession, PENDING_GOOGLE_SAVE_KEY, type SessionState } from '../session/session'
 import * as authModule from '../session/auth'
 import { OTP_RESEND_COOLDOWN_MS } from '../session/auth'
+import type { Fact } from '../domain/interpret'
+
+// Whole-branch review (2026-09-09 fix wave), Finding 3 fixture: a minimal,
+// real Fact — same shape every other test file in this codebase builds one
+// with (kind/refType/label/value/fills), nothing invented beyond it.
+const FIXTURE_FACT: Fact = {
+  kind: 'reference_number', refType: 'passport_file_no', label: 'File Number',
+  value: 'BN1068334517807', fills: '[File Number / ARN]',
+}
 
 // Task 12 (design note 6): a fixed clock for every `now` prop below —
 // `AUTH_ID_SUBMITTED` now carries `otpCooldownUntil`, computed at the call
@@ -262,7 +271,8 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
   })
 
   it(
-    'Task 19 fix — the Google button snapshots pendingSave/answers/prepChecks to sessionStorage immediately ' +
+    'Task 19 fix — the Google button snapshots pendingSave/answers/prepChecks (and, whole-branch review ' +
+    '2026-09-09 fix wave Finding 3, caseFacts/appliedText/interpProvenance) to sessionStorage immediately ' +
     'before starting the redirect (a real signInWithGoogle navigates the whole page away, which would otherwise ' +
     'wipe them out of memory)',
     async () => {
@@ -272,6 +282,7 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
           authMethod="phone" authId="" authErr={null} authBusy={false}
           pendingSave={{ engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove' }}
           answers={{ q1: 'adverse', q2: 'informal' }} prepChecks={{ 0: true }}
+          caseFacts={[FIXTURE_FACT]} appliedText="they rejected my application" interpProvenance="simulated (local matcher)"
           now={NOW} dispatch={dispatch}
         />,
       )
@@ -280,7 +291,31 @@ describe('SaveCaseScreen (port of renderSaveCase, prototype 3823-3845)', () => {
       expect(JSON.parse(sessionStorage.getItem(PENDING_GOOGLE_SAVE_KEY) ?? 'null')).toEqual({
         engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove',
         answers: { q1: 'adverse', q2: 'informal' }, prepChecks: { 0: true },
+        caseFacts: [FIXTURE_FACT], appliedText: 'they rejected my application', interpProvenance: 'simulated (local matcher)',
       })
+    },
+  )
+
+  it(
+    'Finding 3, the default shape: with no caseFacts/appliedText/interpProvenance props supplied, the snapshot ' +
+    'still carries the three fields at their initialSession-matching defaults ([]/null/null) — never omitted, ' +
+    'so parsePendingGoogleSaveSnapshot (which requires all three) never rejects a snapshot from a caller that ' +
+    'simply has nothing describe-it-shaped to carry',
+    async () => {
+      const dispatch = vi.fn()
+      render(
+        <SaveCaseScreen
+          authMethod="phone" authId="" authErr={null} authBusy={false}
+          pendingSave={{ engineKey: 'passport', serviceLabel: 'Passport', returnScreen: 'passport-nextmove' }}
+          answers={{ q1: 'adverse' }} prepChecks={{}}
+          now={NOW} dispatch={dispatch}
+        />,
+      )
+      await userEvent.click(googleBtnName())
+      const snapshot = JSON.parse(sessionStorage.getItem(PENDING_GOOGLE_SAVE_KEY) ?? 'null')
+      expect(snapshot.caseFacts).toEqual([])
+      expect(snapshot.appliedText).toBeNull()
+      expect(snapshot.interpProvenance).toBeNull()
     },
   )
 

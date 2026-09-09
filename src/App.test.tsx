@@ -1474,6 +1474,13 @@ describe('C7 Task 8: the auth lifecycle', () => {
           returnScreen: 'passport-nextmove',
           answers: { q1: 'adverse', q2: 'informal' },
           prepChecks: {},
+          // Whole-branch review (2026-09-09 fix wave), Finding 3: every real
+          // snapshot handleGoogle writes now always carries these three
+          // fields too — parsePendingGoogleSaveSnapshot rejects a snapshot
+          // missing them (session.ts's own doc comment on that function).
+          caseFacts: [],
+          appliedText: null,
+          interpProvenance: null,
         }))
         withSession({ app_metadata: { provider: 'google' }, user_metadata: { full_name: 'Ananya' } })
         selectSpy.mockResolvedValueOnce({ data: [], error: null })
@@ -1549,6 +1556,13 @@ describe('C7 Task 8: the auth lifecycle', () => {
           returnScreen: 'passport-nextmove',
           answers: { q1: 'adverse', q2: 'informal' },
           prepChecks: {},
+          // Whole-branch review (2026-09-09 fix wave), Finding 3: every real
+          // snapshot handleGoogle writes now always carries these three
+          // fields too — parsePendingGoogleSaveSnapshot rejects a snapshot
+          // missing them (session.ts's own doc comment on that function).
+          caseFacts: [],
+          appliedText: null,
+          interpProvenance: null,
         }))
         const user = makeSupabaseUser({ app_metadata: { provider: 'google' }, user_metadata: { full_name: 'Ananya' } })
         // Delay ONLY the mount effect's own getCurrentUser() call (the
