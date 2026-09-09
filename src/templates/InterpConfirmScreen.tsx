@@ -329,7 +329,7 @@ export function InterpConfirmScreen({ state, dispatch, now, topbar }: InterpConf
                         // {optsId}) is structurally ABSENT (not merely
                         // hidden; InterpConfirmScreen.test.tsx pins
                         // `.read-opts` NOT in the document on this exact
-                        // collapsed branch) while this branch renders `open`
+                        // collapsed branch) while this branch renders (`open`
                         // is always `false` here, by this branch's own
                         // condition), so a permanently-set `aria-controls`
                         // was a dangling IDREF pointing at nothing. The

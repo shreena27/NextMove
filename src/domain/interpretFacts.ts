@@ -106,8 +106,89 @@ function aadhaarBefore(text: string, idx: number): boolean {
   return AADHAAR_CUE.test(text.slice(Math.max(0, idx - 32), idx))
 }
 
+/** Whole-branch review (2026-09-09 fix wave), Finding 1, second entry point:
+ *  expands outward from `text[index, index+length)` while the adjacent
+ *  characters are digits, and reports whether the resulting MAXIMAL run of
+ *  digits is exactly 12 long — i.e. whether the candidate sits inside (or
+ *  is) a bare Aadhaar-shaped number, REGARDLESS of whether that number has a
+ *  `\b` word boundary anywhere in the raw text.
+ *
+ *  Why this is needed at all: a citizen-typed "aadhaarno123456789012" (no
+ *  separator between the cue word and the digits) has NO `\b` between the
+ *  cue word's last letter and the first digit — both are `\w` characters —
+ *  so neither the shape loop's `\b\d{12}\b` nor `UNKNOWN_REF`'s own
+ *  `\b`-anchored sweep ever sees this run as a candidate AT ALL, and
+ *  `taken`/`refused` (populated only from what those two DID see) have
+ *  nothing in them to catch a provider-supplied FRAGMENT of it with. This
+ *  function is what lets `refusesAsAadhaar` below see the real digits on
+ *  either side of a fragment that the fragment's own boundary-anchored shape
+ *  tests cannot.
+ *
+ *  Note this is a STRICT GENERALISATION of `/^\d{12}$/` for any candidate
+ *  that already has non-digit neighbours (every `\b`-anchored shape match and
+ *  every `UNKNOWN_REF` sweep candidate): there the maximal run IS the
+ *  candidate, so the two tests agree exactly. It differs only for a candidate
+ *  located INSIDE a longer digit run — which is precisely the fragment case
+ *  it exists for. */
+function isBareAadhaarDigitRun(text: string, index: number, length: number): boolean {
+  let start = index
+  while (start > 0 && /\d/.test(text[start - 1])) start--
+  let end = index + length
+  while (end < text.length && /\d/.test(text[end])) end++
+  return /^\d{12}$/.test(text.slice(start, end))
+}
+
+/** THE AADHAAR REFUSAL RULE, in ONE place (2026-09-09 fix wave, round 2).
+ *
+ *  Round 1 of this fix wave bolted an Aadhaar check onto two individual code
+ *  paths — the unknown-number sweep and `classifyValue`'s `UNKNOWN_REF`
+ *  fallback branch. A scoped re-review found that this closed the gap for
+ *  `passport` and `sir` and left it WIDE OPEN for `voter`, for a reason that
+ *  had nothing to do with Aadhaar: `REF_SHAPES.voter`'s `\b\d{9,13}\b` is
+ *  wide enough to claim a 10-digit Aadhaar FRAGMENT as a whole-value shape
+ *  match, so `classifyValue`'s shape loop returned an honest "unknown" chip
+ *  and RETURNED — the guard one branch further down never ran. A per-branch
+ *  guard is only ever as good as the branches someone remembered to put it
+ *  on, and any future engine whose `REF_SHAPES` admits a bare digit run
+ *  re-opens the same hole silently.
+ *
+ *  So the rule lives here instead, and every path that can accept a numeric
+ *  value asks THIS function first — `extractFactsInternal`'s shape loop, its
+ *  unknown-number sweep, and `classifyValue` BEFORE its own shape loop even
+ *  starts, so no engine's `REF_SHAPES` (present or future) can shadow it.
+ *  The principle, stated once: any digit-only value that is structurally
+ *  shaped like an Aadhaar number, or is explicitly cued as one, is refused —
+ *  regardless of which service's shapes would otherwise have let it in.
+ *
+ *  The three clauses, in order, are exactly the cue-gating discipline the
+ *  shape loop already used before this fix wave (that is deliberate — it is
+ *  the same rule, not a stricter new one):
+ *   1. NOT a digit-only value -> not an Aadhaar number, and never refused on
+ *      Aadhaar grounds. A letter-bearing token like `XYZAB1234` cannot be an
+ *      Aadhaar number no matter what words sit near it.
+ *   2. An explicit Aadhaar cue immediately before it (the 32-char window) ->
+ *      refused unconditionally. A citizen who labels the number themselves is
+ *      the most reliable signal there is.
+ *   3. Otherwise: a legitimate reference-number cue (`ARN`, `file no`,
+ *      `reference number`) immediately before it LICENSES the number, exactly
+ *      as it always has; with no such cue, a bare Aadhaar-length digit run is
+ *      refused. Aadhaar and a passport ARN are both 12 digits, inseparable in
+ *      principle (FR-AI-02) — the cue is the only thing that ever separated
+ *      them, and this function does not change that. */
+function refusesAsAadhaar(text: string, index: number, value: string): boolean {
+  if (!/^\d+$/.test(value)) return false
+  if (aadhaarBefore(text, index)) return true
+  if (cueBefore(text, index)) return false
+  return isBareAadhaarDigitRun(text, index, value.length)
+}
+
 const APPLIED_DATE_RE = /(applied|submitted).{0,20}?((\d{1,2}\s)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s?\d{2,4})/i
 const OTHER_DATE_RE = /\b(\d{1,2}\s)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s?\d{0,4}\b/i
+
+/** One refusal, with the offset in the citizen's own `text` it was refused
+ *  at. The offset is what makes `redactRefusedNumbers` index-anchored (round
+ *  2 of the 2026-09-09 fix wave) instead of a blind whole-string replace. */
+interface RefusedSpan { value: string; index: number }
 
 /** Internal counterpart to `extractFacts`, below, which additionally exposes
  *  the `taken` array built while deriving facts from the citizen's OWN text.
@@ -130,7 +211,7 @@ const OTHER_DATE_RE = /\b(\d{1,2}\s)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|no
  *  innocuous "unknown" chip). Seeding `gateFacts`'s `taken` from THIS
  *  function's own `taken`, not from `facts`, closes that gap: the refused
  *  digits are in `taken` whether or not they ever became a `Fact`. */
-function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]; droppedSensitive: boolean; taken: string[]; refused: string[] } {
+function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]; droppedSensitive: boolean; taken: string[]; refused: RefusedSpan[] } {
   const facts: Fact[] = []
   const taken: string[] = []
   // Whole-branch review (2026-09-09 fix wave), Finding 1: every value ever
@@ -139,7 +220,12 @@ function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]
   // `redactRefusedNumbers`, below, is the only reader of this array — it is
   // what lets that function scrub exactly the substrings this function
   // itself refused, and nothing else, out of `appliedText`.
-  const refused: string[] = []
+  //
+  // Round 2 of the same fix wave: each entry now carries the OFFSET the value
+  // was refused AT, not just the value — see `RefusedSpan` and
+  // `redactRefusedNumbers`'s own doc comment for why a bare value is not
+  // enough to redact safely.
+  const refused: RefusedSpan[] = []
   let droppedSensitive = false
 
   // The shape loop (1855-1871). The taken check here is ONE-DIRECTIONAL
@@ -150,25 +236,23 @@ function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]
     if (!m || taken.some(t => t.includes(m[0]))) continue
     const idx = m.index ?? 0
     if (shape.cueRequired) {
-      if (aadhaarBefore(text, idx)) {
-        // An explicitly-labelled Aadhaar number never becomes a chip, never
-        // reaches state, never reaches storage.
+      // Round 2 of the 2026-09-09 fix wave: this branch's two separate
+      // refusal tests (an explicit Aadhaar cue; an uncued bare 12-digit run)
+      // are now the SINGLE rule in `refusesAsAadhaar` — same three clauses,
+      // same order, same outcomes, one definition instead of three copies
+      // that can drift apart (they did drift apart, which is what left
+      // `voter` open; see that function's doc comment).
+      if (refusesAsAadhaar(text, idx, m[0])) {
+        // An Aadhaar-shaped or Aadhaar-labelled number never becomes a chip,
+        // never reaches state, never reaches storage.
         droppedSensitive = true
         taken.push(m[0])
-        refused.push(m[0])
+        refused.push({ value: m[0], index: idx })
         continue
       }
       if (!cueBefore(text, idx)) {
-        // No labelled cue: a bare 12-digit number is Aadhaar-shaped and is
-        // refused outright — Aadhaar and a passport ARN are both 12 digits,
-        // inseparable in principle (FR-AI-02). Refused, not chipped. Any
-        // OTHER bare numeric shape becomes an honest, fills-nothing chip.
-        if (/^\d{12}$/.test(m[0])) {
-          droppedSensitive = true
-          taken.push(m[0])
-          refused.push(m[0])
-          continue
-        }
+        // No labelled cue, and not Aadhaar-shaped either: any OTHER bare
+        // numeric shape becomes an honest, fills-nothing chip.
         facts.push({ kind: 'reference_number', refType: 'unknown', label: UNKNOWN_LABEL, value: m[0], fills: null })
         taken.push(m[0])
         continue
@@ -208,7 +292,26 @@ function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]
     const u = m[0]
     const idx = m.index ?? 0
     if (taken.some(t => t.includes(u) || u.includes(t))) continue
-    if (/^\d{12}$/.test(u) || aadhaarBefore(text, idx)) {
+    // Round 2 of the 2026-09-09 fix wave, regression A: round 1 wrote this
+    // test inline as `/^\d{12}$/.test(u) || aadhaarBefore(text, idx)`, which
+    // is NOT the rule the shape loop above applies — it dropped the
+    // cue-gating half. Two ways it over-fired on a citizen's own legitimate
+    // reference number:
+    //   - "my ARN is 123456789012 and the reference number is 987654321098"
+    //     chipped the first as an ARN and REFUSED the second, even though
+    //     "the reference number is" is exactly the labelled cue that licenses
+    //     a 12-digit number everywhere else in this file. The citizen was
+    //     then shown a false "we removed a sensitive number" disclosure about
+    //     a number that was never sensitive.
+    //   - "I lost my aadhaar and my token is XYZAB1234 too" erased XYZAB1234,
+    //     which is not even a digit run — the 32-char lookback had caught an
+    //     Aadhaar mention that plainly refers to a DIFFERENT number earlier in
+    //     the same sentence.
+    // `refusesAsAadhaar` fixes both by construction: clause 1 requires the
+    // candidate itself to be digit-only (so the cue lookback can never, on its
+    // own, refuse a letter-bearing token), and clause 3 restores the
+    // cue-gating the shape loop has always had.
+    if (refusesAsAadhaar(text, idx, u)) {
       // Same refusal mechanism as the shape loop's own cueRequired branch
       // above: dropped, pushed into `taken` (so a later provider-supplied
       // substring's containment check still catches it, C-1) AND into
@@ -216,7 +319,7 @@ function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]
       // chipped.
       droppedSensitive = true
       taken.push(u)
-      refused.push(u)
+      refused.push({ value: u, index: idx })
       continue
     }
     facts.push({ kind: 'reference_number', refType: 'unknown', label: UNKNOWN_LABEL, value: u, fills: null })
@@ -297,12 +400,54 @@ export const REDACTED_NUMBER_PLACEHOLDER = '[number removed]'
  *  gate, already a literal substring of `text` — so the baseline's own
  *  refusals are exactly the set that can appear in this text to begin with.
  *  Pure — no `text` mutation (strings are immutable regardless), same
- *  `(engine, text)` in, same string out. */
+ *  `(engine, text)` in, same string out.
+ *
+ *  ROUND 2 OF THE SAME FIX WAVE, regression B — INDEX-ANCHORED, not a global
+ *  `split(value).join(...)`. That first cut replaced EVERY textual occurrence
+ *  of a refused value, which mangled an unrelated longer number that merely
+ *  contained the refused digits:
+ *
+ *    'first 123456789012 then 1234567890123456 end'
+ *      -> 'first [number removed] then [number removed]3456 end'
+ *
+ *  The second, 16-digit number is not Aadhaar-shaped, was never refused, and
+ *  belongs to the citizen — it must survive intact, not be rewritten into a
+ *  placeholder/digits hybrid that is both wrong and unreadable. Replacement
+ *  now happens at validated SPANS: the offset the value was actually refused
+ *  at, plus any other occurrence that is itself a maximal digit run (no digit
+ *  on either side of it). That second part is deliberate and is not a
+ *  loophole: it keeps the case where the citizen typed the SAME refused
+ *  number twice (the shape loop refuses the first occurrence and the sweep's
+ *  containment check then skips the second, so only ONE offset is ever
+ *  recorded) fully scrubbed, while the digit-adjacency test is exactly what
+ *  stops a span from ever landing inside a longer number. Spans are applied
+ *  right-to-left so earlier offsets stay valid, and an overlapping span is
+ *  skipped rather than double-substituted. */
 export function redactRefusedNumbers(engine: ServiceKey, text: string): string {
   const { refused } = extractFactsInternal(engine, text)
+
+  const spans: RefusedSpan[] = []
+  const addSpan = (value: string, index: number) => {
+    if (!spans.some(s => s.index === index && s.value === value)) spans.push({ value, index })
+  }
+  for (const { value, index } of refused) {
+    addSpan(value, index)
+    // Every OTHER occurrence of the same refused value that stands alone as
+    // its own maximal digit run — never one embedded in a longer number.
+    for (let at = text.indexOf(value); at !== -1; at = text.indexOf(value, at + 1)) {
+      const before = at > 0 ? text[at - 1] : ''
+      const after = at + value.length < text.length ? text[at + value.length] : ''
+      if (!/\d/.test(before) && !/\d/.test(after)) addSpan(value, at)
+    }
+  }
+
+  spans.sort((a, b) => b.index - a.index)
   let out = text
-  for (const value of refused) {
-    out = out.split(value).join(REDACTED_NUMBER_PLACEHOLDER)
+  let nextStart = text.length // leftmost boundary already consumed, right-to-left
+  for (const { value, index } of spans) {
+    if (index + value.length > nextStart) continue // overlaps a span already applied
+    out = out.slice(0, index) + REDACTED_NUMBER_PLACEHOLDER + out.slice(index + value.length)
+    nextStart = index
   }
   return out
 }
@@ -320,33 +465,6 @@ function matchesWhole(re: RegExp, value: string): boolean {
   return !!m && m[0] === value
 }
 
-/** Whole-branch review (2026-09-09 fix wave), Finding 1, second entry point:
- *  expands outward from `text[index, index+length)` while the adjacent
- *  characters are digits, and reports whether the resulting MAXIMAL run of
- *  digits is exactly 12 long — i.e. whether the candidate sits inside (or
- *  is) a bare Aadhaar-shaped number, REGARDLESS of whether that number has a
- *  `\b` word boundary anywhere in the raw text.
- *
- *  Why this is needed at all: a citizen-typed "aadhaarno123456789012" (no
- *  separator between the cue word and the digits) has NO `\b` between the
- *  cue word's last letter and the first digit — both are `\w` characters —
- *  so neither the shape loop's `\b\d{12}\b` above nor `UNKNOWN_REF`'s own
- *  `\b`-anchored sweep above ever sees this run as a candidate AT ALL, and
- *  `taken`/`refused` (populated only from what those two DID see) have
- *  nothing in them to catch a provider-supplied FRAGMENT of it with. This
- *  function is `classifyValue`'s own containment check for exactly that
- *  gap: it is called with the fragment's OWN index in the untouched `text`
- *  (not the isolated `value` `matchesWhole` tests elsewhere in this
- *  function), so it can see the real digits on either side of the fragment
- *  that the fragment's own boundary-anchored shape tests cannot. */
-function isBareAadhaarDigitRun(text: string, index: number, length: number): boolean {
-  let start = index
-  while (start > 0 && /\d/.test(text[start - 1])) start--
-  let end = index + length
-  while (end < text.length && /\d/.test(text[end])) end++
-  return /^\d{12}$/.test(text.slice(start, end))
-}
-
 type Classified =
   | { fact: Fact; droppedSensitive: false; category: 'shape' | 'unknown' | 'date' }
   | { fact: null; droppedSensitive: true; category: 'shape' }
@@ -360,9 +478,47 @@ type Classified =
  *  null) so the caller drops it — never chipped under a model-authored
  *  label. */
 function classifyValue(engine: ServiceKey, text: string, value: string, index: number): Classified {
+  // THE ROUND-2 FIX (2026-09-09 fix wave, scoped re-review). This runs BEFORE
+  // the shape loop, and that placement is the whole point of it.
+  //
+  // Round 1 put the Aadhaar guard inside the `UNKNOWN_REF` branch at the
+  // BOTTOM of this function — the branch reached only when NO shape matched.
+  // On `passport` and `sir` that was enough, because neither engine has a
+  // shape that a 10-digit Aadhaar fragment can satisfy, so such a fragment
+  // always fell through to the bottom. `voter` does: `\b\d{9,13}\b` matches a
+  // 9-to-13-digit whole value, so the shape loop below claimed the fragment,
+  // returned an honest "unknown" chip, and RETURNED — the round-1 guard, two
+  // dozen lines further down, never executed. A provider-supplied fragment of
+  // a citizen-typed Aadhaar number was chipped and persisted on `voter` while
+  // being correctly refused on `passport` and `sir`.
+  //
+  // Guarding one more engine, or one more branch, would have left exactly the
+  // same trap set for the next shape anyone adds. Asking `refusesAsAadhaar`
+  // first closes the CLASS instead: no engine's `REF_SHAPES`, present or
+  // future, can shadow a rule that has already run before the loop starts.
+  // See `refusesAsAadhaar`'s own doc comment for the rule itself, including
+  // why a legitimately cued reference number is still licensed here.
+  if (refusesAsAadhaar(text, index, value)) {
+    return { fact: null, droppedSensitive: true, category: 'shape' }
+  }
+
   for (const shape of REF_SHAPES[engine] ?? []) {
     if (!matchesWhole(shape.re, value)) continue
     if (shape.cueRequired) {
+      // Both tests below are kept AFTER the round-2 guard above, deliberately,
+      // and neither is redundant in the way it looks:
+      //  - `aadhaarBefore` is belt-and-braces for a future `cueRequired` shape
+      //    that is NOT purely numeric (every one today is, which is what makes
+      //    the guard's digit-only clause 1 sufficient for them). A refusal is
+      //    the wrong thing to delete on the strength of a table's current
+      //    contents.
+      //  - `/^\d{12}$/` is genuinely still load-bearing, and is NOT covered by
+      //    the guard: the guard asks whether the value's MAXIMAL digit run is
+      //    12 long, so a 12-digit value sitting inside a LONGER run (say the
+      //    provider hands back the first 12 digits of a 16-digit number in the
+      //    text) does not satisfy it — but such a value is still, in isolation,
+      //    exactly Aadhaar-shaped, and this file has refused it since before
+      //    the fix wave. Kept.
       if (aadhaarBefore(text, index)) {
         return { fact: null, droppedSensitive: true, category: 'shape' }
       }
@@ -412,15 +568,19 @@ function classifyValue(engine: ServiceKey, text: string, value: string, index: n
     // step 5) — a provider-supplied FRAGMENT of a citizen-typed Aadhaar
     // number (wrong length to match any REF_SHAPES pattern, and possibly
     // with no `\b` boundary anywhere in the raw text — see
-    // `isBareAadhaarDigitRun`'s own doc comment) sails through that
-    // isolated test with nothing to stop it. Checked here, against the
-    // fragment's OWN location in the real `text`: either it sits inside a
-    // reconstructible 12-digit run (regardless of `\b`), or it is directly
-    // cued by an Aadhaar-word within the existing 32-char lookback window —
-    // the SAME two conditions the sweep above refuses a candidate for.
-    // Refused the same way every other Aadhaar refusal in this file is:
-    // `fact: null, droppedSensitive: true` — never chipped under an
-    // "unknown" label.
+    // `isBareAadhaarDigitRun`'s own doc comment) sails through that isolated
+    // test with nothing to stop it.
+    //
+    // Round 2: the guard at the TOP of this function is now the primary
+    // catch for that, and it fires whichever branch the value would have
+    // reached. What is left reachable here is the one case the top guard
+    // licenses and this branch does not: a digit run that DOES carry a
+    // legitimate reference-number cue but is NOT a whole recognised shape —
+    // i.e. a 9-to-11-digit prefix of a cued 12-digit run. The cue points at
+    // the whole run, the whole run is Aadhaar-shaped, and a fragment of it is
+    // still a partial leak, so it is refused here. Refused the same way every
+    // other Aadhaar refusal in this file is: `fact: null, droppedSensitive:
+    // true` — never chipped under an "unknown" label.
     if (/^\d+$/.test(value) && (isBareAadhaarDigitRun(text, index, value.length) || aadhaarBefore(text, index))) {
       return { fact: null, droppedSensitive: true, category: 'shape' }
     }

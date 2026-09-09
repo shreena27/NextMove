@@ -93,9 +93,12 @@
  *  DESIGN NOTE 7 (a11y — a correction, in the same class as C7's
  *  `.auth-label` `<div>` -> real `<label>`). The prototype re-renders the
  *  whole screen on every toggle and manages no focus at all — a keyboard
- *  user is left wherever they were. This port carries `aria-expanded` AND
- *  `aria-controls` on `.describe-row` (the prototype has only the former,
- *  line 3007) and moves focus: to the textarea on open, back to the row
+ *  user is left wherever they were. This port carries `aria-expanded` on
+ *  `.describe-row` (the prototype has only that, line 3007) plus
+ *  `aria-controls` — set only while the box is OPEN, since the box it names
+ *  is structurally absent when closed and a permanently-set `aria-controls`
+ *  would be a dangling IDREF (whole-branch review, Finding 7; see the JSX
+ *  below) — and moves focus: to the textarea on open, back to the row
  *  button on close. The textarea keeps the prototype's own
  *  `aria-label="Describe your situation"` (line 3012) — it has no visible
  *  label, so an `aria-label` is correct here, not a shortcut. The error
