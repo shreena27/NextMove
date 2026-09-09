@@ -14,7 +14,10 @@
  *  component and Task 14's belongs to whichever later task wires the two
  *  together (Task 17's App.tsx router), never to a forward import here.
  *
- *  NOT YET WIRED into App.tsx's router (Task 17's job) — built and tested
+ *  WIRED into App.tsx's router by Task 17: the `'interp-confirm'` case
+ *  mounts this component and `UnplaceablePanel` as SIBLINGS, and the two
+ *  self-guards are exact complements, so exactly one of them ever produces
+ *  output for any given `state.interp`. Until then this was built and tested
  *  standalone via direct RTL renders, the same way `DescribeBlock` (Task 11)
  *  was fully built and tested before its six mount sites existed in the
  *  router-reachable sense.

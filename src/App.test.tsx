@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createSupabaseMock, type SupabaseMock } from './test/supabaseMock'
 import type { Casefile } from './domain/casefile'
@@ -35,10 +35,15 @@ import { SIR_STATES } from './playbooks/sirPlaybook'
 import * as evaluateModule from './domain/evaluate'
 import * as caseSyncModule from './session/caseSync'
 import * as caseStoreModule from './session/caseStore'
-import { UI } from './screens/screenCopy'
-import { PREP } from './playbooks/prep'
-import type { SessionState, SessionAction } from './session/session'
+import * as freshnessModule from './domain/freshness'
+import * as interpretationModule from './session/interpretation'
+import { UI, PASSPORT_COPY, VOTER_COPY, SIR_COPY } from './screens/screenCopy'
+import { PASSPORT_Q1_LABELS, PASSPORT_Q2_LABELS, VOTER_Q1_LABELS } from './screens/labels'
+import { matchPasted, PASTE_MATCH_EXAMPLES } from './screens/passport/PassportRecovery'
+import { PREP, prepPlanFor } from './playbooks/prep'
+import type { ActiveInterpretation, ScreenId, SessionState, SessionAction } from './session/session'
 import { PENDING_GOOGLE_SAVE_KEY } from './session/session'
+import type { Fact, GatedInterpretation } from './domain/interpret'
 
 // Design note 3's no-plan guard (design/nextmove-v1-prototype.html 3749,
 // ported as App.tsx's `RestartToHome`) is reachable only via a direct
@@ -71,6 +76,24 @@ const seededState = vi.hoisted(() => ({ current: undefined as Partial<SessionSta
 // reducer actually receives. Wraps `sessionReducer` — delegates to the
 // UNMODIFIED real implementation every time, purely an observation point.
 const dispatchedActions = vi.hoisted(() => ({ current: [] as SessionAction[] }))
+// C8 Task 17: the SAME observation point, one step further — every state
+// the real reducer actually RETURNED, in order. Two things in this task
+// genuinely need it and cannot get them any other way:
+//   - Design note 5's "assert the smart skip on the RENDER HISTORY, not
+//     just the endpoint". Every committed reducer result is a render (this
+//     is a `useReducer` over `state.screen` and nothing else selects the
+//     body), so `reducerStates.current.map(s => s.screen)` IS the sequence
+//     of screens the router rendered. Proving `'passport-q2'` never appears
+//     in it is strictly stronger than proving the final screen is
+//     `'passport-diagnosis'`.
+//   - Design note 4's AC-AI-1 assertion needs REFERENCE identity (`toBe`)
+//     on `state.answers` across the interpretation, and `<App/>` exposes no
+//     state. A DOM assertion cannot distinguish "the same object" from "an
+//     equal copy", which is the entire point of that pin.
+// Delegates to the UNMODIFIED real implementation, exactly like
+// `dispatchedActions` above — purely an observation point, never a
+// substitute reducer.
+const reducerStates = vi.hoisted(() => ({ current: [] as SessionState[] }))
 vi.mock('./session/session', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./session/session')>()
   return {
@@ -80,7 +103,9 @@ vi.mock('./session/session', async (importOriginal) => {
     },
     sessionReducer: (s: SessionState, a: SessionAction) => {
       dispatchedActions.current.push(a)
-      return actual.sessionReducer(s, a)
+      const next = actual.sessionReducer(s, a)
+      reducerStates.current.push(next)
+      return next
     },
   }
 })
@@ -91,8 +116,16 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  // C8 Task 17: the describe-it tests below stub `VITE_DESCRIBE_IT`
+  // (the feature ships OFF by default, so an ON test must say so
+  // explicitly). Unstubbed here so no stub — 'on' OR 'off' — can leak into
+  // a later test in this file or, if suite ordering ever changes, another
+  // file. Same discipline `featureFlags.test.ts` / `screenCopy.test.tsx`
+  // already follow.
+  vi.unstubAllEnvs()
   seededState.current = undefined
   dispatchedActions.current = []
+  reducerStates.current = []
   // Task 13: App now genuinely reads/writes `nm_cases` via `localStorage`
   // (the lazy useReducer initializer / the persistence useEffect) — jsdom's
   // REAL localStorage is shared across every `it()` in this file, so a case
@@ -1636,5 +1669,786 @@ describe('C8 Task 16: appliedText/caseFacts reach the real Diagnosis screen (pro
     }
     render(<App />)
     expect(screen.queryByText(UI.interp.youWrote)).toBeNull()
+  })
+})
+
+// =============================================================================
+// C8 Task 17 — the router wiring, the flag's OFF state, the whole-flow
+// integration tests, and the scope-exclusion regression pins.
+//
+// This is the task that closes the build window: 'interp-confirm' was the
+// last `ScreenId` member without a router case, and App.tsx's own
+// `const _never: never = state.screen` is what has been failing `tsc -b`
+// since Task 6. Everything below drives the REAL router (`render(<App/>)`)
+// rather than mounting a component directly — every requirement asserted
+// here spans more than one module, and a direct mount would prove only that
+// the module works in isolation, which its own task already proved.
+//
+// NO PROVIDER IS MOCKED anywhere in this section. Design note 5 is explicit
+// that the six flows run "all against the simulator, all deterministic," and
+// a mocked interpretation would prove nothing about the enum/span/verbatim
+// gates it has to pass on the way through.
+// =============================================================================
+
+/** The feature ships OFF (featureFlags.ts: an allowlist of exactly `'on'`),
+ *  so an ON test has to say so. Both are spelled out at every call site
+ *  rather than hoisted into a `beforeEach`: which state the flag is in is
+ *  the SUBJECT of half the tests below, never incidental setup.
+ *  `afterEach`'s `vi.unstubAllEnvs()` (top of this file) stops either
+ *  leaking. */
+const flagOn = () => { vi.stubEnv('VITE_DESCRIBE_IT', 'on') }
+const flagOff = () => { vi.stubEnv('VITE_DESCRIBE_IT', 'off') }
+
+/** The sequence of screens the router ACTUALLY RENDERED, oldest first.
+ *  `<App/>` is a `useReducer` whose body switches on `state.screen` and
+ *  nothing else, so every committed reducer result is a render — which makes
+ *  this a genuine render history, not a proxy for one. Design note 5's
+ *  smart-skip flow asks for exactly this: "assert the skip on the render
+ *  history, not just the endpoint." */
+function renderedScreens(): ScreenId[] {
+  const initial = (seededState.current?.screen ?? 'home') as ScreenId
+  return [initial, ...reducerStates.current.map(s => s.screen)]
+}
+
+/** The most recent state the real reducer returned — the only way to read
+ *  session state from outside `<App/>`, which deliberately exposes none. */
+function latestState(): SessionState {
+  const states = reducerStates.current
+  // Throws rather than `expect`-ing: this helper is called from inside tests
+  // that pin their own `expect.assertions(n)` count (the I11 pin below), and
+  // an assertion hidden in a helper would inflate that count and silently
+  // weaken the pin.
+  if (states.length === 0) throw new Error('latestState(): no action has been dispatched yet — there is no state to read')
+  return states[states.length - 1]
+}
+
+/** Open the describe box on whichever question screen is rendered. The row's
+ *  accessible name is `rowLead` + `rowStrong` — two registered entries, one
+ *  button (DescribeBlock design note 1). */
+async function openDescribeBox() {
+  await userEvent.click(screen.getByRole('button', { name: `${UI.describe.rowLead}${UI.describe.rowStrong}` }))
+}
+
+/** Fill the box from one of the REAL registered example stories (the chip's
+ *  own `aria-label` carries the full text — DescribeBlock design note 8) and
+ *  run the interpretation. */
+async function runStoryChip(story: string) {
+  await userEvent.click(screen.getByRole('button', { name: story }))
+  await userEvent.click(screen.getByRole('button', { name: UI.describe.read }))
+}
+
+/** Same, for a story typed by hand rather than picked off a chip — used where
+ *  a flow needs an input no registered example produces. The textarea is
+ *  fully controlled off `state.describeText`, so this is one real
+ *  `SET_DESCRIBE_TEXT` per keystroke, exactly like a citizen typing. */
+async function runTypedStory(text: string) {
+  await userEvent.type(screen.getByRole('textbox', { name: UI.describe.ariaLabel }), text)
+  await userEvent.click(screen.getByRole('button', { name: UI.describe.read }))
+}
+
+/** Home -> Passport -> "No, still waiting on it" -> `passport-q1`. */
+async function toPassportQ1() {
+  await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+  await userEvent.click(screen.getByRole('button', { name: PASSPORT_COPY.guardrail.no }))
+}
+
+/** The ONE hand-built `ActiveInterpretation` in this file. Every other
+ *  interpretation below is produced by the real simulator through the real
+ *  router; this one exists solely for the flag-OFF redirect tests, which
+ *  cannot produce one at all (with the flag off `runInterpretation` refuses
+ *  and `DescribeBlock` renders nothing — that IS the test). The `__gated`
+ *  brand is cast exactly the way `interactionGated.test.tsx` and
+ *  `session.test.ts` already cast it: the brand's job is to stop PRODUCTION
+ *  code forging a gated value, and a test fixture is not production code. */
+function makeInterp(over: Partial<ActiveInterpretation> = {}): ActiveInterpretation {
+  return {
+    __gated: 'test-only' as unknown as GatedInterpretation['__gated'],
+    mappings: [{
+      questionId: 'q1', value: 'no_contact', span: 'nothing has moved',
+      optionValues: ['no_contact', 'contacted_incomplete', 'verified_no_progress', 'adverse'],
+    }],
+    discarded: [], facts: [], droppedSensitive: false, unplaceable: false,
+    provenance: 'simulated (local matcher)',
+    ctxScreen: 'passport-q1', engine: 'passport', service: UI.serviceLabel.passport,
+    text: 'nothing has moved since I filed',
+    ...over,
+  }
+}
+
+/** The six describe-it entry screens — `DESCRIBE_CHAINS`' own key set
+ *  (domain/interpret.ts's `DescribeEntryScreenId` union), never a hand-picked
+ *  subset — with the minimum answers each needs to render at all, and the
+ *  headline that proves it really did. */
+const ENTRY_SCREENS: [ScreenId, Partial<SessionState>, string][] = [
+  ['passport-q1', { answers: { guardrail: 'no' } }, PASSPORT_COPY.q1.headline],
+  ['passport-q2', { answers: { guardrail: 'no', q1: 'no_contact' } }, PASSPORT_COPY.q2.headline],
+  ['voter-entry', { answers: {} }, VOTER_COPY.entry.headline],
+  ['voter-q1', { answers: {} }, VOTER_COPY.q1.headline],
+  ['voter-q2', { answers: { voterQ1: 'decision' } }, VOTER_COPY.q2.headline],
+  ['sir-q1', { answers: { sirState: 'delhi' } }, SIR_COPY.q1.headline],
+]
+
+describe("C8 Task 17: the 'interp-confirm' router case", () => {
+  it('routes a MAPPED interpretation to the confirm screen with topbar(true, false) — Back visible, Restart absent (prototype 3089)', async () => {
+    flagOn()
+    render(<App />)
+    await toPassportQ1()
+    await openDescribeBox()
+    await runStoryChip(UI.describe.examples['passport-q1'].one)
+
+    expect(await screen.findByRole('heading', { level: 1, name: UI.interp.headline })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: UI.topbar.back })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: UI.topbar.restart })).toBeNull()
+    // The unplaceable sibling mounted alongside it rendered nothing.
+    expect(screen.queryByText(UI.unplaceable.headline)).toBeNull()
+  })
+
+  it('routes an UNPLACEABLE interpretation to the panel with topbar(true, false) — the same arguments in BOTH branches (prototype 3047)', async () => {
+    flagOn()
+    render(<App />)
+    await toPassportQ1()
+    await openDescribeBox()
+    await runStoryChip(UI.describe.examples['passport-q1'].two)
+
+    expect(await screen.findByRole('heading', { level: 1, name: UI.unplaceable.headline })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: UI.topbar.back })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: UI.topbar.restart })).toBeNull()
+    // The mapped sibling rendered nothing: the two guards are exact
+    // complements, so exactly one component ever produces output for any
+    // given `state.interp` — which is what makes mounting both as siblings
+    // a composition rather than a double render.
+    expect(screen.queryByText(UI.interp.headline)).toBeNull()
+  })
+
+  it("guard 1: 'interp-confirm' reached with no interpretation renders Home", () => {
+    flagOn()
+    seededState.current = { screen: 'interp-confirm', interp: null }
+    render(<App />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    expect(screen.queryByText(UI.interp.headline)).toBeNull()
+    expect(screen.queryByText(UI.unplaceable.headline)).toBeNull()
+  })
+
+  it(
+    'I11 — the no-interpretation guard is NON-DESTRUCTIVE. The prototype\'s answer here is `restart()` (3039), which in ' +
+    "this codebase wipes the citizen's whole working case. Arriving with no interpretation is a stale route, not a reason " +
+    'to destroy their work — and a dispatch in a render-phase switch is not legal here anyway',
+    async () => {
+      expect.assertions(6)
+      flagOn()
+      // A citizen mid-journey: answers given, a prepare plan open, steps
+      // ticked, a draft edited, a working case built. This is not a contrived
+      // shape — `APPLY_INTERPRETATION` and `UNPLACEABLE_PICK` both push
+      // 'interp-confirm' onto `history` in the SAME transition that nulls
+      // `interp` (session.ts says so at both arms), so BACK genuinely lands
+      // here in exactly this state on an ordinary, successful journey.
+      const answers = { guardrail: 'no', q1: 'contacted_incomplete', q2: 'informal' }
+      const prepChecks = { 0: true, 2: true }
+      const prepDraft = 'my own edited draft, half written'
+      const workingCase: Casefile = {
+        engineKey: 'passport', serviceLabel: UI.serviceLabel.passport, returnScreen: 'passport-prepare',
+        answers, prepChecks, savedAt: 1_700_000_000_000,
+        stateLabel: 'Followed up informally, unresolved', rec: 'FOLLOW_UP',
+        whatShort: 'Move to a formal Grievance / CPGRAMS filing',
+        stepsTotal: 5, stepsDone: 2, sirPhaseId: null,
+        caseFacts: [], appliedText: null, interpProvenance: null,
+        id: 'working', outcome: 'still_open', lastCheck: null, remindAt: null, log: [],
+      }
+      seededState.current = {
+        screen: 'interp-confirm', interp: null, answers, prepChecks, prepDraft, workingCase,
+        activeCaseId: 'working',
+      }
+      render(<App />)
+
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+      // Checked BEFORE anything else touches the reducer: the guard renders,
+      // it does not dispatch. Under the prototype's `restart()` this is
+      // `[{ type: 'RESTART' }]`.
+      expect(dispatchedActions.current, 'the guard must dispatch NOTHING during the render').toEqual([])
+
+      // Read the live state back through one action documented to touch none
+      // of these four fields (NAVIGATE's own clear set is
+      // trustOpen/restartConfirm/removeConfirm/authErr/acctOpen and nothing
+      // else). Without this step the four assertions below would be
+      // tautological — with zero dispatches there is no reducer result to
+      // read, and comparing the seed to itself proves nothing.
+      await userEvent.click(screen.getByRole('button', { name: /Passport/ }))
+      // Reference identity, not deep equality: `RESTART` replaces each of
+      // these with `initialSession`'s own value, and a deep-equal check
+      // could still pass against a rebuilt copy.
+      expect(latestState().answers).toBe(answers)
+      expect(latestState().prepChecks).toBe(prepChecks)
+      expect(latestState().prepDraft).toBe(prepDraft)
+      expect(latestState().workingCase).toBe(workingCase)
+    },
+  )
+})
+
+describe('C8 Task 17: the flag OFF, proven end to end (design note 3)', () => {
+  it.each(ENTRY_SCREENS)(
+    'with the flag OFF, %s renders its own question screen and NO describe row',
+    (screenId, seed, headline) => {
+      flagOff()
+      seededState.current = { screen: screenId, ...seed }
+      render(<App />)
+      // The screen itself really did render — without this the absence
+      // assertion below would pass for a screen that failed to render at all.
+      expect(screen.getByRole('heading', { name: headline })).toBeInTheDocument()
+      expect(document.querySelector('.describe-entry')).toBeNull()
+      expect(screen.queryByRole('button', { name: `${UI.describe.rowLead}${UI.describe.rowStrong}` })).toBeNull()
+    },
+  )
+
+  it.each(ENTRY_SCREENS)(
+    'the positive control: with the flag ON, %s DOES render the describe row (so the OFF assertions above are not vacuous)',
+    (screenId, seed, headline) => {
+      flagOn()
+      seededState.current = { screen: screenId, ...seed }
+      render(<App />)
+      expect(screen.getByRole('heading', { name: headline })).toBeInTheDocument()
+      expect(document.querySelector('.describe-entry')).toBeInTheDocument()
+    },
+  )
+
+  it('with the flag OFF, runInterpretation is never called from anywhere in the running app', async () => {
+    const spy = vi.spyOn(interpretationModule, 'runInterpretation')
+    flagOff()
+    for (const [screenId, seed] of ENTRY_SCREENS) {
+      seededState.current = { screen: screenId, ...seed }
+      const { unmount } = render(<App />)
+      unmount()
+    }
+    expect(spy).not.toHaveBeenCalled()
+
+    // The positive control, in the SAME test so the spy's silence above is
+    // provably a fact about the flag and not about the spy: flip the flag on,
+    // drive the one entry point that exists, and watch it fire exactly once.
+    spy.mockClear()
+    seededState.current = undefined
+    flagOn()
+    render(<App />)
+    await toPassportQ1()
+    await openDescribeBox()
+    await runStoryChip(UI.describe.examples['passport-q1'].one)
+    await screen.findByRole('heading', { level: 1, name: UI.interp.headline })
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it("with the flag OFF, 'interp-confirm' redirects Home — a route created while the flag was on can never serve a feature that is no longer there", () => {
+    flagOff()
+    seededState.current = { screen: 'interp-confirm', interp: makeInterp() }
+    render(<App />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    expect(screen.queryByText(UI.interp.headline)).toBeNull()
+  })
+
+  it("with the flag OFF, an UNPLACEABLE 'interp-confirm' redirects Home too — the guard is on the route, not on one branch of it", () => {
+    flagOff()
+    seededState.current = { screen: 'interp-confirm', interp: makeInterp({ unplaceable: true, mappings: [] }) }
+    render(<App />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Know what's")
+    expect(screen.queryByText(UI.unplaceable.headline)).toBeNull()
+  })
+})
+
+describe("C8 Task 17: AC-AI-1 at full-flow scale (design note 4 — Task 7's named hand-off)", () => {
+  it('nothing reaches state.answers until "Use these answers" is clicked: the answers on the confirm screen are REFERENCE-identical to the ones before the interpretation ran', async () => {
+    flagOn()
+    render(<App />)
+    await toPassportQ1()
+    const answersBefore = latestState().answers
+    expect(answersBefore).toEqual({ guardrail: 'no' })
+
+    await openDescribeBox()
+    await runStoryChip(UI.describe.examples['passport-q1'].one)
+    await screen.findByRole('heading', { level: 1, name: UI.interp.headline })
+
+    // The whole of AC-AI-1: typing, interpreting, gating and landing on the
+    // confirm screen wrote nothing at all. `toBe`, not `toEqual` — an equal
+    // COPY would mean something rebuilt the record, which is exactly the
+    // class of write this assertion exists to forbid.
+    expect(latestState().answers).toBe(answersBefore)
+
+    // ...and the check is not vacuous: the click DOES write.
+    await userEvent.click(screen.getByRole('button', { name: UI.interp.useTheseAnswers }))
+    expect(latestState().answers).not.toBe(answersBefore)
+    expect(latestState().answers).toEqual({ guardrail: 'no', q1: 'contacted_incomplete', q2: 'informal' })
+  })
+})
+
+// -----------------------------------------------------------------------------
+// Design note 5 — the six full-flow integration tests. Every one runs against
+// the REAL simulator through the REAL router, and every claimed mapping below
+// was verified by running `runInterpretation` against the registered story
+// before the assertion was written, never assumed from the brief.
+// -----------------------------------------------------------------------------
+
+/** The confirm screen's card for one question, found by its own `.read-q`
+ *  label rather than by index — a card list that changes length under a
+ *  repick (flow 4) must not silently re-point an assertion at a different
+ *  question. */
+function interpCard(questionLabel: string): HTMLElement {
+  const cards = Array.from(document.querySelectorAll<HTMLElement>('.read-card'))
+  const found = cards.find(c => c.querySelector('.read-q')?.textContent === questionLabel)
+  if (!found) throw new Error(`no confirm card for question "${questionLabel}"`)
+  return found
+}
+
+describe('C8 Task 17, flow 1: passport, two questions from one story — FR-AI-03 smart skip', () => {
+  it('the first passport story maps q1 AND q2, so "Use these answers" lands on the diagnosis and passport-q2 is NEVER rendered', async () => {
+    flagOn()
+    render(<App />)
+    await toPassportQ1()
+    await openDescribeBox()
+    await runStoryChip(UI.describe.examples['passport-q1'].one)
+    await screen.findByRole('heading', { level: 1, name: UI.interp.headline })
+
+    // Both questions really were read from the one story — verified against
+    // the real simulator, not assumed: q1 'contacted_incomplete' (span
+    // "Police came") and q2 'informal' (span "called").
+    expect(document.querySelectorAll('.read-card')).toHaveLength(2)
+    expect(interpCard(UI.interp.qLabel.q1)).toHaveTextContent(PASSPORT_Q1_LABELS.contacted_incomplete)
+    expect(interpCard(UI.interp.qLabel.q2)).toHaveTextContent(PASSPORT_Q2_LABELS.informal)
+
+    await userEvent.click(screen.getByRole('button', { name: UI.interp.useTheseAnswers }))
+
+    const d = diagnose(passportEngine, { guardrail: 'no', q1: 'contacted_incomplete', q2: 'informal' })
+    expect(screen.getByText(d.dependency)).toBeInTheDocument()
+    expect(latestState().screen).toBe('passport-diagnosis')
+    expect(latestState().answers).toEqual({ guardrail: 'no', q1: 'contacted_incomplete', q2: 'informal' })
+
+    // THE SKIP, asserted on the render history rather than the endpoint: a
+    // final screen of 'passport-diagnosis' is equally consistent with a
+    // journey that DID render Q2 and moved on. This is not.
+    expect(renderedScreens()).not.toContain('passport-q2')
+    expect(renderedScreens()).toContain('interp-confirm')
+    expect(screen.queryByRole('heading', { name: PASSPORT_COPY.q2.headline })).toBeNull()
+  })
+})
+
+describe('C8 Task 17, flow 2: the wrong reading, caught — FR-AI-06', () => {
+  it('the "someone from the passport office called me" story is read as the CITIZEN having called; correcting it on the confirm screen changes the diagnosis that actually renders', async () => {
+    flagOn()
+    render(<App />)
+    await toPassportQ1()
+    // Tap Q1 normally, so the describe box is entered from passport-q2 —
+    // the entry screen this flow is about.
+    await userEvent.click(screen.getByRole('button', { name: PASSPORT_Q1_LABELS.contacted_incomplete }))
+    await openDescribeBox()
+    await runStoryChip(UI.describe.examples['passport-q2'].two)
+    await screen.findByRole('heading', { level: 1, name: UI.interp.headline })
+
+    // The deliberate flaw (simInterpreter.ts's own "DO NOT FIX THIS RULE"
+    // note): "called me" is read as the CITIZEN having called.
+    expect(interpCard(UI.interp.qLabel.q2)).toHaveTextContent(PASSPORT_Q2_LABELS.informal)
+
+    // The two diagnoses genuinely differ — asserted before the correction,
+    // so "the correction reached the diagnosis" cannot be satisfied by two
+    // identical outcomes.
+    const dWrong = diagnose(passportEngine, { guardrail: 'no', q1: 'contacted_incomplete', q2: 'informal' })
+    const dRight = diagnose(passportEngine, { guardrail: 'no', q1: 'contacted_incomplete', q2: 'no_followup' })
+    expect(dRight.ruleId).not.toBe(dWrong.ruleId)
+    expect(dRight.dependency).not.toBe(dWrong.dependency)
+
+    // q2 is the question the citizen just came from, so D12 collapses it to
+    // a label plus a Change control (never a lone label with no way back).
+    await userEvent.click(within(interpCard(UI.interp.qLabel.q2)).getByRole('button', { name: UI.interp.change }))
+    await userEvent.click(
+      within(interpCard(UI.interp.qLabel.q2)).getByRole('button', { name: PASSPORT_Q2_LABELS.no_followup }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: UI.interp.useTheseAnswers }))
+
+    expect(latestState().screen).toBe('passport-diagnosis')
+    expect(latestState().answers.q2).toBe('no_followup')
+    expect(screen.getByText(dRight.dependency)).toBeInTheDocument()
+    expect(screen.queryByText(dWrong.dependency)).toBeNull()
+  })
+})
+
+describe('C8 Task 17, flow 3: the hard story lands on the unplaceable panel — FR-AI-06', () => {
+  it('the "my agent said he will handle everything" story maps nothing, keeps the text, and a direct pick routes exactly as a normal tap would', async () => {
+    flagOn()
+    render(<App />)
+    await toPassportQ1()
+    await openDescribeBox()
+    await runStoryChip(UI.describe.examples['passport-q1'].two)
+    await screen.findByRole('heading', { level: 1, name: UI.unplaceable.headline })
+
+    // Text preserved, verbatim, and no mapping was forced.
+    expect(document.querySelector('.youwrote-text')).toHaveTextContent(UI.describe.examples['passport-q1'].two)
+    expect(latestState().interp?.mappings).toEqual([])
+    expect(latestState().interp?.unplaceable).toBe(true)
+
+    // The offered question is the first UNANSWERED one in the chain — q1,
+    // since only `guardrail` is answered — and picking from its real closed
+    // list routes exactly where PassportQ1's own onSelect would.
+    expect(document.querySelector('.unplace-panel .read-q')).toHaveTextContent(UI.interp.qLabel.q1)
+    await userEvent.click(
+      within(document.querySelector('.unplace-panel') as HTMLElement)
+        .getByRole('button', { name: PASSPORT_Q1_LABELS.no_contact }),
+    )
+
+    expect(latestState().screen).toBe('passport-q2')
+    expect(screen.getByRole('heading', { name: PASSPORT_COPY.q2.headline })).toBeInTheDocument()
+    expect(latestState().answers.q1).toBe('no_contact')
+    // The text and provenance carried across the pick (UNPLACEABLE_PICK
+    // re-applies them AFTER the answer write, which would otherwise clear
+    // them). This particular story yields no facts at all, which is why the
+    // fact-bearing variant below exists rather than letting an empty
+    // `caseFacts` stand in for "facts intact".
+    expect(latestState().appliedText).toBe(UI.describe.examples['passport-q1'].two)
+    expect(latestState().interpProvenance).toBe('simulated (local matcher)')
+    expect(latestState().caseFacts).toEqual([])
+  })
+
+  it('facts intact, non-vacuously: the same unplaceable story WITH a file number in it carries that fact through the direct pick', async () => {
+    flagOn()
+    // The registered story plus the one detail a real citizen would most
+    // likely add. It still maps nothing (no q1 rule matches "agent" or
+    // "phone switched off"), so it still lands on the panel — but now the
+    // app's own fact extraction has something to find.
+    const story = UI.describe.examples['passport-q1'].two + '. File no BN1068334517807'
+    const fileNumberFact: Fact = {
+      kind: 'reference_number', refType: 'passport_file_no', label: 'File Number',
+      value: 'BN1068334517807', fills: '[File Number / ARN]',
+    }
+    render(<App />)
+    await toPassportQ1()
+    await openDescribeBox()
+    await runTypedStory(story)
+    await screen.findByRole('heading', { level: 1, name: UI.unplaceable.headline })
+
+    expect(latestState().interp?.unplaceable).toBe(true)
+    expect(latestState().interp?.facts).toEqual([fileNumberFact])
+
+    await userEvent.click(
+      within(document.querySelector('.unplace-panel') as HTMLElement)
+        .getByRole('button', { name: PASSPORT_Q1_LABELS.no_contact }),
+    )
+    expect(latestState().screen).toBe('passport-q2')
+    expect(latestState().caseFacts).toEqual([fileNumberFact])
+    expect(latestState().appliedText).toBe(story)
+  })
+})
+
+describe('C8 Task 17, flow 4: voter branch pruning — AC-AI-3', () => {
+  it('the voter story maps all three questions; repicking Q1 to "no word" drops the appeal card AND the applied answers carry no voterAppealedRaw', async () => {
+    flagOn()
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Voter Services/ }))
+    await openDescribeBox()
+    await runStoryChip(UI.describe.examples['voter-entry'].one)
+    await screen.findByRole('heading', { level: 1, name: UI.interp.headline })
+
+    // Three mappings — voterEntry 'applied', voterQ1 'decision',
+    // voterAppealedRaw 'none' — the exact shape AC-AI-3 names.
+    const cardsBefore = document.querySelectorAll('.read-card').length
+    expect(cardsBefore).toBe(3)
+    expect(interpCard(UI.interp.qLabel.voterAppealedRaw)).toBeInTheDocument()
+
+    // Repick Q1 away from 'decision'. `voterAppealedRaw`'s own
+    // `reachableIf` is `voterQ1 === 'decision'`, so the branch gate runs a
+    // SECOND time, at correction time, and voids the now-unreachable
+    // mapping.
+    await userEvent.click(
+      within(interpCard(UI.interp.qLabel.voterQ1)).getByRole('button', { name: VOTER_Q1_LABELS.no_word }),
+    )
+    expect(document.querySelectorAll('.read-card').length).toBe(2)
+    expect(document.querySelectorAll('.read-card').length).toBeLessThan(cardsBefore)
+    expect(() => interpCard(UI.interp.qLabel.voterAppealedRaw)).toThrow()
+
+    await userEvent.click(screen.getByRole('button', { name: UI.interp.useTheseAnswers }))
+    expect(latestState().screen).toBe('voter-diagnosis')
+    expect(latestState().answers.voterQ1).toBe('no_word')
+    // The named assertion: the dropped mapping was never written, in either
+    // its raw or its normalised form.
+    expect('voterAppealedRaw' in latestState().answers).toBe(false)
+    expect('voterAppealed' in latestState().answers).toBe(false)
+    // D2: voterEntry is routing, never an answer — the tap path writes
+    // nothing for it either, so the describe path must not.
+    expect('voterEntry' in latestState().answers).toBe(false)
+  })
+})
+
+describe('C8 Task 17, flow 5: the file number reaches the prepared draft — FR-AI-04 / AC-AI-4', () => {
+  it('the passport story File no fills [File Number / ARN], is named in the fill list, and — once the remaining blanks are gone — the hint is the unreviewed-fills state until the citizen ticks it', async () => {
+    flagOn()
+    render(<App />)
+    await toPassportQ1()
+    await openDescribeBox()
+    await runStoryChip(UI.describe.examples['passport-q1'].one)
+    await screen.findByRole('heading', { level: 1, name: UI.interp.headline })
+    await userEvent.click(screen.getByRole('button', { name: UI.interp.useTheseAnswers }))
+    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+    await userEvent.click(screen.getByRole('button', { name: UI.nextMove.prepare }))
+
+    const d = diagnose(passportEngine, { guardrail: 'no', q1: 'contacted_incomplete', q2: 'informal' })
+    const prep = prepPlanFor(d)!
+    expect(prep.draft).toContain('[File Number / ARN]')
+    const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
+    // Every occurrence, not just the first (fillDraft's split/join) — the
+    // bracket appears twice in state-5a's own draft.
+    expect(ta.value).not.toContain('[File Number / ARN]')
+    expect(ta.value.match(/BN1068334517807/g)).toHaveLength(2)
+    // The applied date is the story's OTHER fill; "in June" is a date the
+    // app deliberately refuses to auto-place, so it fills nothing.
+    expect(ta.value).not.toContain('[date you applied]')
+    expect(ta.value).toContain('12 March 2026')
+
+    const fillList = document.querySelector('.fill-list')
+    expect(fillList).toBeInTheDocument()
+    expect(fillList).toHaveTextContent(UI.prepare.fillListKey)
+    expect(fillList).toHaveTextContent('File Number')
+    expect(fillList).toHaveTextContent('BN1068334517807')
+    expect(fillList).toHaveTextContent('Applied')
+
+    // The three-branch hint, in order. While blanks remain it says nothing
+    // about fills at all (D14) — the fill list is what keeps them visible.
+    expect(document.querySelector('.prep-hint')).not.toHaveTextContent(UI.prepare.hintFilledUnreviewed)
+    // Clear the citizen's own remaining blanks; now the MIDDLE state.
+    fireEvent.change(ta, { target: { value: 'nothing left to fill, everything supplied' } })
+    expect(document.querySelector('.prep-hint')).toHaveTextContent(UI.prepare.hintFilledUnreviewed)
+    expect(latestState().fillsReviewed).toBe(false)
+    await userEvent.click(screen.getByRole('button', { name: UI.prepare.fillReviewLabel }))
+    expect(latestState().fillsReviewed).toBe(true)
+    expect(document.querySelector('.prep-hint')).toHaveTextContent(UI.prepare.hintReady)
+  })
+
+  it('an UNRECOGNIZED-format number fills nothing: it is chipped honestly, named as unusable, and the draft own bracket is left standing', async () => {
+    flagOn()
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Voter Services/ }))
+    await openDescribeBox()
+    // A story whose number matches NO voter reference shape (not an EPIC,
+    // not a 9-13 digit cued reference) — so it falls through to the honest
+    // unknown-number sweep, which always sets `fills: null`.
+    await runTypedStory('I applied for a correction and it got rejected. I have not appealed yet. My case token is XY7788ZZ01')
+    await screen.findByRole('heading', { level: 1, name: UI.interp.headline })
+
+    expect(latestState().interp?.facts).toEqual([
+      { kind: 'reference_number', refType: 'unknown', label: 'A number you mentioned', value: 'XY7788ZZ01', fills: null },
+    ])
+    expect(screen.getByText(UI.facts.unknownNumberNote)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: UI.interp.useTheseAnswers }))
+    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+    await userEvent.click(screen.getByRole('button', { name: UI.nextMove.prepare }))
+
+    const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
+    // The v-3 draft's own reference bracket is still a blank the citizen
+    // must fill themselves — nothing was guessed into it.
+    expect(ta.value).toContain('[reference number]')
+    expect(ta.value).not.toContain('XY7788ZZ01')
+    expect(document.querySelector('.fill-list')).toBeNull()
+  })
+
+  it('a correction to this task own brief, pinned: the voter example story Ref 123456789012 IS a recognized reference number and DOES fill [reference number]', async () => {
+    // task-17-brief.md's flow 5 claims "the unknown-format number in the
+    // voter story fills nothing." Verified against the real extractor: it is
+    // a CUED 12-digit number, which `REF_SHAPES.voter`'s `voter_ref` shape
+    // matches with `fills: '[reference number]'`, and the v-3 draft it
+    // reaches genuinely contains that bracket. The brief's claim is wrong
+    // about THIS story; the requirement it was reaching for (the spec's own
+    // "unknown-format number fills nothing") is proven by the test directly
+    // above, with a number that really is unrecognized. This test pins the
+    // observed behaviour so a future reader diffing the brief against the
+    // suite finds the answer here rather than "fixing" a passing test.
+    flagOn()
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: /Voter Services/ }))
+    await openDescribeBox()
+    await runStoryChip(UI.describe.examples['voter-entry'].one)
+    await screen.findByRole('heading', { level: 1, name: UI.interp.headline })
+
+    expect(latestState().interp?.facts[0]).toEqual({
+      kind: 'reference_number', refType: 'voter_ref', label: 'Reference number',
+      value: '123456789012', fills: '[reference number]',
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: UI.interp.useTheseAnswers }))
+    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+    await userEvent.click(screen.getByRole('button', { name: UI.nextMove.prepare }))
+    const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
+    expect(ta.value).not.toContain('[reference number]')
+    expect(ta.value).toContain('123456789012')
+    expect(document.querySelector('.fill-list')).toHaveTextContent('Reference number')
+  })
+})
+
+describe('C8 Task 17, flow 6: save, reload, restore (Task 8)', () => {
+  it('the facts, the text and the provenance survive a real save and a real reload — the draft still fills, and fillsReviewed is back to false', async () => {
+    flagOn()
+    // Signed in, because BEGIN_SAVE only completes a save while signed in
+    // (C7 Task 16) — the same seed the C5 save-flow test above already uses.
+    seededState.current = { user: { method: 'phone', id: '+919876543210', name: 'Ananya' } }
+    render(<App />)
+    await toPassportQ1()
+    await openDescribeBox()
+    await runStoryChip(UI.describe.examples['passport-q1'].one)
+    await screen.findByRole('heading', { level: 1, name: UI.interp.headline })
+    await userEvent.click(screen.getByRole('button', { name: UI.interp.useTheseAnswers }))
+    await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
+    await userEvent.click(screen.getByRole('button', { name: UI.saveControl.save }))
+    expect(screen.getByRole('heading', { name: UI.saveDone.headline })).toBeInTheDocument()
+
+    // The case the app itself produced, through `caseSnapshot` — never a
+    // hand-typed fixture (Task 15's own fix-round finding).
+    const saved = latestState().savedCases
+    expect(saved).toHaveLength(1)
+    expect(saved[0].appliedText).toBe(UI.describe.examples['passport-q1'].one)
+    expect(saved[0].interpProvenance).toBe('simulated (local matcher)')
+    expect(saved[0].caseFacts.map(f => f.value)).toEqual(['BN1068334517807', '12 March 2026', 'June'])
+
+    // THE RELOAD. A signed-in session pushes to the server rather than to
+    // `nm_cases` (App.tsx effect 1's own `user === null` gate), so the
+    // reload is staged the way a real second visit reaches it: the case the
+    // app just built goes where `loadCases()` reads it, the tree is torn
+    // down, and a fresh `<App/>` boots from storage with no session state
+    // carried over at all.
+    localStorage.setItem('nm_cases', JSON.stringify(saved))
+    reducerStates.current = []
+    dispatchedActions.current = []
+    seededState.current = undefined
+    cleanup()
+    render(<App />)
+
+    await userEvent.click(document.querySelector('.saved-card') as HTMLButtonElement)
+    // OPEN_CHECKIN -> loadCaseFragment: facts, text and provenance restored;
+    // the acknowledgment deliberately NOT (FR-AI-04 — the citizen is looking
+    // at this draft fresh, possibly months later, possibly on another
+    // device).
+    expect(latestState().appliedText).toBe(UI.describe.examples['passport-q1'].one)
+    expect(latestState().interpProvenance).toBe('simulated (local matcher)')
+    expect(latestState().caseFacts.map(f => f.value)).toEqual(['BN1068334517807', '12 March 2026', 'June'])
+    expect(latestState().fillsReviewed).toBe(false)
+
+    // ...and the draft still fills from them.
+    await userEvent.click(screen.getByRole('button', { name: UI.casefile.prepareLink }))
+    const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
+    expect(ta.value).toContain('BN1068334517807')
+    expect(ta.value).not.toContain('[File Number / ARN]')
+    expect(document.querySelector('.fill-list')).toHaveTextContent('BN1068334517807')
+  })
+})
+
+// -----------------------------------------------------------------------------
+// Design note 6 — the scope-exclusion regression pins that need a real router.
+// Each one corresponds to a promise C8 made about what it would NOT change.
+// The repo-wide source-scan half of design note 6 lives in
+// `src/screens/screenCopy.test.tsx`, where the file-walking helper the D1 pin
+// already uses lives — one walker, not two.
+// -----------------------------------------------------------------------------
+describe('C8 Task 17: the scope-exclusion regression pins (design note 6)', () => {
+  it.each([
+    ['passport-recovery' as ScreenId, PASSPORT_COPY.recovery.headline],
+    ['passport-recovery-paste' as ScreenId, PASSPORT_COPY.recoveryPaste.headline],
+    ['passport-recovery-show' as ScreenId, PASSPORT_COPY.recoveryShow.headline],
+  ])('exclusion 5: %s renders NO describe row, even with the flag on', (screenId, headline) => {
+    flagOn()
+    seededState.current = { screen: screenId, answers: { guardrail: 'no', q1: 'not_sure' } }
+    render(<App />)
+    expect(screen.getByRole('heading', { name: headline })).toBeInTheDocument()
+    expect(document.querySelector('.describe-entry')).toBeNull()
+  })
+
+  it("exclusion 5, the other half: the pasted-status matcher's own behaviour is unchanged — exact match over normalised text only, never a substring", () => {
+    // The pure decision, pinned directly (PassportRecovery.tsx's own
+    // contract: "the retired bare-substring 'verif' match must never
+    // reappear in any form").
+    for (const example of PASTE_MATCH_EXAMPLES) {
+      const result = matchPasted(`  ${example.text.toUpperCase()}  `)
+      expect(result).toEqual('outOfScope' in example ? { outOfScope: true } : { q1: example.q1 })
+    }
+    expect(matchPasted('verif')).toBeNull()
+    expect(matchPasted('the police verification report has been received today')).toBeNull()
+    expect(matchPasted('')).toBeNull()
+  })
+
+  it('exclusion 5, through the real router: a matched paste still sets q1 and routes to Q2 with the flag ON', async () => {
+    flagOn()
+    seededState.current = { screen: 'passport-recovery-paste', answers: { guardrail: 'no', q1: 'not_sure' } }
+    render(<App />)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Police Verification Report Has Been Received' } })
+    await userEvent.click(screen.getByRole('button', { name: PASSPORT_COPY.recoveryPaste.continue }))
+    expect(screen.getByRole('heading', { name: PASSPORT_COPY.q2.headline })).toBeInTheDocument()
+    expect(latestState().answers.q1).toBe('verified_no_progress')
+  })
+
+  it('FR-AI-06: "I\'m not sure" is unchanged — the row still renders with its sub-label, and picking it still routes to recovery with q1 not_sure (the behaviour passportFlow.test.tsx already pins)', async () => {
+    flagOn()
+    seededState.current = { screen: 'passport-q1', answers: { guardrail: 'no' } }
+    render(<App />)
+    // The row renders identically — same label, same sub-label — and the
+    // describe entry is an ADDITION at the tail of the list, never a
+    // replacement for it.
+    expect(screen.getByRole('button', { name: new RegExp(PASSPORT_COPY.q1.notSure) })).toBeInTheDocument()
+    expect(screen.getByText(PASSPORT_COPY.q1.notSureSub)).toBeInTheDocument()
+    expect(document.querySelector('.describe-entry')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: new RegExp(PASSPORT_COPY.q1.notSure) }))
+    expect(screen.getByRole('heading', { name: PASSPORT_COPY.recovery.headline })).toBeInTheDocument()
+    expect(latestState().answers.q1).toBe('not_sure')
+  })
+
+  it('FR-AI-06: "I\'m not sure" still reaches the UNCLASSIFIED diagnosis, unchanged', async () => {
+    flagOn()
+    seededState.current = { screen: 'passport-recovery', answers: { guardrail: 'no', q1: 'not_sure' } }
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: PASSPORT_COPY.recovery.safest }))
+    expect(latestState().screen).toBe('passport-diagnosis')
+    expect(latestState().answers).toEqual({ guardrail: 'no', q1: 'not_sure', recoveryAskedSafest: 'yes' })
+    expect(screen.getByRole('heading', { name: UI.diagnosis.headlineUnclassified })).toBeInTheDocument()
+  })
+
+  it('exclusion 14: the SIR phase-drift banner still renders on the diagnosis screen', () => {
+    flagOn()
+    seededState.current = {
+      screen: 'sir-diagnosis', answers: { sirState: 'delhi', sirQ1: 'roll_absent' }, phaseDrift: true,
+    }
+    render(<App />)
+    expect(screen.getByText(UI.diagnosis.phaseDriftLead)).toBeInTheDocument()
+  })
+
+  it('exclusion 14: the check-in loop still opens from the diagnosis screen and offers this state\'s own options', async () => {
+    flagOn()
+    render(<App />)
+    await toPassportQ1()
+    await userEvent.click(screen.getByRole('button', { name: PASSPORT_Q1_LABELS.no_contact }))
+    // The Q2 rows carry a sub-label, so the accessible name is
+    // "<label> <sub>" — anchored regex, not an exact match.
+    await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${PASSPORT_Q2_LABELS.no_followup}`) }))
+    await userEvent.click(screen.getByRole('button', { name: UI.updateEntry.label }))
+    expect(document.querySelector('.update-mod')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Police contacted or visited me' })).toBeInTheDocument()
+  })
+
+  it('exclusion 14: the freshness banner still renders when a cited document is flagged changed', async () => {
+    flagOn()
+    // Real `sources/freshness.json` currently flags nothing as 'changed', so
+    // the degraded branch is reached the same way sirFlow.test.tsx already
+    // reaches it — by pinning `degradedFor`, never by editing the committed
+    // freshness data.
+    vi.spyOn(freshnessModule, 'degradedFor').mockReturnValue(true)
+    vi.spyOn(freshnessModule, 'changedOnFor').mockReturnValue('5 Sep 2026')
+    seededState.current = { screen: 'passport-diagnosis', answers: { guardrail: 'no', q1: 'no_contact', q2: 'no_followup' } }
+    render(<App />)
+    expect(screen.getByText(UI.freshness.reverifiedLead)).toBeInTheDocument()
+    expect(document.querySelector('.banner')).toHaveTextContent(
+      UI.freshness.reverifiedBody.replace('{date}', '5 Sep 2026'),
+    )
+  })
+
+  it('exclusion 14: the escalation ladder still renders on the casefile screen', async () => {
+    flagOn()
+    render(<App />)
+    await toPassportQ1()
+    // state-5a, not state-1: `ladderFor` returns null for state-1 by design
+    // ("ladder not in play"), so a state-1 mount would assert nothing.
+    await userEvent.click(screen.getByRole('button', { name: PASSPORT_Q1_LABELS.contacted_incomplete }))
+    await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${PASSPORT_Q2_LABELS.informal}`) }))
+    await userEvent.click(screen.getByRole('button', { name: UI.updateEntry.label }))
+    const ladder = document.querySelector('.ladder')
+    expect(ladder).toBeInTheDocument()
+    expect(ladder!.querySelectorAll('.lrung').length).toBeGreaterThan(0)
   })
 })

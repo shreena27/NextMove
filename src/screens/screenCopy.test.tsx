@@ -9,9 +9,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { render, fireEvent, waitFor } from '@testing-library/react'
+import { render, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState, type ReactElement } from 'react'
+import { useReducer, useState, type ReactElement } from 'react'
 import { guardrailFindings } from '../playbooks/guardrails/suite'
 import { extraCopy } from '../playbooks/guardrails/contentSafety'
 import { passportPlaybook, PASSPORT_STAGE_SHORT } from '../playbooks/passportPlaybook'
@@ -21,14 +21,14 @@ import { PREP, type PrepPlan } from '../playbooks/prep'
 import type { Diagnosis } from '../domain/types'
 import { diagnose } from '../domain/engine'
 import { passportEngine, voterEngine, sirEngine } from '../playbooks/engines'
-import { initialSession, type SessionState } from '../session/session'
+import { sessionReducer, initialSession, type ActiveInterpretation, type SessionState } from '../session/session'
 import { caseSnapshot, LOG_COPY, type Casefile } from '../domain/casefile'
 import { checkinOptionsFor } from '../domain/checkinOptions'
 import { fmtDay, fmtRemind } from '../ui/dates'
 import * as LABELS from './labels'
 import { SCREEN_COPY, UI, PASSPORT_COPY, VOTER_COPY, SIR_COPY, type CopyLocation } from './screenCopy'
 import { INTERACTION_GATED } from './interactionGated'
-import type { DescribeEntryScreenId, Fact } from '../domain/interpret'
+import type { DescribeEntryScreenId, Fact, GatedInterpretation } from '../domain/interpret'
 import { Home } from './Home'
 import { OtherServices } from './OtherServices'
 import { PassportGuardrail, PassportOutOfScope, PassportQ1, PassportQ2 } from './passport/PassportScreens'
@@ -42,6 +42,9 @@ import { AccountChip } from '../ui/AccountChip'
 import { Footer } from '../ui/Footer'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { DescribeBlock } from '../templates/DescribeBlock'
+import { InterpConfirmScreen } from '../templates/InterpConfirmScreen'
+import { UnplaceablePanel } from '../templates/UnplaceablePanel'
+import { FactChips } from '../templates/FactChips'
 import { DiagnosisScreen } from '../templates/DiagnosisScreen'
 import { NextMoveScreen } from '../templates/NextMoveScreen'
 import { PrepareScreen } from '../templates/PrepareScreen'
@@ -172,6 +175,48 @@ function ladderTagCopy(bucket: string): CopyLocation[] {
  *  automatically. */
 function pasteMatchExamplesCopy(): CopyLocation[] {
   return PASTE_MATCH_EXAMPLES.map((e, i) => extraCopy(`passport:PASTE_MATCH_EXAMPLES[${i}].text`, e.text))
+}
+
+const TEXT_FILE_RE = /\.(ts|tsx|json|css|html?|md|txt|svg)$/i
+
+/** Every text file under `dir`, recursively. Deliberately broad (not scoped
+ *  to .ts/.tsx) since C7's D1 sweep asks for "nowhere in src/", not "nowhere
+ *  in src/*.ts". Skips binary assets (src/assets/fonts/*.woff2) by extension
+ *  allowlist rather than by directory, so it stays correct if fonts move.
+ *  Skips *.test.ts/*.test.tsx files (the same carve-out guardrails/
+ *  isolation.test.ts's own `applicationTsFiles` already applies): a test file
+ *  legitimately needs to reference the needle text to assert its absence —
+ *  this very file does — so scanning test files would make the assertions
+ *  self-defeating.
+ *
+ *  LIFTED TO MODULE SCOPE by C8 Task 17. It was declared inside the D1
+ *  sweep's own `describe` block, and design note 6 of that task adds a
+ *  further eight repo-wide source scans that need exactly this walk. A
+ *  second, independently written walker would be a second thing to keep
+ *  correct (the fonts carve-out, the test-file carve-out, the recursion) with
+ *  nothing to catch a divergence — the same "one mechanism, not two"
+ *  reasoning `interactionGated.ts`'s own header already gives for its shared
+ *  Set. Nothing about the D1 sweep's own behaviour changes; it calls the same
+ *  function, from the same place. */
+const TEST_FILE_RE = /\.test\.tsx?$/
+function allSrcTextFiles(dir: string): string[] {
+  const out: string[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) { out.push(...allSrcTextFiles(full)); continue }
+    if (!entry.isFile() || !TEXT_FILE_RE.test(entry.name) || TEST_FILE_RE.test(entry.name)) continue
+    out.push(full)
+  }
+  return out
+}
+
+/** `src/` itself, derived via node:path — NOT `new URL('./x', import.meta.url)`,
+ *  which Vite statically rewrites into an asset URL that resolves to
+ *  http://localhost:3000/... under jsdom and makes `fileURLToPath` throw. The
+ *  same fix guardrails/manifest.ts and guardrails/isolation.test.ts already
+ *  use, for the same reason. */
+function srcRoot(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), '..')
 }
 
 describe('C3 screen copy passes the same content-safety scan as rule copy (§7)', () => {
@@ -485,39 +530,13 @@ describe('C3 screen copy passes the same content-safety scan as rule copy (§7)'
     }
   })
 
-  const TEXT_FILE_RE = /\.(ts|tsx|json|css|html?|md|txt|svg)$/i
-
-  /** Every text file under `dir`, recursively — used only by the D1 sweep
-   *  below. Deliberately broad (not scoped to .ts/.tsx) since the brief's
-   *  own RED item 5 asks for "nowhere in src/", not "nowhere in src/*.ts".
-   *  Skips binary assets (src/assets/fonts/*.woff2) by extension allowlist
-   *  rather than by directory, so it stays correct if fonts move. Skips
-   *  *.test.ts/*.test.tsx files (the same carve-out guardrails/
-   *  isolation.test.ts's own `applicationTsFiles` already applies): a test
-   *  file legitimately needs to reference the needle text to assert its
-   *  absence — this very file does, right below — so scanning test files
-   *  would make the assertion self-defeating. */
-  const TEST_FILE_RE = /\.test\.tsx?$/
-  function allSrcTextFiles(dir: string): string[] {
-    const out: string[] = []
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name)
-      if (entry.isDirectory()) { out.push(...allSrcTextFiles(full)); continue }
-      if (!entry.isFile() || !TEXT_FILE_RE.test(entry.name) || TEST_FILE_RE.test(entry.name)) continue
-      out.push(full)
-    }
-    return out
-  }
-
   it("'Design prototype: any 6 digits work here.' appears nowhere in src/ (D1)", () => {
     // task-10-brief.md RED item 5 / design note 4: the prototype's
     // demo-hint is prototype-only scaffold copy, deliberately NOT
     // registered in SCREEN_COPY — this is the repo-wide half of that rule,
     // not scoped to any one component.
-    const here = dirname(fileURLToPath(import.meta.url)) // -> <repo>/src/screens
-    const srcRoot = join(here, '..') // -> <repo>/src
     const needle = 'Design prototype: any 6 digits work here.'
-    const offenders = allSrcTextFiles(srcRoot).filter(f => readFileSync(f, 'utf8').includes(needle))
+    const offenders = allSrcTextFiles(srcRoot()).filter(f => readFileSync(f, 'utf8').includes(needle))
     expect(offenders.map(f => f.split(sep).join('/')), offenders.join('\n')).toEqual([])
   })
 
@@ -703,6 +722,139 @@ function DraftEditablePrepareScreen(props: { serviceLabel: string; engineKey: 'p
     <PrepareScreen
       {...props} prepChecks={{}} onTogglePrepStep={noop} prepDraft={prepDraft} onSetPrepDraft={setPrepDraft}
       caseFacts={[]} fillsReviewed={false} onToggleFillsReviewed={noop}
+    />
+  )
+}
+
+
+// ---------------------------------------------------------------------------
+// C8 (Task 17) — the interpretation fixtures the confirm/unplaceable mounts
+// below are built from. Task 10 registered `ui:interp.*`/`ui:unplaceable.*`/
+// `ui:facts.*` ahead of the components that render them, and screenCopy.ts's
+// own doc comments say in as many words that those subtrees "are expected to
+// show up red in the coverage sweep until then" — `then` is this task, which
+// is where every one of them finally reaches real, production component
+// output through the components App.tsx now routes to.
+//
+// The `__gated` brand is cast, exactly the way `interactionGated.test.tsx`
+// and `session.test.ts` already cast it: the brand exists to stop PRODUCTION
+// code manufacturing a gated value without passing the gate, and a test
+// fixture is not production code. The VALUES below are not invented, though —
+// every mapping value, span and fact is what the real simulator actually
+// returns for the registered example story it belongs to (verified by running
+// `runInterpretation` against each one), so these mounts render the same
+// shapes a citizen would really see.
+// Explicitly annotated, not left to inference: `__gated` is a `unique
+// symbol`, and a `const` initialised by a cast infers the WIDER `symbol`
+// type, which then fails to satisfy the field it exists for.
+const GATED_BRAND: GatedInterpretation['__gated'] = 'test-only' as unknown as GatedInterpretation['__gated']
+
+const FILE_NUMBER_FACT: Fact = {
+  kind: 'reference_number', refType: 'passport_file_no', label: 'File Number',
+  value: 'BN1068334517807', fills: '[File Number / ARN]',
+}
+const UNKNOWN_NUMBER_FACT: Fact = {
+  kind: 'reference_number', refType: 'unknown', label: 'A number you mentioned',
+  value: 'XY7788ZZ01', fills: null,
+}
+const EPIC_FACT: Fact = {
+  kind: 'reference_number', refType: 'epic', label: 'EPIC number', value: 'ABC1234567', fills: null,
+}
+
+function interpFixture(over: Partial<ActiveInterpretation>): ActiveInterpretation {
+  return {
+    __gated: GATED_BRAND,
+    mappings: [], discarded: [], facts: [], droppedSensitive: false, unplaceable: false,
+    provenance: 'simulated (local matcher)',
+    ctxScreen: 'passport-q1', engine: 'passport', service: UI.serviceLabel.passport,
+    text: UI.describe.examples['passport-q1'].one,
+    ...over,
+  }
+}
+
+function interpState(interp: ActiveInterpretation, answers: Record<string, string> = {}): SessionState {
+  return { ...initialSession, answers, interp }
+}
+
+/** Mount 1 — the passport story's real two-mapping read, with TWO facts, a
+ *  refused Aadhaar-shaped number and a discarded mapping. One mount, and it
+ *  is what covers `ui:interp.summary.matchedMany`/`factsMany` (both plural
+ *  branches), `ui:interp.discardNote`, `ui:interp.change` (q1 is the screen
+ *  the citizen typed on, so D12 collapses it to a label plus a Change
+ *  control), `ui:facts.unknownNumberNote` and `ui:facts.aadhaarRefused`. */
+const interpMappedTwo = interpFixture({
+  mappings: [
+    {
+      questionId: 'q1', value: 'contacted_incomplete', span: 'Police came',
+      optionValues: ['no_contact', 'contacted_incomplete', 'verified_no_progress', 'adverse'],
+    },
+    {
+      questionId: 'q2', value: 'informal', span: 'called',
+      optionValues: ['no_followup', 'informal', 'formal_grievance'],
+    },
+  ],
+  discarded: [{ questionId: 'voterAppealedRaw', reason: 'unreachable' }],
+  facts: [FILE_NUMBER_FACT, UNKNOWN_NUMBER_FACT],
+  droppedSensitive: true,
+})
+
+/** Mount 2 — the voter story's real three-mapping read. Covers the three
+ *  voter `ui:interp.qLabel.*` entries, which no passport mount can reach, and
+ *  `ui:interp.summary.factsOne` (exactly one fact). */
+const interpMappedVoter = interpFixture({
+  ctxScreen: 'voter-entry', engine: 'voter', service: UI.serviceLabel.voterServices,
+  text: UI.describe.examples['voter-entry'].one,
+  mappings: [
+    { questionId: 'voterEntry', value: 'applied', span: 'applied', optionValues: ['applied', 'sir'] },
+    { questionId: 'voterQ1', value: 'decision', span: 'rejected', optionValues: ['no_word', 'blo_visited', 'decision'] },
+    {
+      questionId: 'voterAppealedRaw', value: 'none', span: "haven't appeal",
+      optionValues: ['none', 'pending', 'decided'],
+    },
+  ],
+  facts: [FILE_NUMBER_FACT],
+})
+
+/** Mount 3 — exactly one mapping, so `ui:interp.summary.matchedOne` (a fixed,
+ *  digit-free literal, not a template) reaches the sweep. */
+const interpMappedOne = interpFixture({
+  ctxScreen: 'passport-q2',
+  text: UI.describe.examples['passport-q2'].two,
+  mappings: [{
+    questionId: 'q2', value: 'informal', span: 'called',
+    optionValues: ['no_followup', 'informal', 'formal_grievance'],
+  }],
+  facts: [FILE_NUMBER_FACT],
+})
+
+/** Mount 4 — the fail-closed panel (`ui:unplaceable.headline`/`lede`), on the
+ *  SIR chain so `ui:interp.qLabel.sirQ1` is reached too: the panel offers the
+ *  first UNANSWERED question in the chain, which for `sir-q1` is `sirQ1`
+ *  itself. */
+const interpUnplaceableSir = interpFixture({
+  ctxScreen: 'sir-q1', engine: 'sir', service: UI.serviceLabel.sir,
+  text: UI.describe.examples['sir-q1'].one,
+  unplaceable: true, facts: [EPIC_FACT],
+})
+
+/** `ui:facts.editLabel`/`saveLabel` are edit-mode aria-labels, reachable only
+ *  once a real `SET_FACT_EDIT` has landed — which is exactly why they are in
+ *  `INTERACTION_GATED`. `CAPTION_SUBSTITUTIONS` below still owes each of them
+ *  a real substituted-form RENDER assertion (the same obligation
+ *  `ui:prepare.copiedOne`/`copiedMany` carry, which are also gated), so this
+ *  wrapper drives the real reducer round trip to produce them, mirroring
+ *  `interactionGated.test.tsx`'s own `ControlledFactChips` rather than
+ *  short-circuiting the gate with a hand-set `factEditIdx` prop. */
+function EditableFactChips({ facts }: { facts: Fact[] }) {
+  const [state, dispatch] = useReducer(sessionReducer, interpState(interpFixture({ facts })))
+  if (!state.interp) return null
+  return (
+    <FactChips
+      facts={state.interp.facts}
+      droppedSensitive={state.interp.droppedSensitive}
+      factEditIdx={state.factEditIdx}
+      factEditVal={state.factEditVal}
+      dispatch={dispatch}
     />
   )
 }
@@ -1119,6 +1271,28 @@ function UiChrome() {
           dispatch={noop}
         />
       ))}
+      {/* Task 17: the interpretation confirm screen and the fail-closed
+          panel, now that App.tsx's router actually mounts both (the
+          `'interp-confirm'` case, which composes them as siblings whose
+          guards are exact complements). Four mounts, each for a reason the
+          others cannot cover:
+            1. `interpMappedTwo` — two mappings, two facts, a refused
+               Aadhaar-shaped number and a discarded mapping: the plural
+               summary branches, the discard note, the Change control
+               (D12 collapses the typed-on question to a label + Change),
+               `ui:facts.unknownNumberNote` and `ui:facts.aadhaarRefused`.
+            2. `interpMappedVoter` — the three voter `qLabel` entries no
+               passport mount can reach, plus the SINGULAR facts branch.
+            3. `interpMappedOne` — the singular MATCHED branch.
+            4. `interpUnplaceableSir` — `ui:unplaceable.headline`/`lede`,
+               and `ui:interp.qLabel.sirQ1` via the offered question.
+          `now` is CASE_NOW, the same fixed fixture clock every other
+          time-taking mount in this file uses — nothing here reads a live
+          clock. */}
+      <InterpConfirmScreen state={interpState(interpMappedTwo)} dispatch={noop} now={CASE_NOW} />
+      <InterpConfirmScreen state={interpState(interpMappedVoter)} dispatch={noop} now={CASE_NOW} />
+      <InterpConfirmScreen state={interpState(interpMappedOne)} dispatch={noop} now={CASE_NOW} />
+      <UnplaceablePanel state={interpState(interpUnplaceableSir, { sirState: 'delhi' })} dispatch={noop} />
     </>
   )
 }
@@ -1439,13 +1613,23 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     'ui:saveOtp.resendWaitMany': UI.saveOtp.resendWaitMany.replace('{n}', '5'),
     'ui:account.casefilesOne': UI.account.casefilesOne.replace('{n}', '1'),
     'ui:account.casefilesMany': UI.account.casefilesMany.replace('{n}', '2'),
-    // C8 (Task 10 registered these five; Tasks 12/13 close the render-check
-    // gap once InterpConfirmScreen/FactChips exist to render against — see
-    // CAPTION_TEMPLATES' own comment above these five keys). Substituted
-    // forms only, no render assertion added below yet, same "key-equality
-    // now, render check later" incremental step the C7 entries above took
-    // before their own mounting screens existed.
-    'ui:interp.discardNote': UI.interp.discardNote.replace('{question}', 'have you already appealed this decision'),
+    // C8 (Task 10 registered these five; Task 17 closes the render-check gap
+    // — every one of them now has a real assertion below, off the same
+    // InterpConfirmScreen/UnplaceablePanel/FactChips mounts App.tsx's router
+    // actually reaches).
+    //
+    // CORRECTED (Task 17), the same class of correction Task 12 made to
+    // 'ui:saveOtp.lede' above and for the same reason — a placeholder value
+    // guessed before the rendering component existed to check it against.
+    // The `{question}` substitution is the discarded question's own
+    // `UI.interp.qLabel` entry, LOWERCASED (InterpConfirmScreen.tsx /
+    // UnplaceablePanel.tsx both do exactly that), and those labels END IN A
+    // QUESTION MARK — the hand-typed value here dropped it, which nothing
+    // caught while this entry had no render assertion. Derived from the
+    // registered label now, so it cannot drift again.
+    'ui:interp.discardNote': UI.interp.discardNote.replace(
+      '{question}', UI.interp.qLabel.voterAppealedRaw.toLowerCase(),
+    ),
     'ui:facts.editValueAria': UI.facts.editValueAria.replace('{label}', 'File Number').replace('{value}', 'BN1068334517807'),
     'ui:facts.removeValueAria': UI.facts.removeValueAria.replace('{label}', 'File Number').replace('{value}', 'BN1068334517807'),
     'ui:facts.editLabel': UI.facts.editLabel.replace('{label}', 'File Number'),
@@ -1588,6 +1772,34 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
     // with a SECOND still_open case added alongside the same superseded
     // one — proving the exclusion holds at n=2 too, not just n=1.
     expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:account.casefilesOne'])
+
+    // C8 (Task 17) — the last five gapped entries, closed. All five come off
+    // the SAME uiContainer mount above (the three InterpConfirmScreen mounts
+    // and the UnplaceablePanel mount App.tsx's router now composes), except
+    // the two edit-mode aria-labels, which are INTERACTION_GATED and are
+    // therefore driven by a real Edit click below — never by short-circuiting
+    // the gate with a hand-set `factEditIdx` prop.
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:interp.discardNote'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:interp.summary.matchedMany'])
+    expect(uiContainer.textContent).toContain(CAPTION_SUBSTITUTIONS['ui:interp.summary.factsMany'])
+    // The chip aria-labels are ATTRIBUTES, so `textContent` cannot see them —
+    // read the same way the bucket sweep above reads them.
+    const uiAriaLabels = Array.from(uiContainer.querySelectorAll('[aria-label]'))
+      .map(el => el.getAttribute('aria-label') ?? '')
+      .join(' ')
+    expect(uiAriaLabels).toContain(CAPTION_SUBSTITUTIONS['ui:facts.editValueAria'])
+    expect(uiAriaLabels).toContain(CAPTION_SUBSTITUTIONS['ui:facts.removeValueAria'])
+
+    const { container: chipsContainer } = render(<EditableFactChips facts={[FILE_NUMBER_FACT]} />)
+    await userEvent.click(
+      within(chipsContainer).getByRole('button', { name: CAPTION_SUBSTITUTIONS['ui:facts.editValueAria'] }),
+    )
+    const chipsAriaLabels = Array.from(chipsContainer.querySelectorAll('[aria-label]'))
+      .map(el => el.getAttribute('aria-label') ?? '')
+      .join(' ')
+    expect(chipsAriaLabels).toContain(CAPTION_SUBSTITUTIONS['ui:facts.editLabel'])
+    expect(chipsAriaLabels).toContain(CAPTION_SUBSTITUTIONS['ui:facts.saveLabel'])
+
     const { container: acctManyContainer } = render(
       <AccountChip
         state={{
@@ -1610,4 +1822,164 @@ describe('SCREEN_COPY is the single definition site — coverage holds by constr
   // round 1, Finding I-4). Three entries (`ui:facts.editLabel`/
   // `saveLabel`, `ui:prepare.hintFilledUnreviewed`) are correctly still red
   // there, owed to Tasks 13/15 — see that file's own header comment.
+})
+
+// ===========================================================================
+// C8 Task 17, design note 6 — the repo-wide source-scan regression pins.
+//
+// They live in THIS file, and they all walk the source through the SAME
+// `allSrcTextFiles` helper C7's D1 sweep above already uses (lifted to module
+// scope by this task for exactly that reason). One walker, not two: a second
+// implementation would be a second place to keep the fonts carve-out, the
+// test-file carve-out and the recursion correct, with nothing to catch a
+// divergence.
+//
+// What each of these actually buys, stated once here rather than repeated at
+// every `it`: `interpretGates.ts`'s `__gated` brand makes it impossible for a
+// PROVIDER to forge a gated result — it says nothing at all about whether
+// somebody bypasses the gate on the way to building one. These call-site pins
+// are the other half. Two mechanisms, and neither substitutes for the other.
+// ===========================================================================
+
+/** Every non-test `.ts`/`.tsx` file under `src/` — the application source, as
+ *  `guardrails/isolation.test.ts`'s own `applicationTsFiles` means it. A
+ *  narrowing of `allSrcTextFiles` (which is deliberately broader, since the
+ *  D1 sweep asks about `.md`/`.css`/`.json` too), never a second walk. */
+function appSourceFiles(): string[] {
+  return allSrcTextFiles(srcRoot()).filter(f => /\.tsx?$/i.test(f))
+}
+
+/** A repo-relative, POSIX-separated path, so an assertion's expected value
+ *  reads the same on every platform and in every failure message. */
+function relPath(file: string): string {
+  return file.split(sep).join('/').replace(/^.*\/src\//, 'src/')
+}
+
+/** Source with comments removed, so a call site is a CALL and not a mention.
+ *  Several of the modules below discuss these very function names in prose
+ *  (`simInterpreter.ts` explains why it does NOT call `gateInterpretation`;
+ *  `session.ts` quotes `gateFacts(engine, text, raw.facts)` inside a comment),
+ *  and a naive grep counts those as call sites — which would make every count
+ *  below wrong in the direction that hides a real regression.
+ *
+ *  Block comments first, then line comments. The one known imprecision: a
+ *  `//` inside a string literal (a URL) truncates the rest of that line. No
+ *  file in `src/` puts a call after a URL on the same line, and a truncation
+ *  can only ever REMOVE a call site — it can never invent one — so the counts
+ *  below stay conservative in the safe direction. */
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+}
+
+/** Where `name` is CALLED, keyed by repo-relative path, with a count per
+ *  file. `(?<!function\s)` excludes the declaration itself — `export function
+ *  gateInterpretation(` is a definition, not a call site, and counting it
+ *  would make "exactly one call site" mean "zero real callers". */
+function callSitesOf(name: string): Record<string, number> {
+  const re = new RegExp(String.raw`(?<!function\s)\b${name}\s*\(`, 'g')
+  const out: Record<string, number> = {}
+  for (const file of appSourceFiles()) {
+    const hits = stripComments(readFileSync(file, 'utf8')).match(re)
+    if (hits) out[relPath(file)] = hits.length
+  }
+  return out
+}
+
+/** The body of the function whose declaration starts with `header`, from that
+ *  header to the first closing brace at column 0 after it — which is what a
+ *  top-level `function` declaration's own closing brace is in every file
+ *  scanned here. Used to prove a call sits INSIDE a particular function, not
+ *  merely somewhere in the same file. */
+function functionBody(source: string, header: string): string {
+  const start = source.indexOf(header)
+  if (start === -1) throw new Error(`functionBody: no declaration matching "${header}"`)
+  const end = source.indexOf('\n}', start)
+  if (end === -1) throw new Error(`functionBody: no column-0 closing brace after "${header}"`)
+  return source.slice(start, end)
+}
+
+describe('C8 Task 17: the repo-wide scope-exclusion pins (design note 6)', () => {
+  it('no `fetch` anywhere in non-test src/ — there is no live Gemini call before Task 18, and the simulator is the only provider registered', () => {
+    const offenders = appSourceFiles()
+      .filter(f => /\bfetch\s*\(/.test(stripComments(readFileSync(f, 'utf8'))))
+      .map(relPath)
+    expect(offenders, offenders.join('\n')).toEqual([])
+  })
+
+  it('`gateInterpretation` is called from exactly TWO places, both named — the `__gated` brand stops a provider forging a gated result; THIS pin is what stops anyone skipping the gate. Two mechanisms, and neither substitutes for the other', () => {
+    // CORRECTION to task-17-brief.md, which asks for "exactly ONE non-test
+    // call site". Verified against the real source: there are TWO, and the
+    // second is not a bypass — it is Task 6 fix round 1's deliberate decision
+    // that `INTERPRETATION_FAILED` must synthesise its fail-closed
+    // unplaceable value through "the SAME sole legitimate constructor every
+    // real interpretation uses ... never the raw `__gated` brand escape
+    // hatch" (session.ts's own comment on that arm). A pin that demanded ONE
+    // would force that arm to reach for the escape hatch, which is the exact
+    // harm this pin exists to prevent. So the pin is an exhaustive
+    // ENUMERATION rather than a count: adding a third call site fails here
+    // and has to be justified in this comment, which is strictly stronger
+    // than a bare number.
+    expect(callSitesOf('gateInterpretation')).toEqual({
+      'src/session/interpretation.ts': 1, // the orchestrator — every provider, one place
+      'src/session/session.ts': 1, // INTERPRETATION_FAILED's fail-closed synthesis
+    })
+  })
+
+  it('`gateFacts` has exactly ONE call site, and it is inside `gateInterpretation` — an app-side fact rule that a provider path can route around is not a rule; in the prototype these rules lived in the simulator and would never have run against Gemini', () => {
+    expect(callSitesOf('gateFacts')).toEqual({ 'src/domain/interpretGates.ts': 1 })
+    const gatesSrc = stripComments(readFileSync(join(srcRoot(), 'domain', 'interpretGates.ts'), 'utf8'))
+    expect(functionBody(gatesSrc, 'export function gateInterpretation(')).toMatch(/\bgateFacts\s*\(/)
+  })
+
+  it('`runInterpretation` has exactly ONE call site, and it is `DescribeBlock` (I5) — one entry point, not two: an earlier draft of this plan said the interpreter was called from both the block and an App.tsx effect, and two call sites is two places for the stale-resolve guard to be forgotten', () => {
+    expect(callSitesOf('runInterpretation')).toEqual({ 'src/templates/DescribeBlock.tsx': 1 })
+  })
+
+  it('`describeItEnabled` has exactly THREE call sites (Task 1 design note 3) — the entry row, the orchestrator, and the router guard', () => {
+    expect(callSitesOf('describeItEnabled')).toEqual({
+      'src/templates/DescribeBlock.tsx': 1, // the entry row never renders with the flag off
+      'src/session/interpretation.ts': 1, // the orchestrator refuses with the flag off
+      'src/App.tsx': 1, // Task 17's router guard — the third and last read site
+    })
+  })
+
+  it('`provenanceLabel` has exactly ONE call site, and it is inside `runInterpretation` (D17/C3) — provenance derived anywhere later is provenance derived from whatever `VITE_INTERPRETER` happens to say at that later moment', () => {
+    expect(callSitesOf('provenanceLabel')).toEqual({ 'src/session/interpretation.ts': 1 })
+    const orchestratorSrc = stripComments(readFileSync(join(srcRoot(), 'session', 'interpretation.ts'), 'utf8'))
+    expect(functionBody(orchestratorSrc, 'export async function runInterpretation(')).toMatch(/\bprovenanceLabel\s*\(/)
+  })
+
+  it('`caseSnapshot` reads no `import.meta.env` and makes no interpreter-selection call (D17) — it copies the provenance it is HANDED, and never re-derives one at save time', () => {
+    const casefileSrc = stripComments(readFileSync(join(srcRoot(), 'domain', 'casefile.ts'), 'utf8'))
+    const body = functionBody(casefileSrc, 'export function caseSnapshot(')
+    expect(body).not.toMatch(/import\.meta\.env/)
+    expect(body).not.toMatch(/\binterpreterId\s*\(/)
+    expect(body).not.toMatch(/\bprovenanceLabel\s*\(/)
+    expect(body).not.toMatch(/\bdescribeItEnabled\s*\(/)
+  })
+
+  it('`session.ts` reads no `import.meta.env` at all — the reducer is pure, and C3\'s fix removed the one design that would have needed it', () => {
+    const sessionSrc = stripComments(readFileSync(join(srcRoot(), 'session', 'session.ts'), 'utf8'))
+    expect(sessionSrc).not.toMatch(/import\.meta\.env/)
+    // The whole repo, for good measure: exactly two modules may read it, and
+    // both read it LAZILY inside a function (featureFlags.ts's own header
+    // note explains why a module-scope read freezes the value before any test
+    // can set it).
+    const readers = appSourceFiles()
+      .filter(f => /import\.meta\.env/.test(stripComments(readFileSync(f, 'utf8'))))
+      .map(relPath)
+      .sort()
+    expect(readers).toEqual(['src/session/featureFlags.ts', 'src/session/supabase.ts'])
+  })
+
+  it("no `console.*` call in non-test src/ carries `text`, `span` or `value` (exclusion 9) — the citizen's own words, the model's justifying span and an extracted fact value must never reach a log", () => {
+    const offenders: string[] = []
+    for (const file of appSourceFiles()) {
+      const src = stripComments(readFileSync(file, 'utf8'))
+      for (const call of src.match(/\bconsole\s*\.\s*\w+\s*\([^)]*\)/g) ?? []) {
+        if (/\b(text|span|value)\b/.test(call)) offenders.push(`${relPath(file)}: ${call}`)
+      }
+    }
+    expect(offenders, offenders.join('\n')).toEqual([])
+  })
 })

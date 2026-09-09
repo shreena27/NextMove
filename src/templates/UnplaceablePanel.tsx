@@ -8,13 +8,14 @@
  *  home: "THE UNPLACEABLE PATH (prototype 3044-3065) IS TASK 14'S OWN FILE
  *  (`UnplaceablePanel`), NOT THIS ONE'S."
  *
- *  NOT YET WIRED into App.tsx's router, and NOT YET mounted in
- *  screenCopy.test.tsx's own coverage sweep — both Task 17's job
- *  (screenCopy.ts's own `unplaceable` doc comment: "not yet mounted
- *  anywhere, so this subtree is expected to show up red in the coverage
- *  sweep until then"). Built and tested standalone via direct RTL renders,
- *  the same way `DescribeBlock`/`InterpConfirmScreen`/`FactChips` were
- *  before their own router mount sites existed.
+ *  WIRED into App.tsx's router, and mounted in screenCopy.test.tsx's own
+ *  coverage sweep, by Task 17 — both of which this comment previously listed
+ *  as owed. The router's `'interp-confirm'` case mounts this component and
+ *  `InterpConfirmScreen` as SIBLINGS; the guard below and that component's
+ *  own guard are exact complements, so exactly one of them ever produces
+ *  output. Until then this was built and tested standalone via direct RTL
+ *  renders, the same way `DescribeBlock`/`InterpConfirmScreen`/`FactChips`
+ *  were before their own router mount sites existed.
  *
  *  REUSE, NOT A SECOND IMPLEMENTATION — the two real cross-file gaps this
  *  task closes with a single additive `export` each, never a duplicate copy:

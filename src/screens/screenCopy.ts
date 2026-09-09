@@ -711,9 +711,11 @@ export const UI = {
    *  10; port of `renderInterpConfirm`'s mapped-cards path, prototype
    *  3037-3105, tag v1-design-lock-2 — docs/superpowers/plans/2026-09-08-c8-
    *  describe-it.md, Task 10). Rendered starting Task 12
-   *  (`InterpConfirmScreen`) — not yet mounted anywhere, so this subtree is
-   *  expected to show up red in the coverage sweep until then (design note
-   *  10 / the GREEN note). `youWrote`, `discardNote` and `simulatorNote`
+   *  (`InterpConfirmScreen`); MOUNTED, and therefore covered by the sweep,
+   *  as of Task 17, which wires App.tsx's `'interp-confirm'` route and adds
+   *  the confirm/unplaceable mounts to `screenCopy.test.tsx`'s own
+   *  `UiChrome()`. The "expected to show up red in the coverage sweep until
+   *  then" note this comment used to carry is discharged. `youWrote`, `discardNote` and `simulatorNote`
    *  below are ALSO rendered by `UnplaceablePanel` (Task 14, prototype
    *  3053-3054, 3063) — registered once, here, and reused from both sites,
    *  the same discipline `UI.facts.aadhaarRefused` below follows.
@@ -831,9 +833,9 @@ export const UI = {
   /** "We couldn't safely place this" — the fail-closed panel (C8, Task 10;
    *  port of `renderInterpConfirm`'s unplaceable branch, prototype 3044-3065,
    *  tag v1-design-lock-2 — docs/superpowers/plans/2026-09-08-c8-describe-it.md,
-   *  Task 10). Rendered starting Task 14 (`UnplaceablePanel`) — not yet
-   *  mounted anywhere, so this subtree is expected to show up red in the
-   *  coverage sweep until then (design note 10 / the GREEN note).
+   *  Task 10). Rendered starting Task 14 (`UnplaceablePanel`), and MOUNTED
+   *  — therefore covered by the sweep — as of Task 17, which wires App.tsx's
+   *  `'interp-confirm'` route (this panel is the unplaceable half of it).
    *
    *  `lede` (**3052**) is registered as ONE indivisible string, not sentence
    *  fragments — it is the paragraph spec §7's "copy never blames the user
@@ -849,9 +851,11 @@ export const UI = {
   /** "What we picked up" — the fact chips (C8, Task 10; port of
    *  `factChips`, prototype 3025-3036, tag v1-design-lock-2 —
    *  docs/superpowers/plans/2026-09-08-c8-describe-it.md, Task 10). Rendered
-   *  starting Task 13 (`FactChips`) — not yet mounted anywhere, so this
-   *  subtree is expected to show up red in the coverage sweep until then
-   *  (design note 10 / the GREEN note).
+   *  starting Task 13 (`FactChips`), and MOUNTED — therefore covered by the
+   *  sweep — as of Task 17, via the confirm/unplaceable mounts that compose
+   *  it. `editLabel`/`saveLabel` stay INTERACTION_GATED (an Edit click is
+   *  the only way to reach either) and are covered by
+   *  `interactionGated.test.tsx`'s own real interaction.
    *
    *  `aadhaarRefused` (D8: the prototype's longer sentence, not the spec's/
    *  PRD's shorter paraphrase) is registered ONCE and rendered from BOTH of
