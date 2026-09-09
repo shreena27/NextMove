@@ -20,23 +20,34 @@
  *  `freshChangedOn` props below and DiagnosisScreen.tsx's own prop of the
  *  same name for the full App.tsx-computed convention.
  *
- *  DESIGN NOTE 2 (the C8 fillDraft middle branch is deliberately
- *  unbuilt, not stubbed): the prototype's `renderPrepare` composes a draft
- *  card with autofill-from-bracket parsing between the trust line and the
- *  checklist (3772 onward). Task 4 builds the draft textarea and the copy
- *  control, but NOT the fill-review panel: the prototype's `fillDraft()`
- *  (autofill from `S.caseFacts` into matching brackets) is not ported, so
- *  the draft is always the RAW template, and `bracketHintText`'s middle
- *  branch (`fills>0 && !S.fillsReviewed`) has no equivalent here — the
- *  hint below has exactly two branches, not three. That whole
- *  `S.caseFacts`/`.fill-list`/`.fill-review` mechanism is C8's.
+ *  DESIGN NOTE 2 (Task 15 — the C8 fillDraft middle branch, now built):
+ *  the prototype's `renderPrepare` composes a draft card with
+ *  autofill-from-bracket parsing between the trust line and the checklist
+ *  (3772 onward). Task 4 built the draft textarea and the copy control but
+ *  deliberately left the fill-review panel unbuilt (`fillDraft()` not
+ *  ported, hint fixed at two branches, `S.caseFacts`/`.fill-list`/
+ *  `.fill-review` all C8's) — that gap is CLOSED here. `fillDraft`
+ *  (`domain/interpret.ts`) is called once per render, off `prep.draft ??
+ *  ''` and the `caseFacts` prop — never off the live, possibly-edited
+ *  `draft` value below. Its return (`filled`) supplies both the textarea's
+ *  DEFAULT value (an edited `prepDraft` still wins, design note 2c below is
+ *  untouched) and the `.fill-list` block's own entries. Neither `filled`
+ *  nor the prototype's `S.prepFills` equivalent is written into any session
+ *  field — `prepFills` is not, and must never become, a `SessionState`
+ *  field (Task 15 brief design note 2): it is re-derived every render, the
+ *  same way `hint`/`liveBlanks` already are.
  *
  *  DESIGN NOTE 2b (mechanism deviation, not a behaviour one): the
  *  prototype's `updateBracketHint` (3721-3723) patches `#bracket-hint`'s
  *  `textContent` directly because the prototype has no re-render on
  *  input. This component re-renders on every `setDraft`, so the hint is
  *  simply computed from `draft` during render — same behaviour, one fewer
- *  moving part (no `document.getElementById`).
+ *  moving part (no `document.getElementById`). The hint has THREE branches
+ *  as of Task 15 (that task's own design note 4), checked in this exact
+ *  order: blanks remaining (and nothing about fills, D14) : no blanks but
+ *  unreviewed fills : ready. Checking `fillsReviewed` before the blank
+ *  count would show "check the details" over a draft that still has
+ *  blanks — the order is the requirement, not an implementation detail.
  *
  *  DESIGN NOTE 2c (the Copy button's frozen count): the blank count shown
  *  on the Copy button is the count AT THE MOMENT OF COPYING, captured into
@@ -93,6 +104,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Diagnosis } from '../domain/types'
 import type { Casefile } from '../domain/casefile'
 import type { ServiceKey, SessionAction } from '../session/session'
+import { fillDraft, type Fact } from '../domain/interpret'
 import { VISIT_EXPECT, type PrepPlan } from '../playbooks/prep'
 import { PhaseEyebrow } from '../ui/Crumbs'
 import { Split } from '../ui/Split'
@@ -145,6 +157,22 @@ export interface PrepareScreenProps {
    *  `TOGGLE_PREP_STEP`. */
   onTogglePrepStep: (index: number) => void
   onSetPrepDraft: (text: string) => void
+  /** Task 15 (FR-AI-04) — the same "REQUIRED, fully controlled, no
+   *  fallback" shape `prepChecks`/`prepDraft` above already take (design
+   *  note 6), for the same reason: this is reducer-owned session state
+   *  (`state.caseFacts`/`state.fillsReviewed`), and App.tsx is the only real
+   *  owner. `caseFacts` is the citizen's confirmed describe-it facts
+   *  (possibly empty — most prepare visits carry none); `fillsReviewed` is
+   *  whether the citizen has acknowledged the auto-filled values `fillDraft`
+   *  produces from them (design note 2). `onToggleFillsReviewed` fires the
+   *  `.fill-review` control's own toggle — reversible both ways (Task 15
+   *  brief design note 5), unlike `onTogglePrepStep` this carries no index
+   *  and unlike a clock-stamping action it needs no `now` (session.ts's own
+   *  `TOGGLE_FILLS_REVIEWED` comment: a plain boolean flip, no case
+   *  re-snapshot). */
+  caseFacts: Fact[]
+  fillsReviewed: boolean
+  onToggleFillsReviewed: () => void
   /** SaveControl's own inputs (design note 3) — same on/off convention
    *  `NextMoveScreen`'s own `onSave`/`savedCases` use: `onSave` gates
    *  whether `<SaveControl>` renders at all. `answers` is read straight off
@@ -171,18 +199,30 @@ export function PrepareScreen({
   prepDraft,
   onTogglePrepStep,
   onSetPrepDraft,
+  caseFacts,
+  fillsReviewed,
+  onToggleFillsReviewed,
   savedCases,
   onSave,
   freshDegraded,
   freshChangedOn,
 }: PrepareScreenProps) {
+  // DESIGN NOTE 2/6: `fillDraft` runs once per render, off the plan's own
+  // raw template and the citizen's confirmed facts — never off the live
+  // `draft` below (design note 2). `filled.text` is the new DEFAULT the
+  // textarea falls back to; an edited `prepDraft` still wins outright, and
+  // the filled text is never itself written into `prepDraft` (Task 15
+  // brief design note 3 — an auto-fill must stay distinguishable from the
+  // citizen's own edit, so a later correction that clears `caseFacts`
+  // cannot strand an unexplainable filled value in the draft).
+  const filled = fillDraft(prep.draft ?? '', caseFacts)
   // DESIGN NOTE 6: `prepChecks`/`prepDraft` are fully controlled — the
   // reducer (App.tsx, via `state.prepChecks`/`state.prepDraft`) is the only
   // owner. `prepDraft` starts `null` (session.ts's `initialSession`) until
   // the citizen's first edit, so the render-time value falls back to the
-  // plan's own raw template, exactly like the old local `useState(prep.draft
-  // ?? '')` initial value did.
-  const draft = prepDraft ?? (prep.draft ?? '')
+  // FILLED template (design note 2), exactly like the old local
+  // `useState(prep.draft ?? '')` initial value fell back to the raw one.
+  const draft = prepDraft ?? filled.text
   const setDraftValue = (text: string) => onSetPrepDraft(text)
   // null = idle. Any number (0 included) = "just copied, this many blanks
   // were left AT THE MOMENT OF COPYING" — frozen, not live (design note 2c).
@@ -235,10 +275,20 @@ export function PrepareScreen({
   const done = prep.steps.filter((_, i) => prepChecks[i]).length
 
   const liveBlanks = bracketCount(draft)
+  // Task 15, design note 4 — THREE branches, in this exact order:
+  //  1. blanks remaining -> the count, and nothing about fills (D14: the
+  //     spec's dual-state sentence is a deliberate deviation, not built).
+  //  2. no blanks, fills present, not yet reviewed -> the middle state.
+  //  3. otherwise -> ready.
+  // Getting the order wrong (checking fillsReviewed before the blank
+  // count) would show "check the details" over a draft that still has
+  // blanks — this order is the whole of AC-AI-4/FR-AI-04 here.
   const hint =
     liveBlanks > 0
       ? (liveBlanks === 1 ? UI.prepare.hintOne : UI.prepare.hintMany).replace('{n}', String(liveBlanks))
-      : UI.prepare.hintReady
+      : filled.fills.length > 0 && !fillsReviewed
+        ? UI.prepare.hintFilledUnreviewed
+        : UI.prepare.hintReady
 
   const copyLabel =
     copied === null
@@ -305,6 +355,48 @@ export function PrepareScreen({
                       {copyLabel}
                     </button>
                   </div>
+                  {/* Task 15 (FR-AI-04/AC-AI-4), prototype 3779-3786,
+                      transcribed faithfully: renders whenever fillDraft
+                      found at least one fill, in BOTH the blanks-remaining
+                      and the ready hint states (design note 8's property —
+                      "every auto-filled draft value is visible in the fills
+                      list" holds regardless of which hint shows, D14). The
+                      `.pstep-box` tick reuses the checklist's own visual
+                      language (`.pstep-tick` below), but — like the
+                      prototype's own markup here, unlike `.pstep-tick`'s
+                      "icon always in the DOM, CSS does the showing" pattern
+                      — the icon and the box's filled styling are both
+                      CONDITIONAL on `fillsReviewed`: there is no `.pstep`
+                      ancestor here for the `.pstep.done .pstep-box` CSS
+                      rule to key off, so this control carries its own
+                      inline equivalent, transcribed from the prototype's
+                      own `style="${S.fillsReviewed?...:''}"` rather than
+                      inventing a new CSS rule. */}
+                  {filled.fills.length > 0 ? (
+                    <div className="fill-list">
+                      <span className="fk">{UI.prepare.fillListKey}</span>
+                      {filled.fills.map((f, i) => (
+                        <span key={i}>
+                          {i > 0 ? ' · ' : ''}
+                          {f.label}: <b>{f.value}</b>
+                        </span>
+                      ))}
+                      <button
+                        type="button"
+                        className="fill-review"
+                        aria-pressed={fillsReviewed}
+                        onClick={onToggleFillsReviewed}
+                      >
+                        <span
+                          className="pstep-box"
+                          style={fillsReviewed ? { background: 'var(--butter)', borderColor: 'var(--ink)' } : undefined}
+                        >
+                          {fillsReviewed ? ICONS.stepCheck : null}
+                        </span>
+                        {UI.prepare.fillReviewLabel}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               <div className="psteps-count">

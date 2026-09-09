@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Casefile } from '../domain/casefile'
 import { LOG_COPY } from '../domain/casefile'
+import type { Fact } from '../domain/interpret'
 import { createSupabaseMock } from '../test/supabaseMock'
 import { saveCases } from './caseStore'
 
@@ -67,6 +68,9 @@ function makeCasefile(overrides: Partial<Casefile> = {}): Casefile {
     stepsTotal: 5,
     stepsDone: 1,
     sirPhaseId: null,
+    caseFacts: [],
+    appliedText: null,
+    interpProvenance: null,
     id: 'c1700000000000',
     outcome: 'still_open',
     lastCheck: null,
@@ -79,7 +83,13 @@ function makeCasefile(overrides: Partial<Casefile> = {}): Casefile {
 /** Every field a Casefile can carry, all non-default/non-null, per the
  *  brief's own maximal-fixture spec (design note 1): closedAt, a
  *  non-empty log (more than the one diagnosed seed entry), a non-null
- *  remindAt, a sparse prepChecks, and a non-null sirPhaseId. */
+ *  remindAt, a sparse prepChecks, and a non-null sirPhaseId.
+ *
+ *  Task 8, RED item 30: caseFacts carries TWO facts — one `edited: true`
+ *  (a citizen-corrected fact) and one `fills: null` (a fact that confirmed
+ *  something but filled no draft bracket) — plus a non-null appliedText/
+ *  interpProvenance, so the round-trip test below exercises every shape
+ *  `Fact` can take, not just the common case. */
 function makeMaximalCasefile(): Casefile {
   return makeCasefile({
     engineKey: 'sir',
@@ -93,6 +103,18 @@ function makeMaximalCasefile(): Casefile {
     stepsTotal: 4,
     stepsDone: 2,
     sirPhaseId: 'phase-2',
+    caseFacts: [
+      {
+        kind: 'reference_number', refType: 'grievance_no', label: 'Grievance Number',
+        value: 'GR1234567890', fills: '[Grievance Number]', edited: true,
+      },
+      {
+        kind: 'note', refType: 'unknown', label: 'A note you mentioned',
+        value: 'my elderly mother cannot travel to the office', fills: null,
+      },
+    ] as Fact[],
+    appliedText: 'my elderly mother cannot travel; the grievance number is GR1234567890',
+    interpProvenance: 'simulated (local matcher)',
     id: 'a1b2c3d4-1111-2222-3333-444455556666',
     outcome: 'deliverable_received',
     lastCheck: 1_700_000_050_000,
@@ -115,6 +137,55 @@ describe('caseToRow / rowToCase', () => {
     const row = caseToRow(SESSION_USER_ID, c)
     expect(rowToCase(row)).toEqual(c)
   })
+
+  // Task 8, RED item 30: C7 scope exclusion 5 promised no migration; this
+  // is the test that collects on it — caseFacts (including the edited:true
+  // and fills:null shapes)/appliedText/interpProvenance ride through the
+  // opaque `data` JSONB column for free, with no schema change.
+  it('round-trips caseFacts (including an edited fact and a fills:null fact) / appliedText / interpProvenance losslessly', () => {
+    const c = makeMaximalCasefile()
+    const row = caseToRow(SESSION_USER_ID, c)
+    const back = rowToCase(row)
+    expect(back.caseFacts).toEqual(c.caseFacts)
+    expect(back.caseFacts.some(f => f.edited === true)).toBe(true)
+    expect(back.caseFacts.some(f => f.fills === null)).toBe(true)
+    expect(back.appliedText).toBe(c.appliedText)
+    expect(back.interpProvenance).toBe(c.interpProvenance)
+  })
+
+  // Fix round 1, Finding 4: C7 (auth + this table) is already deployed to
+  // production, so a real server row's `data` column can genuinely predate
+  // Task 8's three new fields. Before this fix, `rowToCase` did a blind
+  // `return row.data` with no per-record normalization, so a row like this
+  // reached `loadCaseFragment`'s own `c.caseFacts.slice()`
+  // (session/cases.ts) as `undefined` and crashed the first time the case
+  // was opened — the same crash mechanism `caseStore.ts`'s own
+  // `migrateLegacyCase` fix documents for the OLDER single-case localStorage
+  // format.
+  it(
+    'a server row from before Task 8 shipped, missing caseFacts/appliedText/interpProvenance entirely, ' +
+    'loads without crashing and normalizes to []/null/null',
+    () => {
+      const full = makeCasefile({ id: 'c1' })
+      const { caseFacts: _caseFacts, appliedText: _appliedText, interpProvenance: _interpProvenance, ...legacyShaped } = full
+      const row: CasefileRow = {
+        user_id: SESSION_USER_ID, id: full.id, engine_key: full.engineKey, outcome: full.outcome,
+        data: legacyShaped as unknown as Casefile, // deliberately missing the three fields — see comment above
+        updated_at: new Date().toISOString(),
+      }
+      expect('caseFacts' in row.data).toBe(false) // guards the premise
+
+      let loaded: Casefile | undefined
+      expect(() => { loaded = rowToCase(row) }).not.toThrow()
+
+      expect(loaded!.caseFacts).toEqual([])
+      expect(loaded!.appliedText).toBeNull()
+      expect(loaded!.interpProvenance).toBeNull()
+      // everything else on the legacy row survives untouched
+      expect(loaded!.id).toBe('c1')
+      expect(loaded!.answers).toEqual(full.answers)
+    },
+  )
 
   it('strips unsaved: a row whose data carries unsaved still round-trips without it', () => {
     const c = makeCasefile({ id: 'working-turned-saved', unsaved: true })

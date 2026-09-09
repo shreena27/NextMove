@@ -1,3 +1,5 @@
+import { VOTER_COPY } from './screenCopy'
+
 /** Every answerLabels map handed to TrustDisclosure MUST be built here, so
  *  its keys are the composite "questionId:value" form matchedAnswers is
  *  looked up by. (Fixed 2026-09-04: the per-service label objects were
@@ -51,4 +53,30 @@ export const VOTER_APPEAL_LABELS: Record<string, string> = {
   pending: "Yes, and I'm still waiting to hear back",
   decided: 'Yes, and I received a decision on that appeal too',
   notsure: "I'm not sure",
+}
+
+/** D15 (C8): the voterEntry describe chain's backing map — needed so the
+ *  enum gate has something to check a describe-derived voterEntry mapping
+ *  against. Built from REFERENCES to the already-registered VOTER_COPY.entry
+ *  strings, not new literals, so screenCopy.ts stays the single
+ *  copy-definition site.
+ *
+ *  Keyed by the option VALUE ('notsure'), not the copy object's key
+ *  (notSure): VOTER_COPY.entry has no map shaped like this one to begin
+ *  with — its own key is 'notSure' (camelCase, matching the object-property
+ *  convention every other VOTER_COPY.entry field uses), while the answer
+ *  value every screen and chain actually reads and writes is the lowercase
+ *  'notsure'. That mismatch is exactly why VOTER_COPY.entry itself could
+ *  never have served as this map.
+ *
+ *  Data only: VoterScreens.tsx is NOT rewired to read from this map — its
+ *  three AnswerRow labels stay literal reads of VOTER_COPY.entry.applied /
+ *  .sir / .notSure, exactly as shipped. Rewiring a live component to save
+ *  itself from a data table would be a restructure of already-shipped UI,
+ *  not this task's job. `interpretChains.test.ts`'s render-parity pin is
+ *  what keeps the two honest against each other instead. */
+export const VOTER_ENTRY_LABELS: Record<string, string> = {
+  applied: VOTER_COPY.entry.applied,
+  sir: VOTER_COPY.entry.sir,
+  notsure: VOTER_COPY.entry.notSure,
 }

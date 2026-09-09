@@ -84,7 +84,9 @@
  *  `localhost` and returns as a fresh page load, which resets every
  *  `useReducer` value. Phone/email never navigate away, so they were never
  *  at risk; Google alone needed this fix. `handleGoogle` now snapshots
- *  `pendingSave`/`answers`/`prepChecks` to `sessionStorage`
+ *  `pendingSave`/`answers`/`prepChecks` — and, whole-branch review
+ *  (2026-09-09 fix wave, Finding 3), `caseFacts`/`appliedText`/
+ *  `interpProvenance` — to `sessionStorage`
  *  (`PENDING_GOOGLE_SAVE_KEY`, session/session.ts — that file's own comment
  *  has the full design, including why `sessionStorage` rather than this
  *  codebase's `nm_`-prefixed `localStorage` convention) immediately before
@@ -126,6 +128,17 @@ export interface SaveCaseScreenProps {
    *  defaults to `{}`. */
   answers?: SessionState['answers']
   prepChecks?: SessionState['prepChecks']
+  /** Whole-branch review (2026-09-09 fix wave), Finding 3: the describe-it
+   *  slice's own three fields, snapshotted alongside `answers`/`prepChecks`
+   *  above for the SAME reason — without them, a citizen who described
+   *  their situation before saving via Google silently lost the facts/text/
+   *  provenance a real trust-confirmation flow had already captured, the
+   *  moment the redirect wiped them out of memory. Optional for the same
+   *  reason as `answers`/`prepChecks`; default to the same empty shape
+   *  `initialSession` itself uses for these three fields. */
+  caseFacts?: SessionState['caseFacts']
+  appliedText?: SessionState['appliedText']
+  interpProvenance?: SessionState['interpProvenance']
   /** Task 12 addition (design note 6): stamps `AUTH_ID_SUBMITTED`'s new
    *  `otpCooldownUntil` field (`now + OTP_RESEND_COOLDOWN_MS`) — the SAME
    *  D6 injected-clock convention every other `now`-bearing dispatch in
@@ -141,7 +154,9 @@ export interface SaveCaseScreenProps {
 }
 
 export function SaveCaseScreen({
-  authMethod, authId, authErr, authBusy, pendingSave = null, answers = {}, prepChecks = {}, now, topbar, dispatch,
+  authMethod, authId, authErr, authBusy, pendingSave = null, answers = {}, prepChecks = {},
+  caseFacts = [], appliedText = null, interpProvenance = null,
+  now, topbar, dispatch,
 }: SaveCaseScreenProps) {
   const isPhone = authMethod === 'phone'
 
@@ -212,6 +227,13 @@ export function SaveCaseScreen({
           returnScreen: pendingSave.returnScreen,
           answers,
           prepChecks,
+          // Whole-branch review (2026-09-09 fix wave), Finding 3: the
+          // describe-it slice's own three fields, captured in the SAME
+          // snapshot for the SAME reason answers/prepChecks already are —
+          // see this prop's own doc comment above.
+          caseFacts,
+          appliedText,
+          interpProvenance,
         }))
       } catch {
         // See the comment above — best-effort only.

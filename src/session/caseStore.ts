@@ -100,6 +100,15 @@ function migrateLegacyCase(): void {
     // already do for a case with no meaningful answers.
     answers: old.answers || {},
     prepChecks: old.prepChecks || {},
+    // Task 8: the legacy `nm_case` shape predates `caseFacts`/`appliedText`/
+    // `interpProvenance` entirely — there is no old value to fall back to,
+    // unlike `answers`/`prepChecks` above. Set explicitly rather than left
+    // to fall out of `...old` as `undefined`: a `Casefile` with `undefined`
+    // where `caseFacts` is typed as an array crashes the first `.map` a
+    // prepare-screen render does over it.
+    caseFacts: [],
+    appliedText: null,
+    interpProvenance: null,
     log: [
       { t: old.savedAt || now, kind: 'diagnosed', text: old.stateLabel || LOG_COPY.caseSaved },
     ],
@@ -108,11 +117,51 @@ function migrateLegacyCase(): void {
   store.del(NM_CASE_KEY)
 }
 
+/** A stored `nm_cases` ARRAY ENTRY from before Task 8 shipped —
+ *  `caseFacts`/`appliedText`/`interpProvenance` can genuinely be `undefined`
+ *  on a real record already sitting in a real citizen's browser storage: C7
+ *  (auth + this multi-case format) is already deployed to production, so
+ *  this is not a hypothetical. Everything else on `Casefile` is assumed
+ *  present here — `answers`/`prepChecks` have been part of THIS format
+ *  (`nm_cases`, as opposed to the older single-case `nm_case` `LegacyCase`
+ *  above) since it was first introduced, so unlike the three fields below
+ *  they need no fallback at this boundary. */
+type PreTask8CaseRecord = Omit<Casefile, 'caseFacts' | 'appliedText' | 'interpProvenance'> &
+  Partial<Pick<Casefile, 'caseFacts' | 'appliedText' | 'interpProvenance'>>
+
+/** FIX WAVE (2026-09-08, Task 8 fix round 1, Finding 4): normalizes a single
+ *  stored case record for the three fields Task 8 added onto an already-live
+ *  format — mirrors this file's own `migrateLegacyCase` fix above (2026-09-06
+ *  whole-branch final review, Critical finding 1, symptom 2), which closed
+ *  the identical crash mechanism for `answers`/`prepChecks` on the OLDER
+ *  single-case format: a `Casefile` with `undefined` where `caseFacts` is
+ *  typed as an array crashes the first `.slice()`/`.map()` a restore does
+ *  over it (`loadCaseFragment`'s own `c.caseFacts.slice()`,
+ *  session/cases.ts). That earlier fix covers ONLY the one-time `nm_case`
+ *  migration path; it does not touch the current, live, multi-case
+ *  (`nm_cases`) format every ordinary `loadCases()` call reads — which is
+ *  exactly where a pre-Task-8 record now needs this same defence.
+ *  `saveCases()` never needs the inverse: every WRITE path already goes
+ *  through a real `caseSnapshot()` call, which always produces all three
+ *  fields (domain/casefile.ts). Exported so `caseSync.ts`'s `rowToCase` can
+ *  reuse the exact same fallback values rather than a second, driftable
+ *  copy of them. */
+export function normalizeCaseRecord(c: PreTask8CaseRecord): Casefile {
+  return {
+    ...c,
+    caseFacts: c.caseFacts ?? [],
+    appliedText: c.appliedText ?? null,
+    interpProvenance: c.interpProvenance ?? null,
+  }
+}
+
 /** Loads the device's casefile list, running the one-time legacy migration
  *  first. Fails closed on corrupt storage: a `nm_cases` value that parses to
  *  anything other than an array (a string, a number, an object — a
  *  malformed/hand-edited storage entry) yields `[]`, never a crash
- *  downstream.
+ *  downstream. Every entry is normalized (`normalizeCaseRecord` above) so a
+ *  pre-Task-8 record already sitting in a real citizen's storage cannot
+ *  crash the first restore that reads it.
  *
  *  C7 (Task 8): the account-scoping seam this comment used to name as
  *  future work is now filled — `nm_cases` migrates onto the account on
@@ -126,7 +175,7 @@ function migrateLegacyCase(): void {
 export function loadCases(): Casefile[] {
   migrateLegacyCase()
   const raw = store.get(NM_CASES_KEY)
-  return Array.isArray(raw) ? (raw as Casefile[]) : []
+  return Array.isArray(raw) ? (raw as PreTask8CaseRecord[]).map(normalizeCaseRecord) : []
 }
 
 /** Writes the device's casefile list. Fails soft on a throwing/full/absent

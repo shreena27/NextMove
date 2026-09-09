@@ -6,13 +6,17 @@
  *  pre-seed for a test (adding one purely for a test would be a production
  *  API existing for test convenience — the wrong trade), so these five are
  *  skipped there and covered instead by a real interaction test in
- *  `PrepareScreen.test.tsx`.
+ *  `interactionGated.test.tsx` (relocated there by Task 11's own fix round
+ *  1 — see that file's own header comment for why `PrepareScreen.test.tsx`
+ *  was the wrong home).
  *
- *  Deliberately its own module, imported by BOTH `screenCopy.test.tsx` and
- *  `PrepareScreen.test.tsx`, rather than declared twice: two independently
- *  hand-typed copies can drift apart (a 6th entry added to one and not the
- *  other) with nothing to catch it. A single import makes that structurally
- *  impossible — there is only one place to edit. Deliberately importing
+ *  Deliberately its own module, imported by BOTH `screenCopy.test.tsx` (to
+ *  skip these entries in its static coverage sweep) and
+ *  `interactionGated.test.tsx` (to pin real interaction coverage against
+ *  it), rather than declared twice: two independently hand-typed copies can
+ *  drift apart (a 6th entry added to one and not the other) with nothing to
+ *  catch it. A single import makes that structurally impossible — there is
+ *  only one place to edit. Deliberately importing
  *  nothing itself (not even a type), so `guardrails/isolation.test.ts`'s
  *  import-scan — which walks every non-test `.ts`/`.tsx` file under `src/`
  *  — has nothing here to flag, the same discipline `screenCopy.ts`'s own
@@ -23,4 +27,16 @@ export const INTERACTION_GATED = new Set([
   'ui:prepare.copiedMany',
   'ui:prepare.hintReady',
   'ui:prepare.doneNoteFallback',
+  // C8 (docs/superpowers/plans/2026-09-08-c8-describe-it.md, Task 10 design
+  // note 10) — likely candidates for entries a static mount genuinely cannot
+  // produce. Each names its own covering task; per this module's own rule,
+  // gating is for genuinely interaction-only copy, never for "fiddly to
+  // mount", and each entry below is re-checked against that rule by the task
+  // that builds its component — a false-positive gate is lifted there, not
+  // left standing.
+  'ui:describe.err', // needs a submit-with-empty-text interaction (Task 11)
+  'ui:describe.reading', // needs an in-flight interpretation (Task 11)
+  'ui:facts.editLabel', // edit-mode input aria-label; needs a click on Edit first (Task 13)
+  'ui:facts.saveLabel', // edit-mode save-button aria-label; needs a click on Edit first (Task 13)
+  'ui:prepare.hintFilledUnreviewed', // needs a draft whose blanks are fully fact-filled, a shape no shipped PREP plan produces unassisted (Task 15)
 ])

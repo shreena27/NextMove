@@ -59,7 +59,7 @@ function makeCase(
       : engineKey === 'voter' ? UI.serviceLabel.voterServices
         : UI.serviceLabel.sir
   const returnScreen = `${engineKey}-nextmove`
-  const snap = caseSnapshot(engineKey, serviceLabel, returnScreen, d, answers, {}, NOW)
+  const snap = caseSnapshot(engineKey, serviceLabel, returnScreen, d, answers, {}, [], null, null, NOW)
   return { ...snap, id: 'c1', outcome: 'still_open', lastCheck: null, remindAt: null, log: [], ...overrides }
 }
 

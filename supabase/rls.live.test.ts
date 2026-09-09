@@ -37,8 +37,13 @@ function readEnvLocal(key: string): string {
   return match[1].trim()
 }
 
-const SUPABASE_URL = readEnvLocal('VITE_SUPABASE_URL')
-const SUPABASE_ANON_KEY = readEnvLocal('VITE_SUPABASE_ANON_KEY')
+// Gated the same way the describe block below is gated: reading these at
+// module scope unconditionally meant this file failed on COLLECTION (not
+// skip) in any worktree without a .env.local — which is every fresh one.
+// The describe.skipIf's condition has to be checked here too, not just at
+// the describe call, since collection runs before skipIf ever evaluates.
+const SUPABASE_URL = process.env.NEXTMOVE_SUPABASE_LIVE ? readEnvLocal('VITE_SUPABASE_URL') : ''
+const SUPABASE_ANON_KEY = process.env.NEXTMOVE_SUPABASE_LIVE ? readEnvLocal('VITE_SUPABASE_ANON_KEY') : ''
 
 // Task 1's two test_otp fixtures. E.164 with the leading "+" for
 // signInWithOtp (GoTrue requires it); the config.toml keys themselves are

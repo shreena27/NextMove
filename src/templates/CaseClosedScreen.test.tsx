@@ -30,7 +30,7 @@ const NOW = 1_760_000_000_000
 function makeCase(overrides: Partial<Casefile> = {}): Casefile {
   const answers = { q1: 'adverse', q2: 'informal' }
   const snap = caseSnapshot(
-    'passport', UI.serviceLabel.passport, 'passport-nextmove', diagnose(passportEngine, answers), answers, {}, NOW,
+    'passport', UI.serviceLabel.passport, 'passport-nextmove', diagnose(passportEngine, answers), answers, {}, [], null, null, NOW,
   )
   return {
     ...snap, id: 'cc-c1', outcome: 'deliverable_received',

@@ -1,7 +1,23 @@
 /** Ports the prototype's `trustDisclosure()` (design/nextmove-v1-prototype.html,
- *  lines 2360-2375), minus the `S.appliedText`/"You wrote" row (line 2371 —
- *  C8's "you wrote"/`caseFacts`, out of scope here per this task's design
- *  note 11).
+ *  lines 2360-2375) IN FULL, including the `S.appliedText`/"You wrote" row
+ *  (line 2371) — C8 Task 16 (FR-AI-04; spec §4: "Trust disclosure gains
+ *  'You wrote' (full text) and the facts used."). That row sits between
+ *  "You told us" and "What that means" (the prototype's own ordering),
+ *  renders ONLY when `appliedText` is truthy, and — transcribed verbatim
+ *  from that same prototype line — shows the quoted, italic text, then,
+ *  only when `caseFacts` is non-empty, a `.small` "Details kept from it:
+ *  {label} {value} · {label} {value}" line. `appliedText`/`caseFacts` are
+ *  NOT routed through `extraToldUs`: that prop feeds the "You told us"
+ *  list of ANSWERS, and free text is not an answer — rendering it there
+ *  would misrepresent it as something the citizen picked from options.
+ *
+ *  `interpProvenance` (Task 8's casefile field — model id, prompt version,
+ *  timestamp) is DELIBERATELY NOT a prop here and never rendered anywhere
+ *  in this component. It is a record for the case owner's/a future
+ *  export's benefit, not citizen-facing copy — a model id in a trust panel
+ *  is noise that would displace the sentence that actually matters here.
+ *  Spec §4 asks only that it be *persisted*, which `session.ts`/
+ *  `casefile.ts` already do; this omission is decided, not missed.
  *
  *  FULLY CONTROLLED — this component owns no state. `open` is a required
  *  prop and `onToggle` a required callback; there is no `useState` anywhere
@@ -27,6 +43,7 @@
  *  itself never imports the guardrail harness — so importing it here does
  *  not violate this file's own MUST-NOT-import-guardrails rule above. */
 import type { Diagnosis } from '../domain/types'
+import type { Fact } from '../domain/interpret'
 import { verifiedDateFor } from '../domain/freshness'
 import { UI } from '../screens/screenCopy'
 
@@ -48,11 +65,22 @@ export interface TrustDisclosureProps {
   /** The Passport recovery echoes (design note 10): "Pasted status text:
    *  ..." or "Asked for the safest thing to do now." */
   extraToldUs?: string
+  /** C8 Task 16 (FR-AI-04) — the free text applied from "Describe it in
+   *  your own words" and the facts extracted from it, both persisted with
+   *  the saved casefile (`SessionState.appliedText`/`caseFacts`, D17).
+   *  REQUIRED, not optional — the same fail-safe C7 used for `Topbar`'s
+   *  `state` prop and Task 15's `PrepareScreen` `caseFacts`/
+   *  `fillsReviewed`: a missed mount site is a compile error, not a
+   *  silently-absent "You wrote" row. */
+  appliedText: string | null
+  caseFacts: Fact[]
   open: boolean
   onToggle: () => void
 }
 
-export function TrustDisclosure({ d, answerLabels, extraToldUs, open, onToggle }: TrustDisclosureProps) {
+export function TrustDisclosure({
+  d, answerLabels, extraToldUs, appliedText, caseFacts, open, onToggle,
+}: TrustDisclosureProps) {
   const answered = Object.entries(d.matchedAnswers)
     .filter(([k, v]) => answerLabels[`${k}:${v}`])
     .map(([k, v]) => answerLabels[`${k}:${v}`])
@@ -71,6 +99,17 @@ export function TrustDisclosure({ d, answerLabels, extraToldUs, open, onToggle }
               {answered.join(' · ') || UI.trust.notEnough}
             </div>
           </div>
+          {appliedText ? (
+            <div className="trust-row">
+              <div className="nm-k">{UI.interp.youWrote}</div>
+              <div className="nm-v" style={{ fontStyle: 'italic' }}>"{appliedText}"</div>
+              {caseFacts.length ? (
+                <div className="small" style={{ marginTop: 6 }}>
+                  {UI.trust.detailsKeptFrom} {caseFacts.map(f => `${f.label} ${f.value}`).join(' · ')}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="trust-row">
             <div className="nm-k">{UI.trust.whatThatMeans}</div>
             <div className="nm-v">{d.explanation}</div>

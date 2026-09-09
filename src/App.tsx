@@ -2,17 +2,22 @@
  *  `state.screen`, the direct analogue of the prototype's `render()`
  *  (design/nextmove-v1-prototype.html, 3902-3941). Screen ids are the
  *  prototype's own; C4 added the three `*-prepare` cases, Task 13 added
- *  four more (`checkin`/`dead-end`/`case-closed`/`save-done`), and C7 Task
- *  17 adds the last three (`save-case`/`save-otp`/`save-name` — present in
- *  the `ScreenId` union since C7 Task 4, but routerless until now), which is
- *  what finally makes every `ScreenId` member a real case below.
+ *  four more (`checkin`/`dead-end`/`case-closed`/`save-done`), C7 Task 17
+ *  added three (`save-case`/`save-otp`/`save-name`), and C8 Task 17 adds the
+ *  LAST one (`interp-confirm` — present in the `ScreenId` union since C8
+ *  Task 6, but routerless until now), which is what finally makes every
+ *  `ScreenId` member a real case below.
  *
  *  Because `state.screen` is the `ScreenId` union (session.ts), the switch
  *  is exhaustiveness-checked: the `default` arm assigns `state.screen` to a
  *  `never`-typed binding, so a screen added to the union without a case
- *  becomes a compile error rather than a silent fallthrough — this is why
- *  `npm run build` goes fully clean only once Task 17's three cases exist
- *  (Global Constraints' named build-window exception, closed here).
+ *  becomes a compile error rather than a silent fallthrough. That is not a
+ *  by-product — it is the mechanism that guarantees no screen id ever ships
+ *  unrouted, and it is why `npm run build` has been failing with exactly one
+ *  error since C8 Task 6 (the Global Constraints' named build-window
+ *  exception). C8 Task 17's `'interp-confirm'` case is what clears it, for
+ *  good: do not add a `default` fallback and do not widen the union — the
+ *  compile error is the feature.
  *
  *  The SIR route is gated in the SIR screens themselves (`SirState`'s
  *  `sirCoverage()` call), not here — this router never calls
@@ -68,6 +73,9 @@ import { SaveCaseScreen } from './templates/SaveCaseScreen'
 import { SaveOtpScreen } from './templates/SaveOtpScreen'
 import { SaveNameScreen } from './templates/SaveNameScreen'
 import { SaveDoneScreen } from './templates/SaveDoneScreen'
+import { InterpConfirmScreen } from './templates/InterpConfirmScreen'
+import { UnplaceablePanel } from './templates/UnplaceablePanel'
+import { describeItEnabled } from './session/featureFlags'
 import { diagnose } from './domain/engine'
 import { degradedFor, changedOnFor } from './domain/freshness'
 import { passportEngine, voterEngine, sirEngine, ENGINES } from './playbooks/engines'
@@ -458,6 +466,12 @@ export default function App() {
       returnScreen: snapshot.returnScreen as ScreenId,
       answers: snapshot.answers,
       prepChecks: snapshot.prepChecks,
+      // Whole-branch review (2026-09-09 fix wave), Finding 3: the
+      // describe-it slice's own three fields, restored the same way
+      // answers/prepChecks already are.
+      caseFacts: snapshot.caseFacts,
+      appliedText: snapshot.appliedText,
+      interpProvenance: snapshot.interpProvenance,
       now, newId: newCaseId(),
     })
     // `now` is intentionally omitted from the dependency array — same
@@ -575,6 +589,8 @@ export default function App() {
           onToggleTrust={() => dispatch({ type: 'TOGGLE_TRUST' })}
           topbar={topbar(true, true)}
           extraToldUs={extraToldUs}
+          appliedText={state.appliedText}
+          caseFacts={state.caseFacts}
           onNavigate={screen => dispatch({ type: 'NAVIGATE', screen })}
           ciJustUpdated={state.ciJustUpdated}
           ciSnapshot={state.ciSnapshot}
@@ -655,6 +671,9 @@ export default function App() {
           prepDraft={state.prepDraft}
           onTogglePrepStep={i => dispatch({ type: 'TOGGLE_PREP_STEP', index: i, now })}
           onSetPrepDraft={text => dispatch({ type: 'SET_PREP_DRAFT', text })}
+          caseFacts={state.caseFacts}
+          fillsReviewed={state.fillsReviewed}
+          onToggleFillsReviewed={() => dispatch({ type: 'TOGGLE_FILLS_REVIEWED' })}
           savedCases={state.savedCases}
           onSave={() =>
             dispatch({
@@ -695,6 +714,8 @@ export default function App() {
           trustOpen={state.trustOpen}
           onToggleTrust={() => dispatch({ type: 'TOGGLE_TRUST' })}
           topbar={topbar(true, true)}
+          appliedText={state.appliedText}
+          caseFacts={state.caseFacts}
           onNavigate={screen => dispatch({ type: 'NAVIGATE', screen })}
           ciJustUpdated={state.ciJustUpdated}
           ciSnapshot={state.ciSnapshot}
@@ -767,6 +788,9 @@ export default function App() {
           prepDraft={state.prepDraft}
           onTogglePrepStep={i => dispatch({ type: 'TOGGLE_PREP_STEP', index: i, now })}
           onSetPrepDraft={text => dispatch({ type: 'SET_PREP_DRAFT', text })}
+          caseFacts={state.caseFacts}
+          fillsReviewed={state.fillsReviewed}
+          onToggleFillsReviewed={() => dispatch({ type: 'TOGGLE_FILLS_REVIEWED' })}
           savedCases={state.savedCases}
           onSave={() =>
             dispatch({
@@ -812,6 +836,8 @@ export default function App() {
           onToggleTrust={() => dispatch({ type: 'TOGGLE_TRUST' })}
           topbar={topbar(true, true)}
           preNote={<Banner><b>{st.name} · {st.phase!.label}:</b> {st.phase!.note}</Banner>}
+          appliedText={state.appliedText}
+          caseFacts={state.caseFacts}
           onNavigate={screen => dispatch({ type: 'NAVIGATE', screen })}
           ciJustUpdated={state.ciJustUpdated}
           ciSnapshot={state.ciSnapshot}
@@ -885,6 +911,9 @@ export default function App() {
           prepDraft={state.prepDraft}
           onTogglePrepStep={i => dispatch({ type: 'TOGGLE_PREP_STEP', index: i, now })}
           onSetPrepDraft={text => dispatch({ type: 'SET_PREP_DRAFT', text })}
+          caseFacts={state.caseFacts}
+          fillsReviewed={state.fillsReviewed}
+          onToggleFillsReviewed={() => dispatch({ type: 'TOGGLE_FILLS_REVIEWED' })}
           savedCases={state.savedCases}
           onSave={() =>
             dispatch({
@@ -975,11 +1004,92 @@ export default function App() {
       body = <CaseClosedScreen case={c} logOpen={state.logOpen} topbar={topbar(false, false)} dispatch={dispatch} />
       break
     }
+    // C8/Task 17 — the free-text interpretation confirm screen (prototype
+    // `renderInterpConfirm`, 3037-3105; router case 3936). Placed here,
+    // between 'case-closed' and 'save-case', mirroring the prototype's own
+    // switch order at that point (interp-confirm 3936 immediately precedes
+    // save-case 3937); the union's own note names `sir-prepare ->
+    // interp-confirm -> save-case`, but this router already orders
+    // checkin/dead-end/case-closed differently from the prototype, so the
+    // save-case adjacency is the half that can actually be preserved here.
+    //
+    // TWO COMPONENTS, MOUNTED AS SIBLINGS, EXACTLY ONE OF WHICH EVER
+    // RENDERS. `InterpConfirmScreen` returns null unless the interpretation
+    // is MAPPED (`if (!interp || interp.unplaceable) return null`,
+    // InterpConfirmScreen.tsx); `UnplaceablePanel` returns null unless it
+    // is UNPLACEABLE (`if (!interp || !interp.unplaceable) return null`,
+    // UnplaceablePanel.tsx — its own comment calls this "the mirror image
+    // of InterpConfirmScreen's own guard"). The two conditions are exact
+    // complements once `state.interp` is known non-null (the first guard
+    // below), so this is a composition, not a double render: the prototype
+    // has ONE function with an early return, and this port splits it into
+    // two files so each test file stays about one thing (both components'
+    // own header notes name this router as the place they are composed).
+    // Both get `topbar(true, false)` — Back visible, Restart absent — the
+    // prototype's own arguments in BOTH branches (3047, 3089).
+    case 'interp-confirm': {
+      // GUARD 1 (design note 2 / I11): reached with no interpretation. This
+      // is a STALE-ROUTE condition, not a reason to destroy a working case
+      // — `APPLY_INTERPRETATION`/`UNPLACEABLE_PICK` both push
+      // 'interp-confirm' onto `history` in the same transition that nulls
+      // `interp` (session.ts's own comments at both arms say so and name
+      // this router as the place it is handled), so BACK genuinely lands
+      // here with `interp: null` on an ordinary, successful journey.
+      //
+      // The prototype's answer is `restart(); return renderHome();` (3039).
+      // Deliberately NOT transcribed, for two independent reasons. (a)
+      // TECHNICALLY: `restart()` there mutates a global and re-renders;
+      // this codebase's equivalent is dispatching `RESTART`, and
+      // dispatching during the render phase is not legal React — the same
+      // render-purity rule this file's `now` comment already navigates
+      // around, and the reason `RestartToHome` (above) exists as an EFFECT
+      // for the *-prepare guards. (b) DESTRUCTIVELY: the real `RESTART`
+      // arm resets to `{ ...initialSession, savedCases, user, migration }`
+      // (session.ts) — it wipes the citizen's answers, their working case,
+      // their draft and their ticked prepare steps. The *-prepare guards
+      // can afford that (`prep` missing means the diagnosis genuinely has
+      // no plan, and Home is a clean slate by design); arriving here from
+      // the Back button after a successful apply cannot.
+      //
+      // So: a pure render-time substitution. No dispatch, nothing
+      // destroyed, `state.screen` left as-is — the same benign
+      // screen/render mismatch guard 2 below already produces — and the
+      // citizen's case intact if they navigate forward into it again. If a
+      // future reader believes a dispatch is genuinely needed here, it
+      // belongs in a `useEffect` with a stated reason; nothing in C8 needs
+      // one. App.test.tsx's own non-destructive pin is what stops the
+      // `restart()` transcription being "restored".
+      if (!state.interp) {
+        body = <Home state={state} dispatch={dispatch} now={now} />
+        break
+      }
+      // GUARD 2: the feature flag's THIRD AND LAST read site (Task 1 design
+      // note 3 — the other two are `DescribeBlock` and `runInterpretation`).
+      // Without it, a casefile or a history entry created while the flag
+      // was on could route to a screen the feature no longer serves. Fail
+      // closed, to the one screen that always works.
+      if (!describeItEnabled()) {
+        body = <Home state={state} dispatch={dispatch} now={now} />
+        break
+      }
+      body = (
+        <>
+          <InterpConfirmScreen state={state} dispatch={dispatch} now={now} topbar={topbar(true, false)} />
+          <UnplaceablePanel state={state} dispatch={dispatch} topbar={topbar(true, false)} />
+        </>
+      )
+      break
+    }
     case 'save-case':
       body = (
         <SaveCaseScreen
           authMethod={state.authMethod} authId={state.authId} authErr={state.authErr} authBusy={state.authBusy}
           pendingSave={state.pendingSave} answers={state.answers} prepChecks={state.prepChecks}
+          // Whole-branch review (2026-09-09 fix wave), Finding 3: the
+          // describe-it slice's own three fields, wired through the same
+          // way answers/prepChecks already are — see SaveCaseScreen.tsx's
+          // own doc comment.
+          caseFacts={state.caseFacts} appliedText={state.appliedText} interpProvenance={state.interpProvenance}
           now={now} topbar={topbar(true, false)} dispatch={dispatch}
         />
       )

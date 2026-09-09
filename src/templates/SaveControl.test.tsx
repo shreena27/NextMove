@@ -19,7 +19,7 @@ const helplineAnswers = { q1: 'adverse', q2: 'informal' } // state-5a
 const helplineD = diagnose(passportEngine, helplineAnswers)
 
 function makeSavedCase(overrides: Partial<Casefile> = {}): Casefile {
-  const snap = caseSnapshot('passport', UI.serviceLabel.passport, 'passport-nextmove', helplineD, helplineAnswers, {}, NOW)
+  const snap = caseSnapshot('passport', UI.serviceLabel.passport, 'passport-nextmove', helplineD, helplineAnswers, {}, [], null, null, NOW)
   return { ...snap, id: 'c1', outcome: 'still_open', lastCheck: null, remindAt: null, log: [], ...overrides }
 }
 

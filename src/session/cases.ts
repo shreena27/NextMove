@@ -29,6 +29,7 @@
 import type { AnswerRecord } from '../domain/types'
 import type { Casefile, JourneyEntry, JourneyEntryKind, ServiceKey } from '../domain/casefile'
 import { caseSnapshot, LOG_COPY } from '../domain/casefile'
+import type { Fact } from '../domain/interpret'
 import { diagnose } from '../domain/engine'
 import { applyEvent } from '../domain/answers'
 import type { CheckinOption } from '../domain/checkinOptions'
@@ -92,18 +93,34 @@ function phaseDriftFor(c: Casefile): boolean {
   return st.phase!.id !== c.sirPhaseId
 }
 
-/** Prototype loadCase() (2160-2171). caseFacts/appliedText/fillsReviewed
- *  (2164) is C8's, not ported. `phaseDrift` (2168-2169) is Task 13's own —
- *  computed by `phaseDriftFor` above, so `loadCase`/`openCheckin`/
+/** Prototype loadCase() (2160-2171). `phaseDrift` (2168-2169) is Task 13's
+ *  own — computed by `phaseDriftFor` above, so `loadCase`/`openCheckin`/
  *  `reopenCase` (which all resolve through this shared fragment) agree on
  *  it. Returns null when `id` is not found, mirroring the prototype's own
- *  `if(!c) return null`. */
+ *  `if(!c) return null`.
+ *
+ *  Task 8, design note 3: `caseFacts`/`appliedText`/`interpProvenance` are
+ *  restored from the case being loaded (the prototype's `loadCase`, 2164,
+ *  has no such session field, so this is NOT a transcription — it is
+ *  required by D17's invariant: a restored case with `appliedText` set and
+ *  `interpProvenance` null would be silently re-stamped as provenance-less
+ *  the instant the next prepare-step tick re-snapshots it). `fillsReviewed`
+ *  is reset to `false` on every restore, deliberately NOT copied from the
+ *  case — restoring a saved case restores its facts and its text but not
+ *  the acknowledgment that the citizen already reviewed the auto-filled
+ *  values; they are looking at the draft fresh, possibly on a different
+ *  device, possibly months later. FR-AI-04's "the draft never reads
+ *  'ready' with unreviewed fills" must hold again after a restore. */
 export interface LoadCaseFragment {
   activeCaseId: string
   answers: AnswerRecord
   prepChecks: Record<number, boolean>
   prepDraft: null
   phaseDrift: boolean
+  caseFacts: Fact[]
+  appliedText: string | null
+  interpProvenance: string | null
+  fillsReviewed: false
 }
 
 function loadCaseFragment(c: Casefile): LoadCaseFragment {
@@ -113,6 +130,10 @@ function loadCaseFragment(c: Casefile): LoadCaseFragment {
     prepChecks: { ...c.prepChecks },
     prepDraft: null,
     phaseDrift: phaseDriftFor(c),
+    caseFacts: c.caseFacts.slice(),
+    appliedText: c.appliedText,
+    interpProvenance: c.interpProvenance,
+    fillsReviewed: false,
   }
 }
 
@@ -183,6 +204,9 @@ export function beginWorkingCheckin(
     workingCase: Casefile | null
     answers: AnswerRecord
     prepChecks: Record<number, boolean>
+    caseFacts: Fact[]
+    appliedText: string | null
+    interpProvenance: string | null
   },
   payload: { engineKey: ServiceKey; serviceLabel: string; returnScreen: string; now: number },
 ): OpenCheckinFragment | BeginWorkingFragment {
@@ -199,7 +223,9 @@ export function beginWorkingCheckin(
     const d = diagnose(ENGINES[payload.engineKey], state.answers)
     const snap = caseSnapshot(
       payload.engineKey, payload.serviceLabel, payload.returnScreen,
-      d, state.answers, state.prepChecks, payload.now,
+      d, state.answers, state.prepChecks,
+      state.caseFacts, state.appliedText, state.interpProvenance,
+      payload.now,
     )
     const log: JourneyEntry[] = [{ t: payload.now, kind: 'diagnosed', text: d.label }]
     workingCase = {
@@ -262,6 +288,9 @@ export function completeSave(
     workingCase: Casefile | null
     answers: AnswerRecord
     prepChecks: Record<number, boolean>
+    caseFacts: Fact[]
+    appliedText: string | null
+    interpProvenance: string | null
   },
   // D4: `newId` is injected here, the same way `now` already is — never
   // minted inside this function. See `newCaseId()`'s own doc comment
@@ -272,7 +301,9 @@ export function completeSave(
   const d = diagnose(ENGINES[payload.engineKey], state.answers)
   const snap = caseSnapshot(
     payload.engineKey, payload.serviceLabel, payload.returnScreen,
-    d, state.answers, state.prepChecks, payload.now,
+    d, state.answers, state.prepChecks,
+    state.caseFacts, state.appliedText, state.interpProvenance,
+    payload.now,
   )
   const working = state.workingCase && state.workingCase.engineKey === payload.engineKey ? state.workingCase : null
   const existingIdx = state.savedCases.findIndex(c => c.outcome === 'still_open' && c.engineKey === payload.engineKey)
@@ -336,13 +367,21 @@ export interface CiSnapshot {
 }
 
 /** The slice of SessionState every CI_* function below needs to resolve
- *  activeCase() and (where relevant) apply an event patch to it. */
+ *  activeCase() and (where relevant) apply an event patch to it.
+ *  `caseFacts`/`appliedText`/`interpProvenance` (Task 8) are carried
+ *  through unchanged to `applyCheckinPatch`'s own re-snapshot below — a
+ *  check-in never touches the interpretation, so these three ride along
+ *  exactly the way `answers`/`prepChecks` already do at every other
+ *  caseSnapshot call site. */
 interface CheckinCaseState {
   answers: AnswerRecord
   prepChecks: Record<number, boolean>
   activeCaseId: string | null
   workingCase: Casefile | null
   savedCases: Casefile[]
+  caseFacts: Fact[]
+  appliedText: string | null
+  interpProvenance: string | null
 }
 
 /** The fragment every CI_* function returns. Every field is OPTIONAL and a
@@ -482,7 +521,11 @@ function applyCheckinPatch(
     updated = appendLog(updated, { kind: 'diagnosed', text: after.label }, now)
   }
 
-  const snap = caseSnapshot(c.engineKey, c.serviceLabel, c.returnScreen, after, answers, prepChecks, now)
+  const snap = caseSnapshot(
+    c.engineKey, c.serviceLabel, c.returnScreen, after, answers, prepChecks,
+    state.caseFacts, state.appliedText, state.interpProvenance,
+    now,
+  )
   updated = { ...updated, ...snap, savedAt: c.savedAt } // D7: savedAt survives
 
   const placement = placeCase(state, updated)
@@ -918,4 +961,47 @@ export function setRemoveConfirm(id: string | null): { removeConfirm: string | n
  *  every other transient field, rather than resetting on unmount. */
 export function setReminderCopied(value: boolean): { reminderCopied: boolean } {
   return { reminderCopied: value }
+}
+
+/** Task 7, design note 5 — the prototype's own routing table (2470-2479),
+ *  transcribed as a pure exported function: FR-AI-03's "smart skip" in its
+ *  entirety. A question the citizen's own text already answered is never
+ *  asked again because the route jumps straight past it.
+ *
+ *  Return type is plain `string`, not session.ts's `ScreenId` — same
+ *  layering reason as `CaseSnapshot.returnScreen` above (this file's own
+ *  header note) and `UnplaceablePickPlan.screen`'s identical typing
+ *  (domain/interpret.ts): `session/` may import from `domain/`+`playbooks/`
+ *  and, for a type only, from `session/cases.ts` back into `session.ts`
+ *  (session.ts's own doc comment) — but this file must never import
+ *  `ScreenId` FROM session.ts, which would be a real cycle (session.ts
+ *  already imports this whole module). The one real call site
+ *  (session.ts's `APPLY_INTERPRETATION` arm) narrows the result `as
+ *  ScreenId`, the same way it already narrows `applyCiFragment`'s
+ *  `navigateTo`.
+ *
+ *  `engine` is typed with THIS file's own already-imported `ServiceKey`
+ *  (from `domain/casefile.ts`), not session.ts's locally-declared one —
+ *  they are structurally identical string-literal unions, so this is
+ *  transparent at the session.ts call site.
+ *
+ *  `entryRoute` is the D2 routing value — the `voterEntry` mapping's OWN
+ *  value, when the interpretation proposed one — taken as an explicit
+ *  argument rather than read off `answers`, because D2 means `voterEntry`
+ *  is never written there (session.ts's `APPLY_INTERPRETATION` arm reads it
+ *  straight off `interp.mappings` before this function is ever called). */
+export function routeAfterApply(engine: ServiceKey, answers: AnswerRecord, entryRoute: string | undefined): string {
+  if (engine === 'passport') {
+    if (answers.q1 && answers.q2) return 'passport-diagnosis'
+    if (answers.q1) return 'passport-q2'
+    return 'passport-q1'
+  }
+  if (engine === 'voter') {
+    if (entryRoute === 'sir') return 'sir-state'
+    if (answers.voterQ1 === 'decision') return answers.voterAppealed ? 'voter-diagnosis' : 'voter-q2'
+    if (answers.voterQ1) return 'voter-diagnosis'
+    return entryRoute === 'applied' ? 'voter-q1' : 'voter-entry'
+  }
+  // engine === 'sir' — the union's only remaining member.
+  return answers.sirQ1 ? 'sir-diagnosis' : 'sir-q1'
 }

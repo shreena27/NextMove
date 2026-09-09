@@ -17,7 +17,7 @@ import { UI } from './screenCopy'
 const NOW = 1_760_000_000_000
 const answers = { q1: 'adverse', q2: 'informal' } // state-5a
 const d = diagnose(passportEngine, answers)
-const baseSnap = caseSnapshot('passport', UI.serviceLabel.passport, 'passport-nextmove', d, answers, {}, NOW)
+const baseSnap = caseSnapshot('passport', UI.serviceLabel.passport, 'passport-nextmove', d, answers, {}, [], null, null, NOW)
 
 function makeCase(id: string, overrides: Partial<Casefile> = {}): Casefile {
   return { ...baseSnap, id, outcome: 'still_open', lastCheck: null, remindAt: null, log: [], ...overrides }

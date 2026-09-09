@@ -10,7 +10,7 @@
 // Tasks 4 and 5 have since added each import below at the point it was
 // actually needed — the record of that deliberate deferral is kept here.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PrepareScreen, type PrepareScreenProps } from './PrepareScreen'
@@ -19,8 +19,9 @@ import { diagnose } from '../domain/engine'
 import { passportEngine, sirEngine } from '../playbooks/engines'
 import { caseSnapshot } from '../domain/casefile'
 import type { Casefile } from '../domain/casefile'
+import { fillDraft, type Fact } from '../domain/interpret'
+import { loadCase } from '../session/cases'
 import { UI } from '../screens/screenCopy'
-import { INTERACTION_GATED } from '../screens/interactionGated'
 
 // Real engines on purpose: this is an integration point, and a toy fixture
 // would not exercise a real `where` shape.
@@ -51,18 +52,41 @@ const clarifyD = diagnose(passportEngine, { q1: 'adverse', q2: 'no_followup' })
 // spirit, just without a component wrapping it). Used everywhere in this
 // file EXCEPT those pre-existing controlled-path tests, which already pass
 // their own real values and stay direct `<PrepareScreen>` calls.
+// UPDATED (Task 15): `caseFacts`/`fillsReviewed`/`onToggleFillsReviewed` are
+// now ALSO required, fully-controlled props (design note in
+// PrepareScreen.tsx's own header, alongside `prepChecks`/`prepDraft`).
+// `fillsReviewed` gets the SAME internal-`useState` treatment as
+// `prepChecks`/`prepDraft` above, standing in for the reducer. `caseFacts`
+// is different: it is left as an OPTIONAL pass-through (defaulting to `[]`)
+// rather than internally managed, because — unlike a tick or a draft edit —
+// nothing in this wrapper ever needs to CHANGE it; it is data a caller
+// supplies once, the same way `d`/`prep` already are. Defaulting to `[]`
+// keeps every pre-Task-15 call site in this file (the vast majority, which
+// have nothing to do with the fills mechanism) unchanged, while still
+// satisfying the real component's own required-prop contract with a real
+// value, never an internal fallback the production component itself would
+// have to supply.
 function ControlledPrepareScreen(
-  props: Omit<PrepareScreenProps, 'prepChecks' | 'prepDraft' | 'onTogglePrepStep' | 'onSetPrepDraft'>,
+  props: Omit<
+    PrepareScreenProps,
+    'prepChecks' | 'prepDraft' | 'onTogglePrepStep' | 'onSetPrepDraft' |
+    'fillsReviewed' | 'onToggleFillsReviewed' | 'caseFacts'
+  > & { caseFacts?: Fact[] },
 ) {
+  const { caseFacts = [], ...rest } = props
   const [prepChecks, setPrepChecks] = useState<Record<number, boolean>>({})
   const [prepDraft, setPrepDraft] = useState<string | null>(null)
+  const [fillsReviewed, setFillsReviewed] = useState(false)
   return (
     <PrepareScreen
-      {...props}
+      {...rest}
+      caseFacts={caseFacts}
       prepChecks={prepChecks}
       prepDraft={prepDraft}
       onTogglePrepStep={i => setPrepChecks(prev => ({ ...prev, [i]: !prev[i] }))}
       onSetPrepDraft={setPrepDraft}
+      fillsReviewed={fillsReviewed}
+      onToggleFillsReviewed={() => setFillsReviewed(v => !v)}
     />
   )
 }
@@ -78,21 +102,30 @@ function ControlledPrepareScreen(
 // component is behind `state.screen`, while the state that must survive
 // lives one level up, untouched by that unmount.
 function PrepareBackAndForthHarness(
-  props: Omit<PrepareScreenProps, 'prepChecks' | 'prepDraft' | 'onTogglePrepStep' | 'onSetPrepDraft'>,
+  props: Omit<
+    PrepareScreenProps,
+    'prepChecks' | 'prepDraft' | 'onTogglePrepStep' | 'onSetPrepDraft' |
+    'fillsReviewed' | 'onToggleFillsReviewed' | 'caseFacts'
+  > & { caseFacts?: Fact[] },
 ) {
+  const { caseFacts = [], ...rest } = props
   const [mounted, setMounted] = useState(true)
   const [prepChecks, setPrepChecks] = useState<Record<number, boolean>>({})
   const [prepDraft, setPrepDraft] = useState<string | null>(null)
+  const [fillsReviewed, setFillsReviewed] = useState(false)
   return (
     <>
       <button onClick={() => setMounted(m => !m)}>toggle away/back</button>
       {mounted ? (
         <PrepareScreen
-          {...props}
+          {...rest}
+          caseFacts={caseFacts}
           prepChecks={prepChecks}
           prepDraft={prepDraft}
           onTogglePrepStep={i => setPrepChecks(prev => ({ ...prev, [i]: !prev[i] }))}
           onSetPrepDraft={setPrepDraft}
+          fillsReviewed={fillsReviewed}
+          onToggleFillsReviewed={() => setFillsReviewed(v => !v)}
         />
       ) : (
         <div>elsewhere</div>
@@ -165,7 +198,7 @@ describe('the official-channel card', () => {
 })
 
 describe('scope exclusions are structural, not incidental', () => {
-  it('ships no save/casefile control (C5) and no fills-review panel (C8)', () => {
+  it('ships no save/casefile control (C5, no onSave wired) — and no fills-review panel here specifically because THIS fixture carries no caseFacts (Task 15 builds the mechanism; see "facts fill the draft" below for the positive case)', () => {
     render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
     expect(document.querySelector('.btn-ghost')).toBeNull()
     expect(document.querySelector('.saved-note')).toBeNull()
@@ -373,6 +406,280 @@ describe('the draft card', () => {
   })
 })
 
+// Task 15 (FR-AI-04/AC-AI-4) — "the riskiest UI in the chunk, because it
+// puts a value the citizen may not have checked into a letter they will
+// send to a government office." A fact whose bracket IS in state-5b's real
+// draft (`[File Number / ARN]`, alongside 5 other still-unfilled brackets —
+// see the existing "shows the right hint at FIRST RENDER" test above for
+// the 6-bracket count this fixture ships with today), so filling it still
+// leaves blanks — the fixture this suite's "blanks remaining, fills
+// present" cases need.
+const arnFact = (over: Partial<Fact> = {}): Fact => ({
+  kind: 'reference_number', refType: 'arn', label: 'ARN', value: '123456789012',
+  fills: '[File Number / ARN]', ...over,
+})
+
+// A synthetic plan whose ONLY bracket is fully covered by `fillingFact` —
+// the shape "no shipped PREP plan produces unassisted" (screenCopy.ts's own
+// comment on `hintFilledUnreviewed`), needed to reach the middle/ready hint
+// states without a live edit standing in for the citizen's own text.
+const fullyFillablePrep: PrepPlan = { draft: 'Reference number: [ARN]. Nothing else needed.', steps: ['Step A'] }
+const fillingFact: Fact = {
+  kind: 'reference_number', refType: 'arn', label: 'ARN', value: 'AB123456789', fills: '[ARN]',
+}
+
+describe('facts fill the draft, visibly, behind a review acknowledgment (Task 15, FR-AI-04/AC-AI-4)', () => {
+  it('a case with an ARN fact renders the draft with the bracket replaced, and the fill list showing "ARN: <value>"', () => {
+    render(
+      <ControlledPrepareScreen
+        serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']}
+        caseFacts={[arnFact()]}
+      />,
+    )
+    const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
+    expect(ta.value).not.toContain('[File Number / ARN]')     // the bracket is gone
+    expect(ta.value).toContain('123456789012')                // replaced with the fact's value
+    expect(document.querySelector('.fill-list')).toHaveTextContent('ARN: 123456789012')
+  })
+
+  describe('the hint has three states, checked in this order (design note 4): blanks remaining, then unreviewed fills, then ready', () => {
+    it(
+      'blanks remaining WITH fills present shows the blank count, never "check the details" — checking ' +
+      'fillsReviewed before the blank count would wrongly show the middle state over a draft that still has blanks',
+      () => {
+        render(
+          <ControlledPrepareScreen
+            serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']}
+            caseFacts={[arnFact()]}
+          />,
+        )
+        const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
+        const n = (ta.value.match(/\[[^\]]*\]/g) ?? []).length
+        expect(n).toBeGreaterThan(0)   // guards the fixture: blanks genuinely remain after the ARN fill
+        expect(document.querySelector('.prep-hint'))
+          .toHaveTextContent((n === 1 ? UI.prepare.hintOne : UI.prepare.hintMany).replace('{n}', String(n)))
+        expect(document.querySelector('.prep-hint')).not.toHaveTextContent(UI.prepare.hintFilledUnreviewed)
+      },
+    )
+
+    it('no blanks + unreviewed fills shows the new middle state', () => {
+      render(
+        <ControlledPrepareScreen
+          serviceLabel="Passport" engineKey="passport" d={escalate} prep={fullyFillablePrep}
+          caseFacts={[fillingFact]}
+        />,
+      )
+      const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
+      expect((ta.value.match(/\[[^\]]*\]/g) ?? []).length).toBe(0)   // guards the fixture: no blanks left
+      expect(document.querySelector('.prep-hint')).toHaveTextContent(UI.prepare.hintFilledUnreviewed)
+    })
+
+    it('no blanks + REVIEWED fills shows hintReady', async () => {
+      render(
+        <ControlledPrepareScreen
+          serviceLabel="Passport" engineKey="passport" d={escalate} prep={fullyFillablePrep}
+          caseFacts={[fillingFact]}
+        />,
+      )
+      await userEvent.click(screen.getByRole('button', { name: UI.prepare.fillReviewLabel }))
+      expect(document.querySelector('.prep-hint')).toHaveTextContent(UI.prepare.hintReady)
+    })
+
+    it('no blanks + no fills shows hintReady — the pre-existing two-state behaviour, unchanged', () => {
+      render(
+        <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
+        target: { value: 'nothing left to fill' },
+      })
+      expect(document.querySelector('.prep-hint')).toHaveTextContent(UI.prepare.hintReady)
+    })
+  })
+
+  it(
+    'D14: in the blanks-remaining state with fills present, the hint mentions nothing about fills — but the ' +
+    '.fill-list still renders. The spec promises a dual-state sentence ("3 blanks · 2 filled from your text"); ' +
+    'the prototype does not implement one and the prototype wins (D14) — composing a combined sentence would ' +
+    'author a new citizen-facing string. AC-AI-4\'s actual requirement (every auto-filled value stays visible) ' +
+    'holds anyway, because the fill list renders in both hint states.',
+    () => {
+      expect.assertions(2)
+      render(
+        <ControlledPrepareScreen
+          serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']}
+          caseFacts={[arnFact()]}
+        />,
+      )
+      expect(document.querySelector('.prep-hint')?.textContent).not.toContain('filled from your text')
+      expect(document.querySelector('.fill-list')).not.toBeNull()
+    },
+  )
+
+  it('the review control is a real button with aria-pressed, and toggles both ways — a citizen who ticks it and spots a wrong value must be able to untick it', async () => {
+    render(
+      <ControlledPrepareScreen
+        serviceLabel="Passport" engineKey="passport" d={escalate} prep={fullyFillablePrep}
+        caseFacts={[fillingFact]}
+      />,
+    )
+    const btn = screen.getByRole('button', { name: UI.prepare.fillReviewLabel })
+    expect(btn.tagName).toBe('BUTTON')
+    expect(btn).toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(btn)
+    expect(btn).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(btn)                         // and it un-ticks
+    expect(btn).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  describe('AC-AI-4 as a property (design note 8): "every auto-filled draft value is visible in the fills list" — for ANY facts/draft combination, a text change from fillDraft implies a non-empty, rendered fill list', () => {
+    it.each([
+      ['a fact whose bracket is in the draft', PREP['state-5b'], [arnFact()]],
+      ['a fact whose bracket is absent from THIS draft fills nothing', PREP['state-5b'], [arnFact({ fills: '[Not In This Draft]' })]],
+      ['a fact with fills: null fills nothing', PREP['state-5b'], [arnFact({ fills: null })]],
+      ['no facts at all', PREP['state-5b'], []],
+      ['a fully-fillable synthetic plan', fullyFillablePrep, [fillingFact]],
+      ['multiple facts, only one of which matches', PREP['state-5b'], [arnFact(), arnFact({ label: 'Other', fills: '[Nonexistent]', value: 'x' })]],
+    ] as const)('%s', (_label, prep, caseFacts) => {
+      const { text } = fillDraft(prep.draft ?? '', [...caseFacts])
+      render(
+        <ControlledPrepareScreen
+          serviceLabel="Passport" engineKey="passport" d={escalate} prep={prep}
+          caseFacts={[...caseFacts]}
+        />,
+      )
+      if (text !== (prep.draft ?? '')) {
+        expect(
+          document.querySelector('.fill-list'),
+          "AC-AI-4: every auto-filled draft value must be visible in the fills list",
+        ).not.toBeNull()
+      } else {
+        expect(document.querySelector('.fill-list')).toBeNull()
+      }
+    })
+  })
+
+  describe('copy is never blocked by an unreviewed fill (FR-P-06 regression pin)', () => {
+    let originalClipboard: PropertyDescriptor | undefined
+    beforeEach(() => {
+      originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true,
+      })
+    })
+    afterEach(() => {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
+      else delete (navigator as { clipboard?: unknown }).clipboard
+      vi.restoreAllMocks()
+    })
+
+    it('with fills unreviewed, copy still works and still reports the blank count — the hint changes, never the button', async () => {
+      render(
+        <ControlledPrepareScreen
+          serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']}
+          caseFacts={[arnFact()]}
+        />,
+      )
+      const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
+      const n = (ta.value.match(/\[[^\]]*\]/g) ?? []).length
+      expect(n).toBeGreaterThan(1)   // guards the fixture: state-5b's other blanks are still there
+      const btn = screen.getByRole('button', { name: UI.prepare.copy })
+      expect(btn).toBeEnabled()      // never blocked on an unreviewed fill
+      await userEvent.click(btn)
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(ta.value)
+      expect(
+        await screen.findByRole('button', { name: UI.prepare.copiedMany.replace('{n}', String(n)) }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it(
+    'prepDraft is NOT written with the filled text — after render, prepDraft stays null. Writing the fill into ' +
+    'prepDraft would make it indistinguishable from the citizen\'s own edit and strand it after a correction ' +
+    'clears the facts (design note 3)',
+    () => {
+      let capturedPrepDraft: string | null = 'UNSET'
+      function Probe() {
+        const [prepDraft, setPrepDraft] = useState<string | null>(null)
+        // Captured in an effect, not during render — reassigning an
+        // outer-scope variable mid-render is a real lint finding
+        // (react(globals)), not just style; the effect still runs
+        // synchronously within RTL's render() (wrapped in act()).
+        useEffect(() => { capturedPrepDraft = prepDraft })
+        return (
+          <PrepareScreen
+            serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']}
+            prepChecks={{}} onTogglePrepStep={() => {}}
+            prepDraft={prepDraft} onSetPrepDraft={setPrepDraft}
+            caseFacts={[arnFact()]} fillsReviewed={false} onToggleFillsReviewed={() => {}}
+          />
+        )
+      }
+      render(<Probe />)
+      // The draft textarea shows the FILLED text (the ARN bracket is gone)…
+      const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
+      expect(ta.value).not.toContain('[File Number / ARN]')
+      // …but prepDraft itself, the reducer field a later ANSWER correction
+      // would leave stranded, was never written to.
+      expect(capturedPrepDraft).toBeNull()
+    },
+  )
+
+  it(
+    'a restored saved case with fills shows the middle hint state, not "ready to copy and send" (design note 7 — ' +
+    'Task 8 already resets fillsReviewed on load at the reducer; this asserts it end-to-end through the screen, ' +
+    'via a REAL loadCase() restore, not hand-typed props — fix round 1, Important finding: the previous version ' +
+    'of this test hard-coded caseFacts/fillsReviewed directly as props, so it never actually exercised the ' +
+    'restore path and stayed green even when a mutation made the restore stop resetting fillsReviewed)',
+    () => {
+      // A real Casefile whose caseFacts carry fullyFillablePrep's own
+      // fillable fact — the SAME fixtures the "no blanks + unreviewed
+      // fills" test above already establishes reach the middle hint state.
+      // The diagnosis passed to caseSnapshot need not match fullyFillablePrep:
+      // PrepareScreen's `d`/`prep` props are independent of whatever plan the
+      // SAVED case's own diagnosis pointed at, and caseSnapshot only reads
+      // `d` for its own label/rec/stepsTotal bookkeeping — it never
+      // re-derives caseFacts from it.
+      const snap = caseSnapshot(
+        'passport', 'Passport', 'passport-nextmove', escalate,
+        { q1: 'adverse', q2: 'formal_grievance' }, {},
+        [fillingFact], null, null, 1_760_000_000_000,
+      )
+      const saved: Casefile = {
+        ...snap, id: 'c-restore', outcome: 'still_open', lastCheck: null, remindAt: null, log: [],
+      }
+
+      // The real restore path (cases.ts's own loadCase() — the function both
+      // the OPEN_CHECKIN and REOPEN_CASE reducer arms resolve through via
+      // loadCaseFragment) — never hand-typed caseFacts/fillsReviewed props.
+      const fragment = loadCase([saved], 'c-restore')
+      expect(fragment).not.toBeNull()
+      expect(fragment!.caseFacts).toEqual([fillingFact])  // guards the premise: the fact really did restore
+      expect(fragment!.fillsReviewed).toBe(false)          // guards the premise: the restore really did reset it
+
+      render(
+        <PrepareScreen
+          serviceLabel="Passport" engineKey="passport" d={escalate} prep={fullyFillablePrep}
+          prepChecks={fragment!.prepChecks} onTogglePrepStep={() => {}}
+          prepDraft={fragment!.prepDraft} onSetPrepDraft={() => {}}
+          caseFacts={fragment!.caseFacts} fillsReviewed={fragment!.fillsReviewed} onToggleFillsReviewed={() => {}}
+        />,
+      )
+      expect(document.querySelector('.prep-hint')).toHaveTextContent(UI.prepare.hintFilledUnreviewed)
+      expect(document.querySelector('.prep-hint')).not.toHaveTextContent(UI.prepare.hintReady)
+    },
+  )
+
+  it('a case with NO facts renders no fill list and behaves exactly as it does today — full regression pin on the shipped C4/C5 prepare screen', () => {
+    render(<ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />)
+    const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
+    expect(ta).toHaveValue(PREP['state-5b'].draft)          // the RAW template, untouched
+    expect(document.querySelector('.fill-list')).toBeNull()
+    expect(document.querySelector('.fill-review')).toBeNull()
+    const n = (PREP['state-5b'].draft!.match(/\[[^\]]*\]/g) ?? []).length
+    expect(document.querySelector('.prep-hint')).toHaveTextContent(UI.prepare.hintMany.replace('{n}', String(n)))
+  })
+})
+
 // Small helper: tick every step on the currently rendered screen.
 const tickAll = async (n: number) => {
   const ticks = screen.getAllByRole('button', { pressed: false })
@@ -534,108 +841,15 @@ describe('the closing control', () => {
   })
 })
 
-// screenCopy.test.tsx's coverage sweep (render(mount()), no interaction)
-// cannot produce these five SCREEN_COPY strings at all — design note 4a —
-// so it imports the shared `INTERACTION_GATED` set (src/screens/
-// interactionGated.ts) and skips them there. THIS describe block is the
-// coverage substitute that set's own header comment promises: it drives
-// the real tick/copy/edit interactions and asserts each of the five
-// actually renders.
-//
-// Fix-round review finding: a bare "assert this hand-typed list equals
-// that hand-typed list" pin (the original version of this test) does not
-// actually FORCE anything — a deleted assertion below it would leave the
-// pin still green, and a new entry added to the shared set with no
-// covering function here would go unnoticed too. So instead of a plain
-// Set, `assertions` below is a Record<at, () => Promise<void>> keyed
-// IDENTICALLY to `INTERACTION_GATED`, and `Object.keys(assertions)` is
-// asserted to equal `[...INTERACTION_GATED]` — the same pattern
-// screenCopy.test.tsx's own `CAPTION_SUBSTITUTIONS` already uses for
-// `CAPTION_TEMPLATES`. Removing a function here without removing its entry
-// from the shared set fails loudly (missing key); adding an entry to the
-// shared set with no covering function here fails loudly too (extra key).
-describe('INTERACTION_GATED coverage — the five SCREEN_COPY strings a static mount cannot produce (design note 4a)', () => {
-  it('drives the tick/copy/edit interactions that produce all five, and covers exactly INTERACTION_GATED', async () => {
-    const assertions: Record<string, () => Promise<void>> = {
-      'ui:prepare.doneNoteFallback': async () => {
-        // Tick every step on a doneNote-less plan.
-        const noNote = PREP['state-4']
-        expect(noNote.doneNote).toBeUndefined()
-        const { unmount } = render(
-          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={clarifyD} prep={noNote} />,
-        )
-        await tickAll(noNote.steps.length)
-        expect(document.querySelector('.psteps-done')).toHaveTextContent(UI.prepare.doneNoteFallback)
-        unmount()
-      },
-      'ui:prepare.hintReady': async () => {
-        // A zero-bracket draft — a plain edit, not a click (design note 2b).
-        const { unmount } = render(
-          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
-        )
-        fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
-          target: { value: 'nothing left to fill' },
-        })
-        expect(document.querySelector('.prep-hint')).toHaveTextContent(UI.prepare.hintReady)
-        unmount()
-      },
-      'ui:prepare.copied': async () => {
-        // A zero-bracket draft, then a Copy click.
-        const { unmount } = render(
-          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
-        )
-        fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
-          target: { value: 'nothing left to fill' },
-        })
-        await userEvent.click(screen.getByRole('button', { name: UI.prepare.copy }))
-        expect(await screen.findByRole('button', { name: UI.prepare.copied })).toBeInTheDocument()
-        unmount()
-      },
-      'ui:prepare.copiedOne': async () => {
-        // A Copy click with exactly one blank left.
-        const { unmount } = render(
-          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
-        )
-        fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
-          target: { value: 'ready [x] set' },
-        })
-        await userEvent.click(screen.getByRole('button', { name: UI.prepare.copy }))
-        expect(
-          await screen.findByRole('button', { name: UI.prepare.copiedOne.replace('{n}', '1') }),
-        ).toBeInTheDocument()
-        unmount()
-      },
-      'ui:prepare.copiedMany': async () => {
-        // A Copy click with two blanks left.
-        const { unmount } = render(
-          <ControlledPrepareScreen serviceLabel="Passport" engineKey="passport" d={escalate} prep={PREP['state-5b']} />,
-        )
-        fireEvent.change(screen.getByRole('textbox', { name: UI.prepare.draftAria }), {
-          target: { value: 'a [x] b [y]' },
-        })
-        await userEvent.click(screen.getByRole('button', { name: UI.prepare.copy }))
-        expect(
-          await screen.findByRole('button', { name: UI.prepare.copiedMany.replace('{n}', '2') }),
-        ).toBeInTheDocument()
-        unmount()
-      },
-    }
-
-    // The forcing function: a key mismatch in EITHER direction fails here.
-    expect(Object.keys(assertions).sort()).toEqual([...INTERACTION_GATED].sort())
-
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true,
-    })
-    try {
-      for (const at of INTERACTION_GATED) await assertions[at]()
-    } finally {
-      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
-      else delete (navigator as { clipboard?: unknown }).clipboard
-    }
-  })
-})
+// The INTERACTION_GATED coverage sweep (the SCREEN_COPY strings no static
+// mount can produce) used to live here. Task 11's review relocated it to
+// src/screens/interactionGated.test.tsx: this file is about ONE component,
+// and the gated set already spans PrepareScreen AND DescribeBlock (Task 13/
+// 15 add a third and a fourth owner) — an awkward home for a mechanism that
+// is not about this component specifically. `ControlledPrepareScreen` and
+// `tickAll` above are still used by that relocated file's own
+// `ui:prepare.*` assertions (re-declared there, not imported — see that
+// file's own header comment for why).
 
 // Task 12 lifted `prepChecks`/`prepDraft` into the reducer; Task 13 finished
 // the job (design note 6) — PrepareScreen is now ALWAYS a controlled
@@ -659,6 +873,7 @@ describe('the "done" count is index-based, not Object.values-based (design note 
         serviceLabel="Passport" engineKey="passport" d={escalate} prep={stalePlan}
         prepChecks={{ 0: true, 3: true }} prepDraft={null}
         onTogglePrepStep={() => {}} onSetPrepDraft={() => {}}
+        caseFacts={[]} fillsReviewed={false} onToggleFillsReviewed={() => {}}
       />,
     )
     expect(document.querySelector('.psteps-count')).toHaveTextContent(
@@ -687,6 +902,7 @@ describe('prepChecks/prepDraft — fully controlled (Task 12/13, design note 6)'
         serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan}
         prepChecks={liveChecks} onTogglePrepStep={onTogglePrepStep}
         prepDraft={null} onSetPrepDraft={() => {}}
+        caseFacts={[]} fillsReviewed={false} onToggleFillsReviewed={() => {}}
       />,
     )
 
@@ -712,6 +928,7 @@ describe('prepChecks/prepDraft — fully controlled (Task 12/13, design note 6)'
         serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan}
         prepDraft="edited text" onSetPrepDraft={onSetPrepDraft}
         prepChecks={{}} onTogglePrepStep={() => {}}
+        caseFacts={[]} fillsReviewed={false} onToggleFillsReviewed={() => {}}
       />,
     )
     const ta = screen.getByRole('textbox', { name: UI.prepare.draftAria }) as HTMLTextAreaElement
@@ -729,6 +946,7 @@ describe('prepChecks/prepDraft — fully controlled (Task 12/13, design note 6)'
         serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan}
         prepDraft={null} onSetPrepDraft={onSetPrepDraft}
         prepChecks={{}} onTogglePrepStep={() => {}}
+        caseFacts={[]} fillsReviewed={false} onToggleFillsReviewed={() => {}}
       />,
     )
     expect(screen.getByRole('textbox', { name: UI.prepare.draftAria })).toHaveValue(plan.draft)
@@ -775,6 +993,7 @@ describe('the saveControl tail (Task 12, design note 6 / design note 3)', () => 
         serviceLabel="Passport" engineKey="passport" d={escalate} prep={plan}
         onSave={onSave} savedCases={[]} prepChecks={{ 0: true }}
         prepDraft={null} onTogglePrepStep={() => {}} onSetPrepDraft={() => {}}
+        caseFacts={[]} fillsReviewed={false} onToggleFillsReviewed={() => {}}
       />,
     )
     const rightCol = document.querySelector('.split-r')!
@@ -806,7 +1025,7 @@ describe('the saveControl tail (Task 12, design note 6 / design note 3)', () => 
 
   it('shows the saved-note (no button) when a matching still-open saved case already exists', () => {
     const answers = { q1: 'adverse', q2: 'formal_grievance' }
-    const snap = caseSnapshot('passport', 'Passport', 'passport-prepare', escalate, answers, {}, 1_760_000_000_000)
+    const snap = caseSnapshot('passport', 'Passport', 'passport-prepare', escalate, answers, {}, [], null, null, 1_760_000_000_000)
     const saved: Casefile = { ...snap, id: 'c1', outcome: 'still_open', lastCheck: null, remindAt: null, log: [] }
     render(
       <ControlledPrepareScreen
