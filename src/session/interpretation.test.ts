@@ -267,6 +267,40 @@ describe('runInterpretation — timeout (design note 6)', () => {
     await vi.advanceTimersByTimeAsync(INTERPRETATION_TIMEOUT_MS)
     await expect(promise).resolves.toEqual({ ok: false, reason: 'failed' })
   })
+
+  // Task 18 fix round 1 (Important finding): before this fix, a timeout only
+  // ABANDONED the provider's promise — it never cancelled the underlying
+  // request. With simProvider this never mattered (it resolves
+  // synchronously and ignores its second argument entirely), but with a
+  // real network provider a citizen's text could still be in flight to
+  // Google, still billing, still holding a connection, even after
+  // runInterpretation had already resolved to the unplaceable panel. This
+  // test proves the fix at the one place that can prove it WITHOUT a real
+  // network call: the AbortSignal `runInterpretation` now passes to
+  // `provider.interpret` must genuinely flip to `aborted` at the instant the
+  // timeout fires — not just that the orchestrator moves on regardless (the
+  // test above already proved that half). geminiInterpreter.test.ts proves
+  // the adapter's own half separately: that it forwards whatever signal it
+  // is given straight into `fetch`'s `init.signal`.
+  it('a provider that never resolves: the AbortSignal passed to provider.interpret is untouched before the timeout and genuinely aborted once INTERPRETATION_TIMEOUT_MS elapses', async () => {
+    expect.assertions(3)
+    vi.useFakeTimers()
+    vi.stubEnv('VITE_DESCRIBE_IT', 'on')
+    let capturedSignal: AbortSignal | undefined
+    vi.spyOn(simProvider, 'interpret').mockImplementation((_req, signal) => {
+      capturedSignal = signal
+      return new Promise(() => {})
+    })
+    const promise = runInterpretation('passport-q1', {}, PASSPORT_TEXT)
+    // A microtask tick so the mocked interpret() above has actually run and
+    // captured its signal argument before we inspect it.
+    await Promise.resolve()
+    expect(capturedSignal).toBeInstanceOf(AbortSignal)
+    expect(capturedSignal?.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(INTERPRETATION_TIMEOUT_MS)
+    await promise
+    expect(capturedSignal?.aborted).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------

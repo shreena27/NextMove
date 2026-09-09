@@ -176,8 +176,18 @@ export interface InterpreterProvider {
   id: 'sim' | 'gemini'
   /** D3: the span floor. Simulator 1, production 3. Passed to the gate. */
   minSpanTokens: number
-  /** Raw only. Never gated. May reject; the orchestrator fails closed. */
-  interpret(req: InterpretationRequest): Promise<RawInterpretation>
+  /** Raw only. Never gated. May reject; the orchestrator fails closed.
+   *
+   *  `signal` (Task 18 fix round 1, Important finding): the orchestrator's
+   *  own timeout `AbortController` signal, passed through so a provider that
+   *  makes a real network call (`geminiInterpreter.ts`) can actually cancel
+   *  the underlying request when `runInterpretation`'s 15s race times out —
+   *  not just abandon the promise while the request keeps running, billing,
+   *  and transmitting the citizen's text. Optional: `simProvider` resolves
+   *  synchronously and has nothing to cancel, so it ignores this parameter
+   *  entirely (TypeScript permits an implementation to accept fewer
+   *  parameters than the interface declares). */
+  interpret(req: InterpretationRequest, signal?: AbortSignal): Promise<RawInterpretation>
 }
 
 /** One question in a describe chain. Gates a question on earlier (known or

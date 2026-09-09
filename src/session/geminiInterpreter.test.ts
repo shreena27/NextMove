@@ -220,6 +220,43 @@ describe('geminiProvider.interpret — the request itself', () => {
     const sentBody = JSON.parse(init.body as string)
     expect(sentBody.generationConfig.responseMimeType).toBe('application/json')
   })
+
+  // Task 18 fix round 1 (Minor): the API key rides in the x-goog-api-key
+  // request header, not the ?key= URL query string — a credential in a URL
+  // is far more likely to be captured by an intermediary (proxy logs,
+  // browser history, a persisted dev-tools network panel) than one in a
+  // header.
+  it('sends the API key via the x-goog-api-key header, and the URL itself carries no key at all', async () => {
+    const fetchMock = stubFetch(async () => geminiResponse(200, { mappings: [], facts: [] }))
+    await geminiProvider.interpret(REQ)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const headers = init.headers as Record<string, string>
+    expect(headers['x-goog-api-key']).toBe('test-key-not-real')
+    expect(url).not.toContain('test-key-not-real')
+    expect(url).not.toMatch(/[?&]key=/)
+  })
+
+  // Task 18 fix round 1 (Important finding): the orchestrator's timeout
+  // AbortController signal must reach the actual fetch call, or a timed-out
+  // request keeps running (and billing) after runInterpretation has already
+  // moved on. interpretation.test.ts proves the orchestrator's own half
+  // (the signal genuinely flips to aborted when the timeout fires); this
+  // proves the adapter's half — whatever signal it is handed is the exact
+  // signal fetch receives, not dropped or replaced.
+  it('forwards whatever AbortSignal it is given straight through to fetch\'s init.signal', async () => {
+    const fetchMock = stubFetch(async () => geminiResponse(200, { mappings: [], facts: [] }))
+    const controller = new AbortController()
+    await geminiProvider.interpret(REQ, controller.signal)
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(init.signal).toBe(controller.signal)
+  })
+
+  it('called with no signal at all (e.g. evalHarness.ts\'s direct provider.interpret() use) passes signal: undefined through, exactly what fetch treats as "no signal"', async () => {
+    const fetchMock = stubFetch(async () => geminiResponse(200, { mappings: [], facts: [] }))
+    await geminiProvider.interpret(REQ)
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(init.signal).toBeUndefined()
+  })
 })
 
 // ---------------------------------------------------------------------------

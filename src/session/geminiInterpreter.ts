@@ -158,7 +158,7 @@ export const geminiProvider: InterpreterProvider = {
   // one line that distinguishes this provider's safety posture from
   // simInterpreter.ts's. Do not lower it.
   minSpanTokens: 3,
-  async interpret(req: InterpretationRequest): Promise<RawInterpretation> {
+  async interpret(req: InterpretationRequest, signal?: AbortSignal): Promise<RawInterpretation> {
     // Read lazily, inside the function, never at module scope — the same
     // discipline `session/supabase.ts` and `session/featureFlags.ts` already
     // follow: a module-scope read is evaluated (and frozen) the first time
@@ -169,13 +169,29 @@ export const geminiProvider: InterpreterProvider = {
     }
 
     const prompt = buildPrompt(req)
-    const res = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+    const res = await fetch(GEMINI_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // Task 18 fix round 1 (Minor): the key rides in a header, not the URL
+      // query string. Google's current guidance is `x-goog-api-key` over
+      // `?key=` — a credential in a URL is far more likely to be captured by
+      // an intermediary (proxy logs, browser history, a dev-tools network
+      // panel that persists across reloads) than one in a header, and this
+      // whole adapter exists to handle a billable, sensitive credential
+      // carefully.
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: 'application/json' },
       }),
+      // Task 18 fix round 1 (Important): forwards the orchestrator's timeout
+      // AbortController signal (session/interpretation.ts) so a timed-out
+      // request is genuinely cancelled — not left running, billing, and
+      // transmitting the citizen's text after runInterpretation has already
+      // moved on to the unplaceable panel. `signal` is `undefined` for any
+      // caller that doesn't pass one (e.g. a direct test call, or
+      // evalHarness.ts's own `provider.interpret()` use) — `fetch` treats an
+      // `undefined` `signal` exactly like an absent one.
+      signal,
     })
 
     // The one behavioural addition Task 18 makes beyond a plain adapter

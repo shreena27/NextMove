@@ -1899,11 +1899,8 @@ function functionBody(source: string, header: string): string {
 }
 
 describe('C8 Task 17: the repo-wide scope-exclusion pins (design note 6)', () => {
-  it('`fetch` is called from exactly ONE non-test file, `geminiInterpreter.ts` (Task 18) — UPDATED from Task 17\'s "no fetch anywhere" pin now that the real adapter exists. This is an exhaustive enumeration, not a bare "at least the one we expect": a second file calling `fetch` would mean a second, unaccounted-for network integration exists, which is exactly the kind of drift this pin exists to catch', () => {
-    const offenders = appSourceFiles()
-      .filter(f => /\bfetch\s*\(/.test(stripComments(readFileSync(f, 'utf8'))))
-      .map(relPath)
-    expect(offenders, offenders.join('\n')).toEqual(['src/session/geminiInterpreter.ts'])
+  it('`fetch` is called from exactly ONE call site, in ONE non-test file, `geminiInterpreter.ts` (Task 18) — UPDATED, Task 18 fix round 1 (Minor): the previous version of this pin only enumerated OFFENDING FILES, so a second `fetch(` call added inside `geminiInterpreter.ts` itself (a second, unaccounted-for network call from the one file already allowed to make one) would have passed silently — proven by the reviewer, who added a second call and watched the old pin stay green. `callSitesOf`, used five other times in this same describe block for exactly this occurrence-counting purpose, closes that gap: this now genuinely is the exhaustive enumeration its own description claims — a second file calling `fetch`, OR a second call inside the one allowed file, both fail here', () => {
+    expect(callSitesOf('fetch')).toEqual({ 'src/session/geminiInterpreter.ts': 1 })
   })
 
   it('`gateInterpretation` is called from exactly TWO places, both named — the `__gated` brand stops a provider forging a gated result; THIS pin is what stops anyone skipping the gate. Two mechanisms, and neither substitutes for the other', () => {

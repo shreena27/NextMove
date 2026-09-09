@@ -195,13 +195,27 @@ export async function runInterpretation(
       }))
     const req: InterpretationRequest = { service: describeChain.service, questions, text }
 
+    // Task 18 fix round 1 (Important): an AbortController threaded into the
+    // provider call, not just a timeout that abandons the promise. Before
+    // this fix, a timed-out Gemini request kept running, billing, and
+    // transmitting the citizen's text — the timeout only stopped
+    // runInterpretation from WAITING on it, never stopped the request
+    // itself. `controller.abort()` fires from the SAME setTimeout that
+    // rejects the race below, so the underlying fetch (geminiInterpreter.ts)
+    // is cancelled at the same instant the orchestrator gives up on it.
+    // Harmless for simProvider, which resolves synchronously and never
+    // touches `signal` at all.
+    const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeout = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => reject(new Error('interpretation timed out')), INTERPRETATION_TIMEOUT_MS)
+      timer = setTimeout(() => {
+        controller.abort()
+        reject(new Error('interpretation timed out'))
+      }, INTERPRETATION_TIMEOUT_MS)
     })
     let raw: unknown
     try {
-      raw = await Promise.race([provider.interpret(req), timeout])
+      raw = await Promise.race([provider.interpret(req, controller.signal), timeout])
     } finally {
       clearTimeout(timer)
     }
