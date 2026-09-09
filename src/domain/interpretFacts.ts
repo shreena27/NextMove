@@ -235,28 +235,32 @@ function extractFactsInternal(engine: ServiceKey, text: string): { facts: Fact[]
     const m = text.match(shape.re)
     if (!m || taken.some(t => t.includes(m[0]))) continue
     const idx = m.index ?? 0
-    if (shape.cueRequired) {
-      // Round 2 of the 2026-09-09 fix wave: this branch's two separate
-      // refusal tests (an explicit Aadhaar cue; an uncued bare 12-digit run)
-      // are now the SINGLE rule in `refusesAsAadhaar` — same three clauses,
-      // same order, same outcomes, one definition instead of three copies
-      // that can drift apart (they did drift apart, which is what left
-      // `voter` open; see that function's doc comment).
-      if (refusesAsAadhaar(text, idx, m[0])) {
-        // An Aadhaar-shaped or Aadhaar-labelled number never becomes a chip,
-        // never reaches state, never reaches storage.
-        droppedSensitive = true
-        taken.push(m[0])
-        refused.push({ value: m[0], index: idx })
-        continue
-      }
-      if (!cueBefore(text, idx)) {
-        // No labelled cue, and not Aadhaar-shaped either: any OTHER bare
-        // numeric shape becomes an honest, fills-nothing chip.
-        facts.push({ kind: 'reference_number', refType: 'unknown', label: UNKNOWN_LABEL, value: m[0], fills: null })
-        taken.push(m[0])
-        continue
-      }
+    // Round 3 of the 2026-09-09 fix wave: this check used to sit INSIDE
+    // `if (shape.cueRequired)` below, which is exactly the per-branch-guard
+    // pattern this function's own doc comment warns against — a future
+    // numeric shape declared WITHOUT `cueRequired: true` would skip it
+    // entirely and reopen the whole class. Hoisted above the `cueRequired`
+    // branch, unconditionally, so it runs for every shape match regardless
+    // of that flag — mirroring `classifyValue`'s own placement, before its
+    // shape loop even starts. Same single rule as the sweep and
+    // `classifyValue` use (see that function's doc comment); one definition
+    // instead of three copies that can drift apart (they did drift apart,
+    // which is what left `voter` open in round 2).
+    if (refusesAsAadhaar(text, idx, m[0])) {
+      // An Aadhaar-shaped or Aadhaar-labelled number never becomes a chip,
+      // never reaches state, never reaches storage — regardless of which
+      // shape matched it.
+      droppedSensitive = true
+      taken.push(m[0])
+      refused.push({ value: m[0], index: idx })
+      continue
+    }
+    if (shape.cueRequired && !cueBefore(text, idx)) {
+      // No labelled cue, and not Aadhaar-shaped either: any OTHER bare
+      // numeric shape becomes an honest, fills-nothing chip.
+      facts.push({ kind: 'reference_number', refType: 'unknown', label: UNKNOWN_LABEL, value: m[0], fills: null })
+      taken.push(m[0])
+      continue
     }
     facts.push({ kind: 'reference_number', refType: shape.refType, label: shape.label, value: m[0], fills: shape.fills })
     taken.push(m[0])
