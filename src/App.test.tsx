@@ -37,6 +37,7 @@ import * as caseSyncModule from './session/caseSync'
 import * as caseStoreModule from './session/caseStore'
 import * as freshnessModule from './domain/freshness'
 import * as interpretationModule from './session/interpretation'
+import { simProvider } from './domain/simInterpreter'
 import { UI, PASSPORT_COPY, VOTER_COPY, SIR_COPY } from './screens/screenCopy'
 import { PASSPORT_Q1_LABELS, PASSPORT_Q2_LABELS, VOTER_Q1_LABELS } from './screens/labels'
 import { matchPasted, PASTE_MATCH_EXAMPLES } from './screens/passport/PassportRecovery'
@@ -1910,9 +1911,27 @@ describe('C8 Task 17: the flag OFF, proven end to end (design note 3)', () => {
     },
   )
 
-  it('with the flag OFF, runInterpretation is never called from anywhere in the running app', async () => {
+  // Fix round 1 (reviewer finding): the mount/unmount loop below never
+  // clicks anything, and `runInterpretation`'s only call site is
+  // `DescribeBlock`'s "Read my situation" button handler — so the ORIGINAL
+  // version of this test passed even with `describeItEnabled()` forced to
+  // always return `true`, because nothing here was ever going to reach that
+  // handler regardless of the flag. The loop still proves something real
+  // (no MOUNT-TIME effect on any of the six entry screens calls it, flag
+  // off) so it stays, but it is not "the" flag-driven proof this test's own
+  // name claimed. The row being structurally absent when off is already the
+  // OTHER off-state test above (`renders its own question screen and NO
+  // describe row`), so there is no DOM path left here to click through —
+  // the flag-driven proof has to be a DIRECT call to the orchestrator, flag
+  // off, the same call the button handler would make if it could reach one.
+  // `interpretation.test.ts` already pins this at the unit level; this pins
+  // it again at the App-test-suite level, so the suite carries its own real
+  // proof rather than relying on a comment pointing elsewhere.
+  it("with the flag OFF, runInterpretation refuses with reason 'disabled' before ever calling the provider — and genuinely reaches it once the flag is ON", async () => {
     const spy = vi.spyOn(interpretationModule, 'runInterpretation')
     flagOff()
+
+    // No mount-time effect on any of the six entry screens ever calls it.
     for (const [screenId, seed] of ENTRY_SCREENS) {
       seededState.current = { screen: screenId, ...seed }
       const { unmount } = render(<App />)
@@ -1920,9 +1939,20 @@ describe('C8 Task 17: the flag OFF, proven end to end (design note 3)', () => {
     }
     expect(spy).not.toHaveBeenCalled()
 
-    // The positive control, in the SAME test so the spy's silence above is
-    // provably a fact about the flag and not about the spy: flip the flag on,
-    // drive the one entry point that exists, and watch it fire exactly once.
+    // THE flag-driven proof: call the orchestrator directly, flag still
+    // off — exactly what `DescribeBlock`'s click handler would call. Under
+    // `describeItEnabled()` forced to always return `true` this would fall
+    // through the disabled check and reach `simProvider.interpret`, so both
+    // assertions below genuinely fail under that mutation.
+    const providerSpy = vi.spyOn(simProvider, 'interpret')
+    const result = await interpretationModule.runInterpretation('passport-q1', {}, 'nothing has moved since I filed')
+    expect(result).toEqual({ ok: false, reason: 'disabled' })
+    expect(providerSpy).not.toHaveBeenCalled()
+
+    // The positive control, in the SAME test so the refusal above is
+    // provably a fact about the flag and not about the spies: flip the flag
+    // on, drive the one entry point that exists through the real router and
+    // DOM, and watch it reach the orchestrator exactly once.
     spy.mockClear()
     seededState.current = undefined
     flagOn()
@@ -2260,10 +2290,17 @@ describe('C8 Task 17, flow 5: the file number reaches the prepared draft — FR-
     await runStoryChip(UI.describe.examples['voter-entry'].one)
     await screen.findByRole('heading', { level: 1, name: UI.interp.headline })
 
-    expect(latestState().interp?.facts[0]).toEqual({
-      kind: 'reference_number', refType: 'voter_ref', label: 'Reference number',
-      value: '123456789012', fills: '[reference number]',
-    })
+    // The whole array, not just facts[0] (fix round 1: the story also
+    // yields a SECOND fact — "May" as a date_other — which a facts[0]-only
+    // check leaves silently unasserted; matches the other two flow-5 tests'
+    // own whole-array style).
+    expect(latestState().interp?.facts).toEqual([
+      {
+        kind: 'reference_number', refType: 'voter_ref', label: 'Reference number',
+        value: '123456789012', fills: '[reference number]',
+      },
+      { kind: 'date', refType: 'date_other', label: 'Date you mentioned', value: 'May', fills: null },
+    ])
 
     await userEvent.click(screen.getByRole('button', { name: UI.interp.useTheseAnswers }))
     await userEvent.click(screen.getByRole('button', { name: /See my next move/ }))
