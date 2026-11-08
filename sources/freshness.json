@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-11-07T00:58:07Z",
+  "checkedAt": "2026-11-08T00:43:01Z",
   "documents": {
     "FAQ_SIR2026.pdf": {
       "status": "ok",
@@ -13,7 +13,7 @@
     },
     "Citizens_Charter.pdf": {
       "status": "ok",
-      "lastChecked": "2026-11-07T00:58:07Z",
+      "lastChecked": "2026-11-08T00:43:01Z",
       "checkedFrom": "ci"
     }
   }
